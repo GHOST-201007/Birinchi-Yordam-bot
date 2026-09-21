@@ -113,7 +113,8 @@ class FsmResetMiddleware(BaseMiddleware):
                 "🏥 Yaqin kasalxona", "💎 Premium",
                 "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
                 "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
-                "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim"
+                "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
+                "📣 Reklama"
             ]
             if event.text in skip_texts or event.text.startswith('/'):
                 state = data.get("state")
@@ -467,7 +468,8 @@ def get_start_keyboard():
                 KeyboardButton(text="👥 Do'stlarni taklif qilish")
             ],
             [
-                KeyboardButton(text="🌐 Mening ballarim")
+                KeyboardButton(text="🌐 Mening ballarim"),
+                KeyboardButton(text="📣 Reklama")
             ],
         ],
         resize_keyboard=True,
@@ -701,7 +703,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "/menu — Bosh menyu\n"
         "/help — Yordam\n"
         "/contacts — Tezkor telefon raqamlari\n"
-        "/premium — 💎 Premium imkoniyatlari\n\n"
+        "/premium — 💎 Premium imkoniyatlari\n"
+        "/reklama — 📣 Reklama bo'yicha murojaat\n\n"
         "💎 <b>PREMIUM</b>\n\n"
         "Botdagi qo'shimcha imkoniyatlardan foydalaning.\n\n"
         "🎁 <b>Eng qiziq joyi:</b>\n"
@@ -755,7 +758,8 @@ async def cmd_help(message: types.Message):
         "👤 <b>Tibbiy Profil</b> — Sizning shaxsiy tibbiy ma'lumotlaringiz\n"
         "💊 <b>Dori Eslatmalari</b> — Dorilarni vaqtida ichish uchun budilnik\n"
         "⚖️ <b>Sog'liq Kalkulyatori</b> — BMI va suv balansi\n"
-        "🔔 <b>Kunlik Maslahatlar</b> — Har kuni sog'liq bo'yicha tavsiya\n\n"
+        "🔔 <b>Kunlik Maslahatlar</b> — Har kuni sog'liq bo'yicha tavsiya\n"
+        "/reklama — 📣 Reklama bo'yicha murojaat qilish\n\n"
         "📞 <b>Favqulodda:</b> 103 (Tez yordam) | 101 (Yong'in) | 102 (Militsiya)"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=get_start_keyboard())
@@ -771,6 +775,58 @@ async def cmd_contacts(message: types.Message):
         ),
         parse_mode="HTML"
     )
+
+# ═══════════════════════════════════════════════════════════════════
+# REKLAMA
+# ═══════════════════════════════════════════════════════════════════
+
+def get_reklama_keyboard():
+    """Reklama bo'yicha kanal havolasi bilan inline tugma"""
+    builder = InlineKeyboardBuilder()
+    # Kanal sahifasiga to'g'ridan-to'g'ri havola — foydalanuvchi kanalga o'tib,
+    # "Xabar yozish" (Message) tugmasi orqali kanal chatiga yozadi.
+    builder.button(
+        text="📩 Reklama bo'yicha yozish",
+        url="https://t.me/birinchi1_yordam"
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+async def send_reklama_message(message: types.Message):
+    """Reklama xabarini yuborish"""
+    text = (
+        "📣 <b>REKLAMA BERISH</b>\n\n"
+        "Botimiz yoki kanalimizda reklama joylashtirishni xohlaysizmi?\n\n"
+        "📌 Reklama shartlari va narxi individual kelishiladi.\n\n"
+        "💬 Reklama bo'yicha murojaat qilish uchun kanalimizga o'ting "
+        "va kanal chatiga xabar qoldiring.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📝 <b>Reklama uchun quyidagilarni yuboring:</b>\n\n"
+        "• Reklama matni\n"
+        "• Rasm/video (agar bo'lsa)\n"
+        "• Reklama qilinadigan loyiha yoki mahsulot\n"
+        "• Qancha muddatga joylashtirishni xohlashingiz\n"
+        "• Bog'lanish uchun username yoki link\n\n"
+        "Bu ma'lumotlar reklama bo'yicha kelishuvni osonlashtiradi.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "1️⃣ Kanalimizga o'ting.\n"
+        "2️⃣ <b>\"Xabar yozish\"</b> tugmasini bosing.\n"
+        "3️⃣ Reklama haqida ma'lumot yuboring.\n"
+        "4️⃣ Reklama turi va narxini admin bilan kelishing.\n\n"
+        "💰 <b>Narx:</b> individual kelishiladi.\n\n"
+        "👇 Quyidagi tugmani bosing:"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=get_reklama_keyboard())
+
+@dp.message(Command("reklama"))
+async def cmd_reklama(message: types.Message):
+    """/reklama buyrug'i — reklama bo'yicha ma'lumot"""
+    await send_reklama_message(message)
+
+@dp.message(F.text == "📣 Reklama")
+async def btn_reklama(message: types.Message):
+    """📣 Reklama tugmasi — reklama bo'yicha ma'lumot"""
+    await send_reklama_message(message)
 
 @dp.message(F.text == "👥 Do'stlarni taklif qilish")
 async def show_referral_menu(message: types.Message):
@@ -3073,6 +3129,7 @@ async def set_bot_commands(bot_instance: Bot):
         types.BotCommand(command="help",         description="Yordam va yo'riqnoma"),
         types.BotCommand(command="contacts",     description="Tezkor telefon raqamlari"),
         types.BotCommand(command="premium",      description="💎 Premium — to'lash va tekin olish"),
+        types.BotCommand(command="reklama",      description="📣 Reklama bo'yicha murojaat"),
     ]
     await bot_instance.set_my_commands(user_commands)
 
