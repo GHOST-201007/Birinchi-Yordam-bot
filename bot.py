@@ -1,3 +1,4 @@
+from aiohttp import web
 import asyncio
 import os
 import logging
@@ -3194,6 +3195,23 @@ async def fallback_all(message: types.Message):
     logging.info(f"message_type={msg_type}")
     await message.reply("ℹ️ Bu turdagi xabar qabul qilindi, lekin hozircha uni qayta ishlash imkonim yo'q.")
 
+async def health_check(request):
+    return web.Response(text="Birinchi Yordam bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+
+    port = int(os.environ.get("PORT", 10000))
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    print(f"🌐 Web server started on port {port}")
+
 async def main():
     await asyncio.to_thread(database.init_db)
     
@@ -3232,6 +3250,7 @@ async def main():
     # Background tasklar ishga tushiramiz
     asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari
     asyncio.create_task(daily_tips_scheduler())       # Feature 7: Kunlik maslahatlar
+    asyncio.create_task(start_web_server())           # Render web server
 
     await dp.start_polling(bot)
 
