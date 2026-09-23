@@ -129,7 +129,7 @@ const FIRST_AID_ITEMS = [
         desc: "Kuyganda to'g'ri birinchi yordam ko'rsatish va sovutish.",
         symptoms: ["Qizarish va shish paydo bo'lishi", "Pufakchalar hosil bo'lishi", "Kuchli achishish va og'riq", "3-darajali kuyishda teri qorayib, sezgisiz bo'lib qoladi"],
         steps: [
-            "Kuygan joyni zudlik bilan 10-15 daqiqa davomida oqib turgan sovuq (lekin muzdek emas) suv ostida tuting.",
+            "Kuygan joyni zudlik bilan kamida 20 daqiqa davomida oqib turgan sovuq (lekin muzdek emas) suv ostida tuting.",
             "Kuygan sohaga steril bog'lam yoki toza latta yoping — mahkam o'ramasdan, yumshoq qo'ying.",
             "Agar kiyim teriga yopishib qolgan bo'lsa, uni majburlab sug'urib olmang! Atrofini kesib oling.",
             "Bemorga ko'proq suyuqlik (suv, choy) ichiring — organizm suyuqlikni ko'p yo'qotadi.",
@@ -152,7 +152,7 @@ const FIRST_AID_ITEMS = [
             "Yara ustiga toza bog'lam yoki latta qo'yib, qo'l bilan 5-10 daqiqa davomida mahkam bosing.",
             "Iloji bo'lsa, jarohatlangan a'zoni yurak sathidan balandroq ko'taring.",
             "Kuchli arterial qon ketishida yaraning yuqori qismidan turniket (jgut) bog'lang va ALBATTA vaqtini yozib qo'ying.",
-            "Turniketni yozda 1.5 soat, qishda 1 soatdan ortiq bog'liq qoldirmang. Har 30 daqiqada bo'shatib turing.",
+            "Birinchi yordamchi jgutni aslo bo'shatmasligi kerak, uni faqat shifokor bo'shatishi yoki yechishi mumkin.",
             "Qon bog'lamni shimib o'tgan bo'lsa, uni surib olmang — ustiga yangi qavat qo'ying."
         ],
         prohibited: "Yaradagi yot jismlarni (shisha bo'lagi, sim, mix) o'zboshimchalik bilan sug'urib olmang! Bu qon ketishini kuchaytiradi.",
@@ -191,7 +191,7 @@ const FIRST_AID_ITEMS = [
         steps: [
             "Agar bemor yo'tala olsa, uni qattiqroq yo'talishga undang — eng yaxshi tabiiy yo'l.",
             "Bemor ozroq oldinga engashsin. Kaftingiz asosi bilan kuraklari orasiga 5 marta kuchli zarb bilan uring.",
-            "Geymlix usuli: Bemor orqasidan turib, belidan quchoqlang. Bir qo'lni musht qilib, kindikdan biroz yuqoriga qo'ying. Ikkinchi qo'l bilan mushtni tutib, o'zingizga va yuqoriga 5 marta keskin torting.",
+            "Geymlix usuli: Bemor orqasidan turib, belidan quchoqlang. Bir qo'lni musht qilib, kindikdan biroz yuqoriga qo'ying. Ikkinchi qo'l bilan mushtni tutib, o'zingizga va yuqoriga 5 marta keskin torting. (1 yoshgacha bolalarga qo'llanilmaydi).",
             "Kerak bo'lsa, 5 zarb + 5 Geymlix kombinatsiyasini navbatlashing.",
             "Hushsiz holatda: Bemorni yotqizib, og'izni tekshiring, ko'rinadigan jismni olib tashlang va CPR boshlang."
         ],
@@ -231,12 +231,12 @@ const FIRST_AID_ITEMS = [
         steps: [
             "Bemorni tekis joyga orqasi bilan yotqizib, oyoqlarini 30 sm balandlikka ko'taring — miyaga qon oqimini oshirish uchun.",
             "Nafas olishini osonlashtirish uchun kiyimlarini bo'shating.",
-            "Noshadir spirtini paxtaga tomizib, burunga 5-10 sm masofadan hidlatib ko'ring.",
+            "Agar bemor 1 daqiqada o'ziga kelmasa yoki nafas olmasa, zudlik bilan 103 chaqiring va kerak bo'lsa yurak-o'pka reanimatsiyasini boshlang.",
             "Agar bemor nafas olayotgan bo'lsa-yu hushiga kelmasa, uni xavfsiz yonbosh holatga yotqizib qo'ying.",
             "Hushiga kelgach, 5-10 daqiqa yotsin — shoshilinch turg'izib yubormang."
         ],
         prohibited: "Hushsiz odamning og'ziga suv quymang yoki dori tiqmang! U bo'g'ilib qolishi mumkin.",
-        tips: ["Hushdan ketishdan oldin ko'pincha ogohlantiruv belgilari bo'ladi — darhol o'tirib qolsa kan aylanish tiklanadi", "Ko'p takrorlansa — shifokorga murojaat zarur (yurak yoki asab kasalligi)"],
+        tips: ["Hushdan ketishdan oldin ko'pincha ogohlantiruv belgilari bo'ladi — darhol o'tirib qolsa qon aylanish tiklanadi", "Ko'p takrorlansa — shifokorga murojaat zarur (yurak yoki asab kasalligi)"],
         whenToCall103: ["Bemor 1 daqiqadan ko'p hushsiz qolsa", "Hushiga kelgandan keyin gapirishda muammo bo'lsa", "Yiqilib, boshini urib olgan bo'lsa", "Yurak kasalligi tarixi bo'lgan odamda hushdan ketish bo'lsa"]
     },
     {
@@ -249,13 +249,13 @@ const FIRST_AID_ITEMS = [
         desc: "Kimyoviy moddalar yoki eskirgan taomdan zaharlanish.",
         symptoms: ["Ko'ngil aynishi va qusish", "Qorin og'rig'i va ich ketishi", "Bosh og'rig'i va bosh aylanishi", "Og'izda achish yoki achchiq ta'm", "Ko'z qorachig'i kengayishi yoki torayishi (kimyoviy zaharlanishda)"],
         steps: [
-            "Zahar og'iz orqali kirgan va bemor hushida bo'lsa, tezda 1 litrgacha iliq suv ichirib, tilining ildiziga bosib qustiring.",
-            "Zaharni bog'lash uchun faollashtirilgan ko'mir bering (har 10 kg vazn uchun 1 tabletka).",
-            "Ko'p suyuqlik ichiring — Regidron ayniqsa foydali.",
+            "Darhol 103 ga qo'ng'iroq qiling: nima, qancha va qachon ichilganini ayting.",
+            "Bemorni qustirishga urinmang. Zahar turiga ko'ra bu vaziyatni yomonlashtirishi mumkin.",
+            "Qadoqni saqlab qo'ying — bu shifoxonada davolashni osonlashtiradi.",
             "Zaharli gazdan zaharlanganda zudlik bilan toza havoga olib chiqing va kiyimlarini bo'shating.",
-            "Qaysi modda bilan zaharlanganini aniqlang — bu shifoxonada davolashni osonlashtiradi."
+            "Agar bemor hushsiz, lekin nafas olayotgan bo'lsa, xavfsiz yonbosh holatga yotqizib qo'ying."
         ],
-        prohibited: "Kislota, ishqor yoki neft mahsulotlari bilan zaharlanganda qustirish mutlaqo taqiqlanadi!",
+        prohibited: "Kislota, ishqor yoki neft mahsulotlari bilan zaharlanganda qustirish mutlaqo taqiqlanadi! (Va umuman, oddiy odamga qustirish tavsiya etilmaydi).",
         tips: ["Zaharlanish o'tgan ovqatni saqlang yoki rasmga oling — laboratoriya uchun kerak", "Zahar qutisini yoki nomini yozib, 103 operatoriga ayting"],
         whenToCall103: ["Kimyoviy modda bilan zaharlanishda — DARHOL", "Bemor hushsiz bo'lsa", "Bolada zaharlanish bo'lsa", "Simptomlar 6 soatdan ko'p davom etsa"]
     },
@@ -277,7 +277,27 @@ const FIRST_AID_ITEMS = [
         ],
         prohibited: "Tana harorati juda yuqori bo'lganda bemorni muzdek suvli vannaga birdan solmang — shok holatiga tushishi mumkin.",
         tips: ["Issiq kunlarda qorni to'q holda, tush paytida uzoq qolmang", "Harorat 38°C ga tushgach, sovutishni to'xtating — ortiqcha sovutish ham xavfli"],
-        whenToCall103: ["Bemor hushini yo'qotsa", "Tana harorati 40°C dan oshsa", "Ter chiqmayotgan bo'lsa", "Simptomlar 15-20 daqiqadan ko'p davom etsa"]
+        whenToCall103: ["Tez yordam: issiqlik urishi shoshilinch holat, zudlik bilan 103 chaqiring!", "Bemor hushini yo'qotsa", "Tana harorati 40°C dan oshsa", "Ter chiqmayotgan bo'lsa"]
+    },
+    {
+        id: "reanimatsiya",
+        title: "🫀 CPR (Yurak-o'pka reanimatsiyasi)",
+        icon: "fa-heart-pulse",
+        color: "var(--accent-red)",
+        bgColor: "var(--accent-red-bg)",
+        urgency: "critical",
+        desc: "Yurak to'xtaganda va nafas olmaganda zudlik bilan qo'llaniladigan usul.",
+        symptoms: ["Bemor hushsiz", "Nafas olmayapti yoki normal nafas olmayapti (masalan, og'ir hansirash)", "Tomir urishi sezilmaydi"],
+        steps: [
+            "Tez yordam (103) ga qo'ng'iroq qiling (telefonni baland ovozga qo'yib CPR ni boshlang).",
+            "Bemorni qattiq, tekis yuzaga yotqizing. Ikkala qo'lingizni ustma-ust qilib, ko'krak qafasining o'rtasiga qo'ying.",
+            "Ko'krak qafasini kamida 5-6 sm chuqurlikda, tez va kuchli (daqiqasiga 100-120 marta tezlikda) bosing.",
+            "Har 30 ta bosishdan so'ng, bemorning burnini qisib, og'zidan 2 marta oddiy nafas bering (qila olmasangiz, faqat bosishda davom eting).",
+            "Tez yordam kelguncha yoki bemor o'ziga kelguncha CPR ni to'xtatmang."
+        ],
+        prohibited: "Bemorni yumshoq joyda yotqizib CPR qilmang (kuch yo'qoladi). Qo'llarni bukmang (to'g'ri tursin).",
+        tips: ["Bosishlar o'rtasida ko'krak qafasining to'liq ko'tarilishiga ruxsat bering"],
+        whenToCall103: ["Darhol chaqirilishi shart!"]
     }
 ];
 
@@ -858,7 +878,7 @@ const QUIZ_POOL = [
     { q: "Lat yeyishda (bruise) birinchi chorа:", options: ["Issiq kompres", "Massaj", "Muz qo'yish", "Sport qilish"], answer: 2 },
     { q: "Pay cho'zilganda bo'g'imni nima bilan mahkamlash kerak?", options: ["Ip bilan", "Elastik bint bilan", "Qattiq sim bilan", "Mahkamlash kerak emas"], answer: 1 },
     { q: "Kimyoviy kuyishda yara necha daqiqa suv ostida tutiladi?", options: ["5 daqiqa", "10 daqiqa", "20 daqiqa", "1 daqiqa"], answer: 2 },
-    { q: "Zaharlanishda faollashtirilgan ko'mir nima uchun beriladi?", options: ["Og'riqni qoldirish", "Zaharni bog'lash (adsorbtsiya)", "Qon bosimini tushirish", "Isitma tushirish"], answer: 1 },
+    { q: "Zaharlanishda nima uchun bemorni qustirish tavsiya etilmaydi?", options: ["Samarasiz bo'lgani uchun", "Zahar qizilo'ngachni qaytishda yana kuydirishi va nafas yo'liga tushishi mumkinligi uchun", "Qon bosimini tushirib yuborishi uchun", "Bemorni charchatgani uchun"], answer: 1 },
     { q: "It qopganda yarani birinchi nimalar bilan yuvish kerak?", options: ["Faqat suv bilan", "Kir sovun va ko'p suv bilan", "Spirt bilan", "Yog' bilan"], answer: 1 },
     { q: "Qon bosimi tushib ketganda nima ichirish tavsiya etiladi?", options: ["Sovuq suv", "Iliq shirin choy yoki qahva", "Limon suvi", "Dori"], answer: 1 },
     { q: "Hushsiz odamning og'ziga nima quyish TAQIQLANGAN?", options: ["Havo", "Suv yoki dori", "Suv bug'i", "Hech narsa"], answer: 1 },

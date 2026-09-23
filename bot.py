@@ -178,8 +178,8 @@ TOKEN          = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_ID       = os.getenv("ADMIN_ID", "YOUR_ADMIN_ID")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "YOUR_ADMIN_USERNAME")
-CARD_NUMBER         = os.getenv("CARD_NUMBER", "8600 1234 5678 9012")
-CARD_NAME           = os.getenv("CARD_NAME", "Karta Egasi Ismi")
+CARD_NUMBER         = os.getenv("CARD_NUMBER", "")
+CARD_NAME           = os.getenv("CARD_NAME", "")
 PROVIDER_TOKEN      = os.getenv("PROVIDER_TOKEN", "")  # Feature 6: To'lov uchun (eski)
 MINI_APP_URL        = os.getenv("MINI_APP_URL", "")
 PREMIUM_STARS_PRICE = int(os.getenv("PREMIUM_STARS_PRICE", "50"))  # Stars narxi (default: 50 ⭐)
@@ -256,8 +256,9 @@ class BroadcastStates(StatesGroup):
 
 GEMINI_SYSTEM_INSTRUCTION = (
     "Siz o'zbek tilida gaplashadigan Birinchi Yordam va Salomatlik bo'yicha aqlli sun'iy intellekt yordamchisiz. "
-    "Foydalanuvchilarga favqulodda vaziyatlarda birinchi yordam ko'rsatish, salomatlik, foydali ovqatlar, vitaminlar, "
-    "tavsiya etiladigan xavfsiz dorilar va shifobaxsh mashqlar haqida batafsil va to'g'ri maslahatlar bering. "
+    "Foydalanuvchilarga favqulodda vaziyatlarda birinchi yordam ko'rsatish, salomatlik, foydali ovqatlar, vitaminlar "
+    "va shifobaxsh mashqlar haqida batafsil va to'g'ri maslahatlar bering. "
+    "QAT'IY QOIDA: Dori nomi va dozasini mutlaqo tavsiya qilmang! Foydalanuvchini farmatsevt yoki shifokorga yo'naltiring. "
     "Agar savol tibbiyot yoki salomatlikka aloqador bo'lmasa, muloyimlik bilan faqat salomatlik va birinchi yordamga oid savollarga javob berishingizni ayting. "
     "Har doim javoblaringiz oxirida, zarur bo'lsa, shifokor bilan maslahatlashishni va jiddiy holatlarda 103 ga qo'ng'iroq qilishni eslatib o'ting."
 )
@@ -286,9 +287,11 @@ async def _try_generate(prompt: str, model: str) -> str:
     )
     return response.text
 
-async def get_gemini_response(prompt: str) -> str:
+async def get_gemini_response(prompt: str):
+    if AI_MAINTENANCE:
+        return None
     if not gemini_client:
-        return "⚠️ Sun'iy intellekt hozir sozlanmagan.\nIltimos, administratorga murojaat qiling."
+        return None
     last_error = None
     for model in GEMINI_MODELS:
         try:
@@ -300,51 +303,28 @@ async def get_gemini_response(prompt: str) -> str:
                 logging.warning(f"{model} ishlamadi, keyingisiga o'tilmoqda...")
                 last_error = e
                 continue
-            return _handle_gemini_error(e)
-    return _handle_gemini_error(last_error or Exception("Hech bir model ishlamadi"))
+            _handle_gemini_error(e)
+            return None
+    _handle_gemini_error(last_error or Exception("Hech bir model ishlamadi"))
+    return None
 
-def _handle_gemini_error(e: Exception) -> str:
+def _handle_gemini_error(e: Exception):
     error_msg = str(e)
     logging.error(f"Gemini API xatoligi: {error_msg[:300]}")
-    if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-        return (
-            "🤖 AI konsultatsiyasi hozircha vaqtincha mavjud emas.\n"
-            "Texnik sababga ko'ra AI hozir javob bera olmayapti.\n"
-            "⏳ Bir ozdan so'ng qayta urinib ko'ring.\n\n"
-            "🙏 Tushunganingiz uchun rahmat!"
-        )
-    elif "API_KEY_INVALID" in error_msg or "INVALID_ARGUMENT" in error_msg or "400" in error_msg:
-        return (
-            "🤖 AI konsultatsiyasi hozircha vaqtincha mavjud emas.\n"
-            "Texnik sababga ko'ra AI hozir javob bera olmayapti.\n"
-            "⏳ Bir ozdan so'ng qayta urinib ko'ring.\n\n"
-            "🙏 Tushunganingiz uchun rahmat!"
-        )
-    elif "timeout" in error_msg.lower() or "connection" in error_msg.lower():
-        return (
-            "🤖 AI konsultatsiyasi hozircha vaqtincha mavjud emas.\n"
-            "Texnik sababga ko'ra AI hozir javob bera olmayapti.\n"
-            "⏳ Bir ozdan so'ng qayta urinib ko'ring.\n\n"
-            "🙏 Tushunganingiz uchun rahmat!"
-        )
-    else:
-        return (
-            "🤖 AI konsultatsiyasi hozircha vaqtincha mavjud emas.\n"
-            "Texnik sababga ko'ra AI hozir javob bera olmayapti.\n"
-            "⏳ Bir ozdan so'ng qayta urinib ko'ring.\n\n"
-            "🙏 Tushunganingiz uchun rahmat!"
-        )
 
 async def stream_gemini_to_message(
     prompt: str,
     message: types.Message,
     placeholder_text: str = "⏳ Javob tayyorlanmoqda...",
     reply_markup=None
-) -> str:
+):
+    if AI_MAINTENANCE:
+        await message.edit_text(markdown_to_html(AI_MAINTENANCE_MSG), parse_mode="HTML", reply_markup=reply_markup)
+        return None
     if not gemini_client:
         error_text = "⚠️ Sun'iy intellekt hozir sozlanmagan.\nIltimos, administratorga murojaat qiling."
         await message.edit_text(markdown_to_html(error_text), parse_mode="HTML", reply_markup=reply_markup)
-        return error_text
+        return None
 
     try:
         sent_msg = await message.edit_text(placeholder_text, parse_mode="HTML")
@@ -401,12 +381,18 @@ async def stream_gemini_to_message(
                 logging.warning(f"Streaming: {model} ishlamadi, keyingisiga o'tilmoqda...")
                 last_error = e
                 continue
-            error_text = _handle_gemini_error(e)
-            await sent_msg.edit_text(markdown_to_html(error_text), parse_mode="HTML", reply_markup=reply_markup)
-            return error_text
+            _handle_gemini_error(e)
+            await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
+            return None
 
     logging.warning("Barcha streaming modellari ishlamadi, oddiy javobga o'tilmoqda...")
     fallback_text = await get_gemini_response(prompt)
+    if fallback_text is None:
+        try:
+            await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
+        except Exception:
+            pass
+        return None
     try:
         await sent_msg.edit_text(markdown_to_html(fallback_text), parse_mode="HTML", reply_markup=reply_markup)
     except Exception:
@@ -615,52 +601,63 @@ async def cmd_start(message: types.Message, state: FSMContext):
         if referrer_id_str.isdigit():
             referrer_id = int(referrer_id_str)
             # This handles referred_by connection
-            await asyncio.to_thread(database.handle_referral, user.id, referrer_id)
+            referral_success = await asyncio.to_thread(database.handle_referral, user.id, referrer_id)
             
-            # Notify the referrer
-            try:
-                referrer_score = await asyncio.to_thread(database.get_score, referrer_id)
-                ref_count = await asyncio.to_thread(database.get_referral_count, referrer_id)
-                
-                # Check if this registration triggered a 5th referral bonus
-                bonus_info = ""
-                if ref_count == 5:
-                    bonus_info = f"\n\n🎁 <b>Qo'shimcha bonus:</b> Siz 5 ta do'st taklif qilganingiz uchun yana <b>+50 ball</b> berildi!"
+            # Notify the referrer only if referral was successful
+            if referral_success:
+                try:
+                    referrer_score = await asyncio.to_thread(database.get_score, referrer_id)
+                    ref_count = await asyncio.to_thread(database.get_referral_count, referrer_id)
+                    
+                    # Check if this registration triggered a 5th referral bonus
+                    bonus_info = ""
+                    if ref_count == 5:
+                        bonus_info = f"\n\n🎁 <b>Qo'shimcha bonus:</b> Siz 5 ta do'st taklif qilganingiz uchun yana <b>+50 ball</b> berildi!"
 
-                friend_name = full_name or "Do'stingiz"
-                ref_notification = (
-                    f"👥 <b>Do'stingiz taklifingizni qabul qildi!</b>\n\n"
-                    f"Foydalanuvchi <b>{friend_name}</b> botimizdan foydalanishni boshladi.\n"
-                    f"💰 Sizga <b>+10 ball</b> berildi!\n"
-                    f"📊 Taklif qilingan do'stlar: <b>{ref_count}</b> ta{bonus_info}\n"
-                    f"🏆 Umumiy ballaringiz: <b>{referrer_score}</b> ball"
-                )
-                await message.bot.send_message(chat_id=referrer_id, text=ref_notification, parse_mode="HTML")
-            except Exception as e:
-                logging.warning(f"Failed to notify referrer {referrer_id}: {e}")
+                    friend_name = html.escape(full_name or "Do'stingiz")
+                    ref_notification = (
+                        f"👥 <b>Do'stingiz taklifingizni qabul qildi!</b>\n\n"
+                        f"Foydalanuvchi <b>{friend_name}</b> botimizdan foydalanishni boshladi.\n"
+                        f"💰 Sizga <b>+10 ball</b> berildi!\n"
+                        f"📊 Taklif qilingan do'stlar: <b>{ref_count}</b> ta{bonus_info}\n"
+                        f"🏆 Umumiy ballaringiz: <b>{referrer_score}</b> ball"
+                    )
+                    await message.bot.send_message(chat_id=referrer_id, text=ref_notification, parse_mode="HTML")
+                except Exception as e:
+                    logging.warning(f"Failed to notify referrer {referrer_id}: {e}")
     
     # Deep link orqali Web App dan kiritilgan bo'lsa
     if message.text and "ai_consult_" in message.text:
         body_part_key = message.text.split("ai_consult_")[-1].strip()
-        body_part_title = body_part_key
         # Tarjima qismi
         translations = {
-            "head": "Bosh",
-            "neck": "Bo'yin",
-            "shoulder": "Yelka",
-            "chest": "Ko'krak",
-            "arm": "Qo'l",
-            "abdomen": "Qorin",
-            "hand": "Kaft/Barmoq",
-            "hip": "Chanoq",
-            "thigh": "Son",
-            "knee": "Tizza",
-            "shin": "Boldir",
-            "foot": "Oyoq panjasi",
-            "back": "Bel/Orqa"
+            "head": "Bosh", "neck": "Bo'yin", "shoulder": "Yelka", "chest": "Ko'krak",
+            "arm": "Qo'l", "abdomen": "Qorin", "hand": "Kaft/Barmoq", "hip": "Chanoq",
+            "thigh": "Son", "knee": "Tizza", "shin": "Boldir", "foot": "Oyoq panjasi",
+            "back": "Bel/Orqa", "left_shoulder": "Chap yelka", "right_shoulder": "O'ng yelka",
+            "left_arm": "Chap qo'l", "right_arm": "O'ng qo'l", "left_leg": "Chap oyoq",
+            "right_leg": "O'ng oyoq"
         }
-        if body_part_key in translations:
-            body_part_title = translations[body_part_key]
+        if body_part_key not in translations:
+            await message.answer("⚠️ Noto'g'ri tana a'zosi tanlandi.")
+            return
+            
+        body_part_title = translations[body_part_key]
+        user_id = message.from_user.id
+        
+        consumed_free = False
+        consumed_daily = False
+        if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+            consumed_free = True
+        elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+            consumed_daily = True
+        else:
+            await message.answer(
+                "🚫 <b>Sizning AI so'rovlar limitingiz tugagan!</b>\n\n"
+                "Iltimos, ertaga urining yoki <b>Premium</b> oling.",
+                parse_mode="HTML"
+            )
+            return
             
         await message.answer(
             f"🤖 <b>AI Konsultatsiya ({body_part_title}):</b>\n\n"
@@ -678,6 +675,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
         )
         
         ai_response = await get_gemini_response(prompt)
+        if ai_response is None:
+            if consumed_free:
+                await asyncio.to_thread(database.refund_free_ai, user_id)
+            if consumed_daily:
+                await asyncio.to_thread(database.refund_daily_request, user_id)
+            ai_response = "🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."
+            
         await message.answer(ai_response, parse_mode="HTML")
         return
 
@@ -966,7 +970,7 @@ async def reply_conditions(message: types.Message):
 async def reply_diseases_list(message: types.Message):
     await message.answer("Kasallikni tanlang (sahifa 1/10):", reply_markup=get_diseases_keyboard(1))
 
-@dp.message(F.text == "💬 AI Konsultatsiya")
+@dp.message(F.text == "💬 AI Konsultatsiya (Chat)")
 async def reply_diseases_ai(message: types.Message, state: FSMContext):
     await state.set_state(AiChatStates.chatting)
     text = (
@@ -983,8 +987,14 @@ async def reply_diseases_ai(message: types.Message, state: FSMContext):
 @dp.message(F.text == "❌ Bekor qilish")
 @dp.message(Command("cancel"))
 async def cancel_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
     await state.clear()
-    await message.answer("Amal bekor qilindi. Bosh menyudasiz.", reply_markup=get_start_keyboard())
+    
+    # Broadcast bekor qilinganda maxsus xabar
+    if current_state in [BroadcastStates.waiting_for_content.state, BroadcastStates.waiting_for_confirmation.state]:
+        await message.answer("✅ Xabar yuborish bekor qilindi.")
+    else:
+        await message.answer("Amal bekor qilindi. Bosh menyudasiz.", reply_markup=get_start_keyboard())
 
 @dp.message(F.text == "🏥 Yaqin kasalxona")
 async def reply_hospital(message: types.Message):
@@ -1099,6 +1109,21 @@ async def process_disease_callback(callback: types.CallbackQuery):
     _, page_str, index_str = callback.data.split("_")
     page, index = int(page_str), int(index_str)
     disease_name = DISEASES[page - 1][index]
+    
+    consumed_free = False
+    consumed_daily = False
+    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+        consumed_free = True
+    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+        consumed_daily = True
+    else:
+        await callback.message.edit_text(
+            "🚫 <b>Sizning AI so'rovlar limitingiz tugagan!</b>\n\n"
+            "Iltimos, ertaga urining yoki <b>Premium</b> oling.",
+            parse_mode="HTML"
+        )
+        return
+        
     await callback.message.bot.send_chat_action(chat_id=callback.message.chat.id, action="typing")
 
     # Premium foydalanuvchilar uchun batafsil tugmasi ko'rinadi
@@ -1122,16 +1147,19 @@ async def process_disease_callback(callback: types.CallbackQuery):
         f"📌 **Yuqish yo'li:** [Qisqacha]\n"
         f"🛠️ **Yechim:** [1-2 ta birinchi yordam]\n"
         f"🍏 **Parhez:** [Nimalarni yeyish kerak]\n"
-        f"💊 **Xavfsiz dorilar:** [1-2 ta]\n"
         + profile_context
     )
-    await stream_gemini_to_message(
+    result = await stream_gemini_to_message(
         prompt=prompt,
         message=callback.message,
         placeholder_text=f"⏳ <b>{disease_name}</b> haqida ma'lumot yuklanmoqda...",
         reply_markup=builder.as_markup()
     )
-    await asyncio.to_thread(database.increment_usage, user_id)
+    if result is None:
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
 
 @dp.callback_query(F.data.startswith("det_"))
 async def process_disease_detail_callback(callback: types.CallbackQuery):
@@ -1189,7 +1217,6 @@ async def process_disease_detail_callback(callback: types.CallbackQuery):
         f"⚠️ **Asosiy simptomlar va belgilari:**\n"
         f"🛠️ **Birinchi yordam va davolash yechimlari:**\n"
         f"🍏 **Tavsiya etiladigan parhez:**\n"
-        f"💊 **Xavfsiz dorilar (xavfsiz dozalar):**\n"
         f"🛡️ **Profilaktika (oldini olish):**\n\n"
         f"Matn oxirida shifokor bilan maslahatlashishni va 103 eslatib o'ting.\n"
         + profile_context
@@ -1200,7 +1227,6 @@ async def process_disease_detail_callback(callback: types.CallbackQuery):
         placeholder_text=f"⏳ <b>{disease_name}</b> haqida to'liq ma'lumot tayyorlanmoqda...",
         reply_markup=builder.as_markup()
     )
-    await asyncio.to_thread(database.increment_usage, user_id)
 
 
 
@@ -1449,7 +1475,12 @@ async def add_reminder_start(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.message(ReminderStates.medicine_name)
 async def reminder_medicine_name(message: types.Message, state: FSMContext):
-    await state.update_data(medicine_name=message.text.strip())
+    if not message.text:
+        return await message.answer("⚠️ Iltimos, dori nomini matn ko'rinishida kiriting!")
+    name = message.text.strip()
+    if len(name) > 50:
+        return await message.answer("⚠️ Dori nomi juda uzun! Maksimal 50 ta belgi qabul qilinadi.")
+    await state.update_data(medicine_name=name)
     await state.set_state(ReminderStates.times)
     await message.answer(
         "⏰ <b>2/3 — Ichish vaqtlarini kiriting</b>\n\n"
@@ -1461,9 +1492,13 @@ async def reminder_medicine_name(message: types.Message, state: FSMContext):
 
 @dp.message(ReminderStates.times)
 async def reminder_times(message: types.Message, state: FSMContext):
+    if not message.text:
+        return await message.answer("⚠️ Iltimos, vaqtlarni matn ko'rinishida kiriting!")
     raw = message.text.strip()
     # Vaqtlarni tekshirish
     times_list = [t.strip() for t in raw.split(",")]
+    if len(times_list) > 10:
+        return await message.answer("⚠️ Bitta eslatmada maksimal 10 ta vaqt kiritish mumkin!")
     valid_times = []
     for t in times_list:
         try:
@@ -1580,7 +1615,13 @@ async def handle_voice(message: types.Message):
     if message.caption and message.caption.strip().startswith('/'):
         return
 
-    if not await asyncio.to_thread(database.check_ai_limit, user_id):
+    consumed_free = False
+    consumed_daily = False
+    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+        consumed_free = True
+    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+        consumed_daily = True
+    else:
         await premium_upsell(message)
         return
 
@@ -1644,7 +1685,6 @@ async def handle_voice(message: types.Message):
                         + markdown_to_html(response.text),
                         parse_mode="HTML"
                     )
-                    await asyncio.to_thread(database.increment_usage, user_id)
                     return
             except Exception as e:
                 err = str(e)
@@ -1656,6 +1696,10 @@ async def handle_voice(message: types.Message):
 
         # Fallback: API ovozni qayta ishlay olmasa
         logging.error(f"Voice: barcha modellar ishlamadi. Oxirgi xato: {last_err}")
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
         await status_msg.edit_text(
             "⚠️ Ovozli xabarni matnlashtirish vaqtincha ishlamayapti.\n\n"
             "Iltimos, savolingizni <b>matn ko'rinishida</b> yuboring. 📝",
@@ -1665,6 +1709,10 @@ async def handle_voice(message: types.Message):
 
     except Exception as e:
         logging.error(f"Voice handler xatosi: {e}")
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
         await status_msg.edit_text(
             "⚠️ Ovozli xabarni qayta ishlashda xatolik yuz berdi.\n"
             "Iltimos, matnli savol yuboring.",
@@ -2006,6 +2054,11 @@ async def process_successful_payment(message: types.Message):
 
 @dp.callback_query(F.data == "send_receipt")
 async def process_send_receipt(callback: types.CallbackQuery, state: FSMContext):
+    if not CARD_NUMBER:
+        await callback.message.answer("⚠️ Karta orqali to'lov hozircha ishlamayapti. Iltimos, admin bilan bog'laning.")
+        await callback.answer()
+        return
+        
     await state.set_state(PaymentStates.waiting_for_receipt)
     await asyncio.to_thread(database.set_waiting_receipt, callback.from_user.id, 1)
     await callback.message.edit_text(
@@ -2061,7 +2114,13 @@ async def handle_general_photo(message: types.Message):
     if message.caption and message.caption.strip().startswith('/'):
         return
 
-    if not await asyncio.to_thread(database.check_ai_limit, user_id):
+    consumed_free = False
+    consumed_daily = False
+    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+        consumed_free = True
+    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+        consumed_daily = True
+    else:
         await premium_upsell(message)
         return
 
@@ -2136,7 +2195,6 @@ async def handle_general_photo(message: types.Message):
                         + markdown_to_html(response.text),
                         parse_mode="HTML"
                     )
-                    await asyncio.to_thread(database.increment_usage, user_id)
                     return
             except Exception as e:
                 err = str(e)
@@ -2147,6 +2205,10 @@ async def handle_general_photo(message: types.Message):
                     continue
                 break
 
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
         await status_msg.edit_text(
             "⚠️ Rasmni tahlil qilish imkoni bo'lmadi.\n"
             "Iltimos, muammoni matn shaklida yozib yuboring. 📝",
@@ -2155,6 +2217,10 @@ async def handle_general_photo(message: types.Message):
 
     except Exception as e:
         logging.error(f"Rasm tahlili handlerida xatolik: {e}")
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
         await status_msg.edit_text(
             "⚠️ Rasmni qayta ishlashda xatolik yuz berdi.\n"
             "Iltimos, matnli savol yuboring.",
@@ -2283,7 +2349,7 @@ async def send_daily_tips():
     )
 
     tip_text = await get_gemini_response(prompt)
-    if any(msg in tip_text for msg in ["AI vaqtincha ishlamayapti", "limiti", "sozlanmagan", "kaliti xato"]):
+    if tip_text is None:
         logging.error("AI error received, skipping daily tips broadcast.")
         return
     subscribers = await asyncio.to_thread(database.get_daily_tips_subscribers)
@@ -2308,44 +2374,53 @@ async def send_daily_tips():
 # FEATURE 2: DORI ESLATMASI SCHEDULER
 # ═══════════════════════════════════════════════════════════════════
 
+async def _send_due_reminders(now_dt):
+    now_time = now_dt.strftime("%H:%M")
+    day_of_year = now_dt.timetuple().tm_yday
+    reminders = await asyncio.to_thread(database.get_all_active_reminders)
+    for rem_id, user_id, medicine_name, times_str, days in reminders:
+        if days == "every_other" and day_of_year % 2 == 0:
+            continue
+        times_list = [t.strip() for t in times_str.split(",")]
+        if now_time in times_list:
+            try:
+                sent_ts = int(now_dt.timestamp())
+                builder = InlineKeyboardBuilder()
+                builder.button(text="✅ Ichdim", callback_data=f"med_taken_{rem_id}_{sent_ts}")
+                builder.button(text="❌ Ichmadim", callback_data=f"med_missed_{rem_id}_{sent_ts}")
+                builder.adjust(2)
+                
+                safe_med_name = html.escape(medicine_name)
+                
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"💊 <b>Dori ichish vaqti!</b>\n\n"
+                        f"🕐 Vaqt: <b>{now_time}</b>\n"
+                        f"💊 Dori: <b>{safe_med_name}</b>\n\n"
+                        f"Dorini ichdingizmi? 👇"
+                    ),
+                    reply_markup=builder.as_markup(),
+                    parse_mode="HTML"
+                )
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logging.warning(f"Eslatma yuborib bo'lmadi (user: {user_id}): {e}")
+
 async def check_and_send_reminders():
     """Har daqiqa ishlab, dori vaqti kelganini tekshiradi"""
     from datetime import timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
+    last = datetime.now(uz_tz).replace(second=0, microsecond=0) - timedelta(minutes=1)
     while True:
-        now_dt = datetime.now(uz_tz)
-        now_time = now_dt.strftime("%H:%M")
-        # Bugun necha-kunchi kun? (0 = toq, 1 = juft)
-        day_of_year = now_dt.timetuple().tm_yday
-        reminders = await asyncio.to_thread(database.get_all_active_reminders)
-        for rem_id, user_id, medicine_name, times_str, days in reminders:
-            # Kunora bo'lsa faqat toq kunlarda yuboramiz
-            if days == "every_other" and day_of_year % 2 == 0:
-                continue
-            times_list = [t.strip() for t in times_str.split(",")]
-            if now_time in times_list:
-                try:
-                    # Timestamp qo'shamiz (yordamchi sifatida, orqaga moslik uchun)
-                    sent_ts = int(datetime.now().timestamp())
-                    builder = InlineKeyboardBuilder()
-                    builder.button(text="✅ Ichdim", callback_data=f"med_taken_{rem_id}_{sent_ts}")
-                    builder.button(text="❌ Ichmadim", callback_data=f"med_missed_{rem_id}_{sent_ts}")
-                    builder.adjust(2)
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=(
-                            f"💊 <b>Dori ichish vaqti!</b>\n\n"
-                            f"🕐 Vaqt: <b>{now_time}</b>\n"
-                            f"💊 Dori: <b>{medicine_name}</b>\n\n"
-                            f"Dorini ichdingizmi? 👇"
-                        ),
-                        reply_markup=builder.as_markup(),
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logging.warning(f"Eslatma yuborib bo'lmadi (user: {user_id}): {e}")
-        # Har 60 soniyada tekshiramiz
-        await asyncio.sleep(60)
+        now = datetime.now(uz_tz).replace(second=0, microsecond=0)
+        while last < now:  # o'tib ketgan daqiqalarni ham qamraydi
+            last += timedelta(minutes=1)
+            try:
+                await _send_due_reminders(last)
+            except Exception:
+                logging.exception("Eslatma scheduler xatosi: %s", last)
+        await asyncio.sleep(60 - datetime.now(uz_tz).second + 0.5)
 
 
 @dp.callback_query(F.data.startswith("med_taken_"))
@@ -2395,6 +2470,8 @@ async def web_app_data_handler(message: types.Message):
             )
             
             ai_response = await get_gemini_response(prompt)
+            if ai_response is None:
+                ai_response = "🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."
             await message.answer(ai_response, parse_mode="HTML")
     except Exception as e:
         logging.error(f"web_app_data xatolik: {e}")
@@ -2418,120 +2495,6 @@ async def daily_tips_scheduler():
         logging.info(f"Keyingi kunlik maslahat {wait_seconds/3600:.1f} soatdan keyin yuboriladi.")
         await asyncio.sleep(wait_seconds)
         await send_daily_tips()
-
-# ═══════════════════════════════════════════════════════════════════
-# ERTALABKI SALOM VA KASALLIKLAR HAQIDA MA'LUMOT SCHEDULER (08:30 va 10:30)
-# ═══════════════════════════════════════════════════════════════════
-
-async def morning_greeting_scheduler():
-    """Har kuni 08:30 da barcha foydalanuvchilarga salom yuboradi (tibbiy profilga moslashtirilgan holda)"""
-    from datetime import timezone, timedelta
-    uz_tz = timezone(timedelta(hours=5))
-    while True:
-        now = datetime.now(uz_tz)
-        target = now.replace(hour=8, minute=30, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        
-        users = await asyncio.to_thread(database.get_all_users)
-        if not users:
-            continue
-            
-        # 1. Umumiy salom matnini bir marta tayyorlab olamiz (profili yo'qlar uchun)
-        prompt_gen = "Ertalabki chiroyli, motivatsion salomlashish matni yoz (qisqa, 1-2 gap, emojilar bilan). Bot foydalanuvchilariga kunni yaxshi boshlashlari uchun yuboriladi."
-        general_greeting = await get_gemini_response(prompt_gen)
-        is_gen_failed = any(msg in general_greeting for msg in ["AI vaqtincha ishlamayapti", "limiti", "sozlanmagan", "kaliti xato"])
-        
-        logging.info(f"Ertalabki salom {len(users)} ta foydalanuvchiga yuborilmoqda...")
-        for user_id in users:
-            try:
-                profile = await asyncio.to_thread(database.get_medical_profile, user_id)
-                blood_group, age, weight, height, chronic, allergies = profile if profile else (None,)*6
-                
-                # Agar profil to'ldirilgan bo'lsa - moslashtirilgan xabar beramiz
-                if chronic or age or allergies or blood_group:
-                    no_val = "yo'q"
-                    profile_str = f"Yosh: {age or '—'}, Qon guruhi: {blood_group or '—'}, Surunkali kasalliklar: {chronic or no_val}, Allergiyalar: {allergies or no_val}."
-                    prompt_pers = (
-                        f"Foydalanuvchi tibbiy profili: {profile_str}. "
-                        "Ushbu ma'lumotlarga mos holda, uni o'z sog'lig'iga e'tibor berishga undaydigan, "
-                        "shaxsiy 1 ta foydali tibbiy fakt yoki tavsiya va ertalabki salomlashish matnini yoz. "
-                        "Matn juda qisqa (1-2 gap), samimiy va emojilar bilan bo'lsin. "
-                        "Matn oxirida foydalanuvchini botga kirib batafsil so'rashga undang (masalan: 'Batafsil maslahat olish uchun botga yozing!')."
-                    )
-                    greeting_text = await get_gemini_response(prompt_pers)
-                    
-                    if any(msg in greeting_text for msg in ["AI vaqtincha ishlamayapti", "limiti", "sozlanmagan", "kaliti xato"]):
-                        greeting_text = general_greeting if not is_gen_failed else "Assalomu alaykum! Kuningiz xayrli va barakali o'tsin. Sog'ligingizga e'tiborli bo'ling!"
-                    
-                    await bot.send_message(chat_id=user_id, text=markdown_to_html(greeting_text), parse_mode="HTML")
-                    await asyncio.sleep(2.0) # API rate limitdan oshib ketmaslik uchun
-                else:
-                    # Umumiy salom
-                    msg_to_send = general_greeting if not is_gen_failed else "Assalomu alaykum! Kuningiz xayrli va barakali o'tsin. Sog'ligingizga e'tiborli bo'ling!"
-                    await bot.send_message(chat_id=user_id, text=markdown_to_html(msg_to_send), parse_mode="HTML")
-                    await asyncio.sleep(0.05) # Telegram spaming limitini hurmat qilish uchun
-            except Exception as e:
-                logging.warning(f"Failed to send morning greeting to {user_id}: {e}")
-                await asyncio.sleep(0.05)
-
-async def daily_disease_info_scheduler():
-    """Har kuni 10:30 da noodatiy va shaxsiy tahliliy kasalliklar haqida ma'lumot yuboradi"""
-    from datetime import timezone, timedelta
-    uz_tz = timezone(timedelta(hours=5))
-    while True:
-        now = datetime.now(uz_tz)
-        target = now.replace(hour=10, minute=30, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        
-        users = await asyncio.to_thread(database.get_all_users)
-        if not users:
-            continue
-            
-        # 1. Umumiy qiziqarli kasallik faktini tayyorlaymiz
-        prompt_gen = (
-            "Hozirgi kunda rivojlanayotgan yoki kam uchraydigan bitta noodatiy kasallik haqida qiziqarli qisqacha ma'lumot yoz. "
-            "Matn oxirida foydalanuvchilarni qiziqtirish uchun 'Bu kasallikka davo topishni yoki asoratlari haqida bilishni xohlaysizmi? Unda menga to'g'ridan-to'g'ri murojaat qiling!' deb yoz. "
-            "Matn 200 so'zdan oshmasin, emojilar qo'shilgan, jozibali bo'lsin."
-        )
-        general_info = await get_gemini_response(prompt_gen)
-        is_gen_failed = any(msg in general_info for msg in ["AI vaqtincha ishlamayapti", "limiti", "sozlanmagan", "kaliti xato"])
-        
-        logging.info(f"Kasalliklar haqida ma'lumot {len(users)} ta foydalanuvchiga yuborilmoqda...")
-        for user_id in users:
-            try:
-                profile = await asyncio.to_thread(database.get_medical_profile, user_id)
-                blood_group, age, weight, height, chronic, allergies = profile if profile else (None,)*6
-                
-                # Agar surunkali kasallik yoki allergiyasi bo'lsa - unga mosroq ma'lumot chiqaramiz
-                if chronic or allergies:
-                    no_val = "yo'q"
-                    prompt_pers = (
-                        f"Foydalanuvchi tibbiy profili: Surunkali kasalliklar: {chronic or no_val}, Allergiyalar: {allergies or no_val}. "
-                        "Ushbu holatlarga yoki ularning asoratlariga bog'liq bo'lgan bitta jiddiy tibbiy xavf, kasallik yoki qiziqarli fakt haqida matn yoz. "
-                        "Matn oxirida uni qiziqtirish uchun 'Ushbu holatdan asranish yo'llarini yoki asoratlari haqida bilishni xohlaysizmi? Unda menga yozing!' deb yozing. "
-                        "Matn 200 so'zdan oshmasin, o'zbek tilida, emojilar bilan bo'lsin."
-                    )
-                    disease_text = await get_gemini_response(prompt_pers)
-                    
-                    if any(msg in disease_text for msg in ["AI vaqtincha ishlamayapti", "limiti", "sozlanmagan", "kaliti xato"]):
-                        disease_text = general_info if not is_gen_failed else "Sog'lom turmush tarzi va profilaktika haqida bilish uchun botimizdan foydalaning!"
-                    
-                    await bot.send_message(chat_id=user_id, text=markdown_to_html(disease_text), parse_mode="HTML")
-                    await asyncio.sleep(2.0) # API limitini saqlash uchun
-                else:
-                    # Umumiy ma'lumot
-                    msg_to_send = general_info if not is_gen_failed else "Sog'lom turmush tarzi va profilaktika haqida bilish uchun botimizdan foydalaning!"
-                    await bot.send_message(chat_id=user_id, text=markdown_to_html(msg_to_send), parse_mode="HTML")
-                    await asyncio.sleep(0.05)
-            except Exception as e:
-                logging.warning(f"Failed to send disease info to {user_id}: {e}")
-                await asyncio.sleep(0.05)
 
 # ═══════════════════════════════════════════════════════════════════
 # ADMIN BUYRUQLARI
@@ -2796,19 +2759,6 @@ async def cmd_stats(message: types.Message):
     )
 
 
-@dp.message(Command("cancel"))
-async def cmd_cancel_broadcast(message: types.Message, state: FSMContext):
-    """Adminga broadcastni bekor qilish imkonini beradi."""
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return await message.answer("❌ Sizda bu buyruqdan foydalanish huquqi yo'q.")
-    
-    current_state = await state.get_state()
-    if current_state in [BroadcastStates.waiting_for_content.state, BroadcastStates.waiting_for_confirmation.state]:
-        await state.clear()
-        await message.answer("❌ Broadcast bekor qilindi.", reply_markup=get_start_keyboard())
-    else:
-        await message.answer("Bekor qilinadigan faol broadcast yo'q.")
-
 @dp.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
     """Barcha foydalanuvchilarga xabar yuborish (Yangi FSM usuli)"""
@@ -3034,26 +2984,32 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     # Reply tugmalarni tekshirish (ehtiyot chorasi sifatida qoldiramiz)
     skip_texts = [
         "📋 Holatlar ro'yxati", "🚨 Favqulodda raqamlar",
-        "📚 Kasalliklar", "💬 AI Konsultatsiya",
+        "📚 Kasalliklar", "💬 AI Konsultatsiya (Chat)",
         "🏥 Yaqin kasalxona", "💎 Premium",
         "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
         "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
-        "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim"
+        "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
+        "📣 Reklama"
     ]
     if message.text in skip_texts:
         return
 
     user_id = message.from_user.id
 
-    # 1 ta bepul savol tizimi: bepul savol ishlatilganmi tekshiramiz
-    if await asyncio.to_thread(database.check_free_ai_used, user_id):
+    # 1 ta bepul savol tizimi yoki kunlik limit tekshiruvi
+    consumed_free = False
+    consumed_daily = False
+    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+        consumed_free = True
+    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+        consumed_daily = True
+    else:
         # Bepul limit tugagan — premium talab qilamiz
         builder = InlineKeyboardBuilder()
         builder.button(text="💎 Premium", callback_data="buy_premium")
         builder.adjust(1)
         await message.answer(
             "🔒 <b>Bepul AI savollar limiti tugadi!</b>\n\n"
-            "Siz <b>1 ta bepul savol</b>dan foydalandingiz.\n"
             "AI bilan cheksiz suhbat qurish uchun <b>Premium</b> xarid qiling!\n\n"
             "🚀 <b>Premium afzalliklari:</b>\n"
             "• ♾️ Cheksiz AI so'rovlari\n"
@@ -3078,14 +3034,16 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     profile_context = _build_profile_context(profile)
     full_prompt = message.text + profile_context
 
-    await stream_gemini_to_message(
+    result = await stream_gemini_to_message(
         prompt=full_prompt,
         message=placeholder,
         placeholder_text="⏳ <b>Javob tayyorlanmoqda...</b>"
     )
-    # Bepul savolni ishlatdi deb belgilaymiz
-    await asyncio.to_thread(database.set_free_ai_used, user_id)
-    await asyncio.to_thread(database.increment_usage, user_id)
+    if result is None:
+        if consumed_free:
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            await asyncio.to_thread(database.refund_daily_request, user_id)
 
 def _build_profile_context(profile) -> str:
     """Tibbiy profildan AI uchun kontekst yaratish"""
@@ -3274,8 +3232,6 @@ async def main():
     # Background tasklar ishga tushiramiz
     asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari
     asyncio.create_task(daily_tips_scheduler())       # Feature 7: Kunlik maslahatlar
-    asyncio.create_task(morning_greeting_scheduler()) # Ertalabki salom (08:30)
-    asyncio.create_task(daily_disease_info_scheduler()) # Kasallik ma'lumoti (10:30)
 
     await dp.start_polling(bot)
 

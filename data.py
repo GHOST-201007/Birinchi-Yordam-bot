@@ -8,7 +8,7 @@ FIRST_AID_DATA = {
     ),
     "kuyish": (
         "🔥 **Kuyish holatida birinchi yordam:**\n\n"
-        "1. **Sovutish:** Kuygan joyni zudlik bilan 10-15 daqiqa davomida oqib turgan sovuq (lekin muzdek emas) suv ostida tuting.\n"
+        "1. **Sovutish:** Kuygan joyni zudlik bilan kamida 20 daqiqa davomida oqib turgan sovuq (lekin muzdek emas) suv ostida tuting.\n"
         "2. **Yopish:** Kuygan sohaga steril bog'lam yoki toza latta yoping.\n"
         "3. **Taqiqlar:** Kuygan joyga yog', sariyog', tish pastasi yoki spirt surtmang! Pufakchalarni yormang!\n"
         "4. **Shifokorga murojaat:** Agar kuyish chuqur bo'lsa yoki katta maydonni egallasa, zudlik bilan 103 ga qo'ng'iroq qiling."
@@ -17,7 +17,7 @@ FIRST_AID_DATA = {
         "🩸 **Qon ketishi holatida birinchi yordam:**\n\n"
         "1. **To'g'ridan-to'g'ri bosim:** Yara ustiga toza bog'lam yoki latta qo'yib, qo'l bilan 5-10 daqiqa davomida mahkam bosing.\n"
         "2. **Baland ko'tarish:** Iloji bo'lsa, jarohatlangan a'zoni yurak sathidan balandroq ko'taring.\n"
-        "3. **Turniket (Jgut):** Kuchli arterial qon ketishida yaraning yuqori qismidan jgut bog'lang va vaqtini yozib qo'ying (maksimal 1-1.5 soat).\n"
+        "3. **Turniket (Jgut):** Kuchli arterial qon ketishida yaraning yuqori qismidan jgut bog'lang va vaqtini yozib qo'ying. Birinchi yordamchi jgutni aslo bo'shatmasligi kerak, buni faqat shifokor qiladi.\n"
         "4. **Taqiqlar:** Yaradagi yot jismlarni (shisha, mix) o'zingiz sug'urib olmang!"
     ),
     "sinish": (
@@ -31,7 +31,7 @@ FIRST_AID_DATA = {
         "🫣 **Bo'g'ilish (tomoqqa narsa tiqilib qolishi):**\n\n"
         "1. **Yo'talish:** Agar bemor yo'tala olsa, uni qattiqroq yo'talishga undang.\n"
         "2. **Orqaga urish:** Bemor ozroq oldinga engashsin. Kaftingiz asosi bilan uning kuraklar orasiga 5 marta kuchli zarb bilan uring.\n"
-        "3. **Geymlix usuli (Heimlich):** Bemor orqasidan turib, belidan quchoqlang. Bir qo'lingizni musht qilib, kindikdan biroz yuqoriga qo'ying. Ikkinchi qo'lingiz bilan mushtni tutib, o'zingizga va yuqoriga qarab 5 marta keskin torting.\n"
+        "3. **Geymlix usuli (Heimlich):** Bemor orqasidan turib, belidan quchoqlang. Bir qo'lingizni musht qilib, kindikdan biroz yuqoriga qo'ying. Ikkinchi qo'lingiz bilan mushtni tutib, o'zingizga va yuqoriga qarab 5 marta keskin torting. (Diqqat: 1 yoshgacha bo'lgan bolalarda Heimlich usuli qo'llanilmaydi, ularga faqat orqaga urish va ko'krak qafasiga bosish qo'llaniladi).\n"
         "4. **Hushsiz holat:** Agar bemor hushini yo'qotsa, uni tekis yotqizib, zudlik bilan yurak massajini boshlang va 103 chaqiring."
     ),
     "yurak_xuruji": (
@@ -47,23 +47,23 @@ FIRST_AID_DATA = {
         "😵 **Hushdan ketish holatida birinchi yordam:**\n\n"
         "1. **Yotqizish:** Bemorni tekis joyga yotqizib, oyoqlarini 30 sm balandlikka ko'taring.\n"
         "2. **Havo oqimi:** Yoqani bo'shating, derazalarni ochib toza havo kelishini ta'minlang.\n"
-        "3. **Noshadir spirti:** Noshadir spirtini paxtaga tomizib, burunga yaqinlashtiring (faqat hidlatish uchun, teriga tegmasin).\n"
+        "3. **Tez yordam:** Agar bemor tezda o'ziga kelmasa, zudlik bilan 103 chaqiring.\n"
         "4. **Yonbosh yotqizish:** Agar bemor nafas olayotgan bo'lsa-yu hushiga kelmasa, qusish holatida nafas yo'llari to'silib qolmasligi uchun yonbosh holatga yotqizib qo'ying."
     ),
     "zaharlanish": (
         "🧪 **Zaharlanish holatida birinchi yordam:**\n\n"
-        "1. **Zahar turini aniqlash:** Bemorni nima bilan zaharlanganini (dori, kimyoviy modda, eskirgan taom) aniqlashga harakat qiling.\n"
-        "2. **Ko'p suv ichirish:** Agar zahar og'iz orqali kirgan bo'lsa va bemor hushida bo'lsa, ko'p miqdorda iliq suv ichiring va qustiring (kislota yoki ishqor bilan zaharlanganda qustirish taqiqlanadi!).\n"
-        "3. **Ko'mir tableti:** Bemorga faollashtirilgan ko'mir bering (har 10 kg vaznga 1 tabletka).\n"
-        "4. **Tez yordam:** Shoshilinch tibbiy yordamga (103) qo'ng'iroq qiling."
+        "1. **Darhol 103 ga qo'ng'iroq qilish:** Nima, qancha va qachon ichilganini ayting.\n"
+        "2. **Qustirmaslik:** Bemorni qustirishga urinmang. Qadoqni saqlab qo'ying.\n"
+        "3. **Hushsiz, lekin nafas olayotgan bo'lsa:** Bemorni xavfsiz yonbosh holatga yotqizib qo'ying.\n"
+        "4. **Nafas olmasa:** Zudlik bilan yurak-o'pka reanimatsiyasini (YO'R) boshlang."
     ),
     "issiqlik_urishi": (
         "☀️ **Issiqlik urishi holatida birinchi yordam:**\n\n"
-        "1. **Salqin joy:** Bemorni zudlik bilan soya va salqin joyga olib o'ting.\n"
-        "2. **Kiyim:** Ustki kiyimlarini yeching yoki bo'shating.\n"
-        "3. **Sovutish:** Peshonasiga, bo'yniga va qo'ltiq ostiga sovuq suvda namlangan latta qo'ying. Tanani ho'l choyshab bilan o'rash ham mumkin.\n"
-        "4. **Suyuqlik:** Agar bemor hushida bo'lsa, ko'p miqdorda sovuq suv (iloji bo'lsa minerallashgan yoki tuzli suv) ichiring.\n"
-        "5. **Tez yordam:** Bemor hushini yo'qotsa yoki tana harorati juda yuqori bo'lsa, tez yordam chaqiring."
+        "1. **Tez yordam:** Issiqlik urishi shoshilinch holat, zudlik bilan 103 chaqiring.\n"
+        "2. **Salqin joy:** Bemorni zudlik bilan soya va salqin joyga olib o'ting.\n"
+        "3. **Kiyim:** Ustki kiyimlarini yeching yoki bo'shating.\n"
+        "4. **Sovutish:** Peshonasiga, bo'yniga va qo'ltiq ostiga sovuq suvda namlangan latta qo'ying. Tanani ho'l choyshab bilan o'rash ham mumkin.\n"
+        "5. **Suyuqlik:** Agar bemor hushida bo'lsa, oz-ozdan sovuq suv ichiring."
     ),
     "talvasa": (
         "⚡ **Talvasa (Epilepsiya xuruji) holatida birinchi yordam:**\n\n"
@@ -96,6 +96,15 @@ FIRST_AID_DATA = {
         "• **S (Speech - Nutq):** Oddiy gapni qaytarishni so'rang. Nutq duduqlanib yoki tushunarsiz bo'lyaptimi?\n"
         "• **T (Time - Vaqt):** Ushbu belgilarning birontasi bo'lsa, vaqtni yo'qotmasdan zudlik bilan 103 chaqiring!\n\n"
         "**Birinchi yordam:** Bemorni tinch qo'ying, boshini biroz ko'tarib yotqizing, unga dori yoki suv bermang."
+    ),
+    "reanimatsiya": (
+        "🫀 **Yurak-o'pka reanimatsiyasi (YO'R):**\n\n"
+        "Agar bemor hushsiz bo'lsa va nafas olmayotgan bo'lsa (yoki normal nafas olmayotgan bo'lsa), zudlik bilan YO'R boshlang:\n\n"
+        "1. **Tez yordam:** Avval 103 ga qo'ng'iroq qiling (telefonni baland ovozga qo'yib YO'Rni boshlang).\n"
+        "2. **Bosish (Massaj):** Bemorni qattiq, tekis yuzaga yotqizing. Ikkala qo'lingizni ustma-ust qilib, ko'krak qafasining o'rtasiga qo'ying.\n"
+        "3. **Tezlik va chuqurlik:** Ko'krak qafasini kamida 5-6 sm chuqurlikda, tez va kuchli (daqiqasiga 100-120 marta tezlikda) bosing.\n"
+        "4. **Sun'iy nafas:** Har 30 ta bosishdan so'ng, bemorning burnini qisib, og'zidan 2 marta oddiy nafas bering (agar buni qila olmasangiz, faqat ko'krak qafasini bosishda davom eting).\n"
+        "5. **Davomiylik:** Tez yordam kelguncha yoki bemor o'ziga kelguncha YO'Rni to'xtatmang."
     )
 }
 

@@ -125,98 +125,101 @@ def register_user(user_id, full_name=None, username=None):
     conn.commit()
     conn.close()
 
-def check_ai_limit(user_id) -> bool:
+def try_consume_daily_request(user_id) -> bool:
     """
-    Foydalanuvchining AI limitsini tekshirish.
+    Foydalanuvchining AI limitsini atomar tarzda tekshiradi va band qiladi.
     Qaytaradi: True (ruxsat), False (limit tugagan).
     """
     register_user(user_id)
     
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT registered_at, is_premium, daily_requests, last_request_date, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT registered_at, is_premium, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
     row = c.fetchone()
-    conn.close()
     
     if not row:
+        conn.close()
         return False
         
-    registered_at_str, is_premium, daily_requests, last_request_date_str, premium_expires_at = row
+    registered_at_str, is_premium, premium_expires_at = row
     
     # 1. Premium foydalanuvchilar uchun muddatni tekshirish
     if is_premium:
         if premium_expires_at:
             expires = datetime.datetime.fromisoformat(premium_expires_at)
             if datetime.datetime.now() > expires:
-                # Premium muddati tugagan — avtomatik o'chiramiz
-                conn2 = get_connection()
-                conn2.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
-                conn2.commit()
-                conn2.close()
+                conn.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
+                conn.commit()
             else:
+                conn.close()
                 return True
         else:
+            conn.close()
             return True  # Muddatsiz premium
-        
+            
     now = datetime.datetime.now()
     registered_at = datetime.datetime.fromisoformat(registered_at_str)
     
     # 2. Birinchi 24 soat mutlaqo bepul
     if (now - registered_at).total_seconds() < 24 * 3600:
+        conn.close()
         return True
         
-    # 3. Kunlik limitni tekshirish
+    # 3. Kunlik limitni atomar tekshirish va oshirish
     current_date = now.date().isoformat()
-    if last_request_date_str != current_date:
-        conn = get_connection()
-        conn.execute("UPDATE users SET daily_requests = 0, last_request_date = ? WHERE user_id = ?", (current_date, user_id))
-        conn.commit()
-        conn.close()
-        daily_requests = 0
-        
-    # Kunlik bepul 5 ta so'rov
-    if daily_requests >= 5:
-        return False
-        
-    return True
+    # Avval kun o'zgargan bo'lsa, nollaymiz
+    conn.execute("UPDATE users SET daily_requests = 0, last_request_date = ? WHERE user_id = ? AND last_request_date != ?", (current_date, user_id, current_date))
+    
+    # Endi atomar ravishda band qilamiz
+    cur = conn.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = ? AND daily_requests < 5", (user_id,))
+    success = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    
+    return success
 
-def increment_usage(user_id):
-    """Foydalanuvchi qidiruv sonini bittaga oshirish"""
+def refund_daily_request(user_id):
+    """Xato yuz berganda band qilingan kunlik limitni qaytarish"""
     conn = get_connection()
-    conn.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = ?", (user_id,))
+    conn.execute("UPDATE users SET daily_requests = daily_requests - 1 WHERE user_id = ? AND daily_requests > 0", (user_id,))
     conn.commit()
     conn.close()
 
-def check_free_ai_used(user_id) -> bool:
+def try_consume_free_ai(user_id) -> bool:
     """
-    Foydalanuvchi 1 ta bepul AI savolini ishlatganini tekshirish.
-    Qaytaradi: True (allaqachon ishlatgan), False (hali ishlatmagan).
-    Premium foydalanuvchilar uchun har doim False (limit yo'q).
+    Foydalanuvchining bepul 1 ta AI savolini atomar band qiladi.
+    Premium bo'lsa - har doim True.
     """
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT is_premium, premium_expires_at, free_ai_used FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT is_premium, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
     row = c.fetchone()
-    conn.close()
     if not row:
+        conn.close()
         return False
-    is_premium, premium_expires_at, free_ai_used = row
-    # Premium tekshirish
+    is_premium, premium_expires_at = row
+    
     if is_premium:
         if premium_expires_at:
             expires = datetime.datetime.fromisoformat(premium_expires_at)
             if datetime.datetime.now() <= expires:
-                return False  # Premium — limit yo'q
+                conn.close()
+                return True
         else:
-            return False  # Muddatsiz premium
-    return bool(free_ai_used)
+            conn.close()
+            return True
+            
+    cur = conn.execute("UPDATE users SET free_ai_used = 1 WHERE user_id = ? AND COALESCE(free_ai_used, 0) = 0", (user_id,))
+    success = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
 
-def set_free_ai_used(user_id):
-    """Foydalanuvchining bepul AI savolini ishlatgan deb belgilash"""
-    register_user(user_id)
+def refund_free_ai(user_id):
+    """Xato yuz berganda bepul savolni qaytarish"""
     conn = get_connection()
-    conn.execute("UPDATE users SET free_ai_used = 1 WHERE user_id = ?", (user_id,))
+    conn.execute("UPDATE users SET free_ai_used = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
@@ -224,7 +227,20 @@ def set_premium(user_id, status: int, months: int = 1):
     """Adminga foydalanuvchini Premium qilish uchun. months - necha oylik."""
     conn = get_connection()
     if status == 1:
-        expires_at = (datetime.datetime.now() + datetime.timedelta(days=30 * months)).isoformat()
+        # Agar mavjud premium muddati bor bo'lsa, undan boshlab qo'shamiz
+        row = conn.execute(
+            "SELECT premium_expires_at FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        now = datetime.datetime.now()
+        base = now
+        if row and row[0]:
+            try:
+                existing = datetime.datetime.fromisoformat(row[0])
+                if existing > now:
+                    base = existing
+            except (ValueError, TypeError):
+                pass
+        expires_at = (base + datetime.timedelta(days=30 * months)).isoformat()
         conn.execute(
             "UPDATE users SET is_premium = ?, premium_expires_at = ?, premium_until = ? WHERE user_id = ?",
             (status, expires_at, expires_at, user_id)
