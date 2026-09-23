@@ -569,6 +569,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         else:
             bonus_msg = "✅ Siz bugungi bonusni olib bo'lgansiz!\n⏰ Ertaga yana kiring."
         await message.answer(bonus_msg, parse_mode="HTML", reply_markup=get_start_keyboard())
+        await update_user_menu_button(user.id, message.bot)
         return
         
     # Check for spin bonus parameter from Wheel of Fortune Web App
@@ -589,6 +590,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 reply_markup = builder.as_markup()
 
             await message.answer(msg, parse_mode="HTML", reply_markup=reply_markup)
+            await update_user_menu_button(user.id, message.bot)
             return
         except Exception as e:
             logging.error(f"Error handling spin parameter: {e}")
@@ -724,26 +726,28 @@ async def cmd_start(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-    # web_app_url yuqorida allaqachon yuklanган — qayta yuklamaymiz
+    await update_user_menu_button(user.id, message.bot)
+
+async def update_user_menu_button(user_id: int, current_bot: Bot):
+    web_app_url = await get_web_app_url(user_id)
     if web_app_url:
         try:
-            # Force update this specific user's bottom-left Menu Button instantly to bypass Telegram client cache
-            await message.bot.set_chat_menu_button(
-                chat_id=user.id,
+            await current_bot.set_chat_menu_button(
+                chat_id=user_id,
                 menu_button=types.MenuButtonWebApp(
                     text="🚑 Mini Ilova",
                     web_app=types.WebAppInfo(url=web_app_url)
                 )
             )
         except Exception as e:
-            logging.error(f"Failed to update chat menu button for user {user.id}: {e}")
+            logging.error(f"Failed to update chat menu button for user {user_id}: {e}")
     else:
         try:
-            await message.bot.set_chat_menu_button(
-                chat_id=user.id,
+            await current_bot.set_chat_menu_button(
+                chat_id=user_id,
                 menu_button=types.MenuButtonDefault()
             )
-        except Exception as e:
+        except Exception:
             pass
 
 @dp.message(Command("menu"))
