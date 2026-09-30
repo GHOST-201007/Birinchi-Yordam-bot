@@ -22,6 +22,8 @@ except ImportError:
     import sqlite3
     DB_TYPE = "sqlite"
 
+from dotenv import load_dotenv
+load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # ═══════════════════════════════════════════════════════════════════

@@ -1708,27 +1708,27 @@ async def handle_voice(message: types.Message):
             for model in GEMINI_MULTIMODAL_MODELS:
                 try:
                     response = await gemini_client.aio.models.generate_content(
-                    model=model,
-                    contents=prompt_parts,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=GEMINI_SYSTEM_INSTRUCTION,
-                        temperature=0.7,
+                        model=model,
+                        contents=prompt_parts,
+                        config=genai_types.GenerateContentConfig(
+                            system_instruction=GEMINI_SYSTEM_INSTRUCTION,
+                            temperature=0.7,
+                        )
                     )
-                )
-                if response.text:
-                    await status_msg.edit_text(
-                        f"🎙️ <b>Ovozli xabaringiz qabul qilindi!</b>\n\n"
-                        + markdown_to_html(response.text),
-                        parse_mode="HTML"
-                    )
-                    return
-            except Exception as e:
-                err = str(e)
-                logging.warning(f"Voice: {model} xato: {err[:200]}")
-                last_err = err
-                if "429" in err or "404" in err or "NOT_FOUND" in err or "RESOURCE_EXHAUSTED" in err:
-                    continue
-                break
+                    if response.text:
+                        await status_msg.edit_text(
+                            f"🎙️ <b>Ovozli xabaringiz qabul qilindi!</b>\n\n"
+                            + markdown_to_html(response.text),
+                            parse_mode="HTML"
+                        )
+                        return
+                except Exception as e:
+                    err = str(e)
+                    logging.warning(f"Voice: {model} xato: {err[:200]}")
+                    last_err = err
+                    if "429" in err or "404" in err or "NOT_FOUND" in err or "RESOURCE_EXHAUSTED" in err:
+                        continue
+                    break
 
         # Fallback: API ovozni qayta ishlay olmasa
         logging.error(f"Voice: barcha modellar ishlamadi. Oxirgi xato: {last_err}")
@@ -2268,28 +2268,28 @@ async def handle_general_photo(message: types.Message):
             for model in GEMINI_MULTIMODAL_MODELS:
                 try:
                     response = await gemini_client.aio.models.generate_content(
-                    model=model,
-                    contents=prompt_parts,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=GEMINI_SYSTEM_INSTRUCTION,
-                        temperature=0.7,
+                        model=model,
+                        contents=prompt_parts,
+                        config=genai_types.GenerateContentConfig(
+                            system_instruction=GEMINI_SYSTEM_INSTRUCTION,
+                            temperature=0.7,
+                        )
                     )
-                )
-                if response.text:
-                    await status_msg.edit_text(
-                        f"📸 <b>Rasm tahlili natijasi:</b>\n\n"
-                        + markdown_to_html(response.text),
-                        parse_mode="HTML"
-                    )
-                    return
-            except Exception as e:
-                err = str(e)
-                logging.warning(f"Rasm: {model} xato: {err[:150]}")
-                last_err = err
-                if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
-                    logging.warning(f"Rasm tahlilida {model} ishlamadi, keyingisiga o'tish...")
-                    continue
-                break
+                    if response.text:
+                        await status_msg.edit_text(
+                            f"📸 <b>Rasm tahlili natijasi:</b>\n\n"
+                            + markdown_to_html(response.text),
+                            parse_mode="HTML"
+                        )
+                        return
+                except Exception as e:
+                    err = str(e)
+                    logging.warning(f"Rasm: {model} xato: {err[:150]}")
+                    last_err = err
+                    if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
+                        logging.warning(f"Rasm tahlilida {model} ishlamadi, keyingisiga o'tish...")
+                        continue
+                    break
 
         if consumed_free:
             await asyncio.to_thread(database.refund_free_ai, user_id)

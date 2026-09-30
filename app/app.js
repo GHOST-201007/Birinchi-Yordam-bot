@@ -2571,3 +2571,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Premium Modal Logic
+document.addEventListener('DOMContentLoaded', () => {
+    const btnOpenPremium = document.getElementById('btn-open-premium');
+    const premiumModal = document.getElementById('premium-modal');
+    const premiumModalClose = document.getElementById('premium-modal-close');
+
+    if (btnOpenPremium && premiumModal) {
+        btnOpenPremium.addEventListener('click', () => {
+            premiumModal.classList.remove('hidden');
+            premiumModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            
+            AppNavigation.push({
+                type: 'premium-modal',
+                close: () => {
+                    premiumModal.classList.add('hidden');
+                    premiumModal.style.display = 'none';
+                    document.body.style.overflow = 'auto';
+                    AppNavigation.pop();
+                }
+            });
+        });
+
+        if (premiumModalClose) {
+            premiumModalClose.addEventListener('click', () => {
+                AppNavigation.back();
+            });
+        }
+        
+        premiumModal.addEventListener('click', (e) => {
+            if (e.target === premiumModal) {
+                AppNavigation.back();
+            }
+        });
+    }
+});

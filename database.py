@@ -3,7 +3,9 @@ import psycopg2.extras
 import datetime
 import os
 import logging
+from dotenv import load_dotenv
 
+load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 def get_connection():
