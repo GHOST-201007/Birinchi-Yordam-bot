@@ -601,6 +601,69 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer(bonus_msg, parse_mode="HTML", reply_markup=get_start_keyboard())
         await update_user_menu_button(user.id, message.bot)
         return
+
+    # Deep link orqali premium xarid tugmasi bosilganda
+    if len(args) > 1 and args[1] in ("buy_pro_7", "buy_plus_30", "buy_ultra_30"):
+        action = args[1]
+        user_info = await asyncio.to_thread(database.get_user_info, user.id)
+        current_type = user_info.get("premium_type", "free") if user_info else "free"
+        is_premium = user_info.get("is_premium", 0) if user_info else 0
+
+        # Tier darajasi
+        tier_rank = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+        buying_tier = {"buy_pro_7": "pro", "buy_plus_30": "plus", "buy_ultra_30": "ultra"}.get(action, "pro")
+        current_rank = tier_rank.get(current_type, 0) if is_premium else 0
+        buying_rank = tier_rank.get(buying_tier, 1)
+
+        if is_premium and current_rank >= buying_rank:
+            tier_names = {"pro": "Premium Pro", "plus": "Premium Plus", "ultra": "Premium Ultra"}
+            await message.answer(
+                f"ℹ️ <b>Siz allaqachon {tier_names.get(current_type, 'Premium')} foydalanuvchisiz!</b>\n\n"
+                f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng. "
+                f"Pastroq tarifga o'tish mumkin emas.",
+                parse_mode="HTML",
+                reply_markup=get_start_keyboard()
+            )
+            await update_user_menu_button(user.id, message.bot)
+            return
+
+        if action == "buy_pro_7":
+            title = "⭐ Premium Pro — 7 kun"
+            desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
+            payload = "PRO_7_DAYS"
+            stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
+        elif action == "buy_plus_30":
+            title = "💎 Premium Plus — 30 kun"
+            desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
+            payload = "PLUS_30_DAYS"
+            stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+        elif action == "buy_ultra_30":
+            title = "👑 Premium Ultra — 30 kun"
+            desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
+            payload = "ULTRA_30_DAYS"
+            stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
+
+        await message.answer(
+            f"💎 <b>{title}</b>\n\n{desc}\n\n"
+            f"💰 Narxi: <b>{stars} Telegram Stars</b>\n\n"
+            f"To'lov uchun quyidagi invoice ga bosing:",
+            parse_mode="HTML",
+            reply_markup=get_start_keyboard()
+        )
+        try:
+            await message.answer_invoice(
+                title=title,
+                description=desc,
+                payload=payload,
+                currency="XTR",
+                prices=[LabeledPrice(label=title, amount=stars)],
+                provider_token="",
+            )
+        except Exception as e:
+            logging.error(f"Deep link invoice xato: {e}")
+            await message.answer("⚠️ Invoice yuborishda xatolik. Iltimos /premium buyrug'ini ishlating.", parse_mode="HTML")
+        await update_user_menu_button(user.id, message.bot)
+        return
         
     # Check for spin bonus parameter from Wheel of Fortune Web App
     if len(args) > 1 and args[1].startswith("spin_"):

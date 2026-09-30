@@ -2608,3 +2608,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Global helper: buy premium via Telegram deep link
+function buyPremium(plan) {
+    var tg = window.Telegram && window.Telegram.WebApp;
+    var botUsername = 'Birinchiyordam1Bot';
+    var url = 'https://t.me/' + botUsername + '?start=' + plan;
+    if (tg) {
+        tg.openTelegramLink(url);
+    } else {
+        window.open(url, '_blank');
+    }
+}
