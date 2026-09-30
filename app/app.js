@@ -70,6 +70,66 @@ if (tg) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// UNIVERSAL NAVIGATION MANAGER
+// ═══════════════════════════════════════════════════════════════════
+const AppNavigation = (function () {
+    const stack = [];   // [{type, close}]
+    let backBtn = null;
+    let lastBackTime = 0;
+
+    function getBackBtn() {
+        if (!backBtn) backBtn = document.getElementById('header-back-btn');
+        return backBtn;
+    }
+
+    function updateBtn() {
+        const btn = getBackBtn();
+        if (!btn) return;
+        if (stack.length > 0) {
+            btn.classList.remove('hidden');
+        } else {
+            btn.classList.add('hidden');
+        }
+    }
+
+    function push(entry) {
+        // entry = { type: string, close: function }
+        stack.push(entry);
+        updateBtn();
+    }
+
+    function pop() {
+        if (stack.length === 0) return;
+        stack.pop();
+        updateBtn();
+    }
+
+    function back() {
+        const now = Date.now();
+        if (now - lastBackTime < 300) return;  // debounce 300ms
+        lastBackTime = now;
+
+        if (stack.length === 0) return;
+        const top = stack[stack.length - 1];
+        if (top && typeof top.close === 'function') {
+            top.close();
+        }
+        // pop() is called inside close handlers
+    }
+
+    function init() {
+        const btn = getBackBtn();
+        if (btn) {
+            btn.addEventListener('click', back);
+        }
+    }
+
+    return { push, pop, back, init };
+})();
+
+document.addEventListener('DOMContentLoaded', () => { AppNavigation.init(); });
+
+// ═══════════════════════════════════════════════════════════════════
 // GLOBAL SCORE DISPLAY
 // ═══════════════════════════════════════════════════════════════════
 const urlParams = new URLSearchParams(window.location.search);
@@ -461,6 +521,9 @@ function initTabs() {
 
             btn.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
+
+            // Switching main tabs clears the navigation stack
+            AppNavigation.pop();
         });
     });
 }
@@ -582,6 +645,15 @@ function openFirstAidDetail(item) {
 
     overlay.classList.add('active');
     body.scrollTop = 0;
+
+    // Push navigation state
+    AppNavigation.push({
+        type: 'firstaid-detail',
+        close: function () {
+            overlay.classList.remove('active');
+            AppNavigation.pop();
+        }
+    });
 }
 
 // RENDER DISEASES
@@ -656,6 +728,15 @@ function openDiseaseDetail(item) {
 
     overlay.classList.add('active');
     body.scrollTop = 0;
+
+    // Push navigation state
+    AppNavigation.push({
+        type: 'disease-detail',
+        close: function () {
+            overlay.classList.remove('active');
+            AppNavigation.pop();
+        }
+    });
 }
 
 // SEARCH FUNCTIONALITY
@@ -694,6 +775,7 @@ function initOverlay() {
 
     closeBtn.addEventListener('click', () => {
         overlay.classList.remove('active');
+        AppNavigation.pop();
     });
 }
 
@@ -1599,14 +1681,15 @@ async function initBodyMap() {
     const closeBtn = document.getElementById('modal-close');
     const modal = document.getElementById('body-map-modal');
     if (closeBtn && modal) {
-        closeBtn.onclick = () => {
+        function closeBodyMapModal() {
             modal.classList.add('hidden');
             modal.style.display = 'none';
-        };
+            AppNavigation.pop();
+        }
+        closeBtn.onclick = closeBodyMapModal;
         window.onclick = (e) => {
             if (e.target === modal) {
-                modal.classList.add('hidden');
-                modal.style.display = 'none';
+                closeBodyMapModal();
             }
         };
     }
@@ -1889,6 +1972,16 @@ function _openFullModal(partKey, data) {
             mc.offsetHeight; // reflow
             mc.style.animation = '';
         }
+
+        // Push navigation state for body map modal
+        AppNavigation.push({
+            type: 'body-map-modal',
+            close: function () {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+                AppNavigation.pop();
+            }
+        });
     } catch (err) {
         alert("_openFullModal Xatoligi: " + err.message + "\nStack: " + err.stack);
     }
@@ -1924,7 +2017,9 @@ function initWheelOfFortune() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const lastSpin = urlParams.get('last_spin');
-    const serverPrize = parseInt(urlParams.get('prize') || '1');
+    // prize parametri server tomonidan yuborilishi shart (default '1' noto'g'ri)
+    const prizeParam = urlParams.get('prize');
+    const serverPrize = prizeParam !== null ? parseInt(prizeParam) : null;
     const centerText = spinBtn.querySelector('.wheel-center-text');
 
     let remainingTimeMs = 0;
@@ -2053,10 +2148,42 @@ function initWheelOfFortune() {
         };
     }
 
+    // Wheel modal open — push navigation
+    const _wheelOpen = openBtn.onclick;
+    function pushWheelNav() {
+        AppNavigation.push({
+            type: 'wheel-modal',
+            close: function () {
+                if (!isSpinning) {
+                    modal.classList.add('hidden');
+                    modal.style.display = 'none';
+                    AppNavigation.pop();
+                }
+            }
+        });
+    }
+
+    const _origOpenBtn = openBtn.onclick;
+    openBtn.onclick = () => {
+        checkWheelStateAndOpen();
+        pushWheelNav();
+    };
+
+    const promoCard2 = document.getElementById('wheel-promo-card');
+    if (promoCard2) {
+        const _origPromo = promoCard2.onclick;
+        promoCard2.onclick = (e) => {
+            if (e.target.closest('.wheel-promo-btn') || e.target === openBtn) return;
+            checkWheelStateAndOpen();
+            pushWheelNav();
+        };
+    }
+
     closeBtn.onclick = () => {
         if (!isSpinning) {
             modal.classList.add('hidden');
             modal.style.display = 'none';
+            AppNavigation.pop();
         }
     };
 
@@ -2193,11 +2320,25 @@ function initWheelOfFortune() {
         if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
         // Use server-side pre-generated prize
+        // XAVFSIZLIK: prize URL da bo'lmasa spin bloklanadi
+        if (serverPrize === null) {
+            isSpinning = false; spinBtn.disabled = false;
+            resultMsg.innerHTML = '<div class="result-icon">'+String.fromCharCode(0x1F552)+'</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Baraban uchun bot orqali kiring.</p>';
+            resultMsg.classList.remove('hidden'); return;
+        }
         const winningPoints = serverPrize;
 
         const eligible = [];
         for (let i = 0; i < segments.length; i++) {
             if (segments[i].points === winningPoints) eligible.push(i);
+        }
+
+        // XAVFSIZLIK: server prize frontend da mavjud bo'lmasa blokla
+        if (!eligible.length) {
+            isSpinning = false;
+            resultMsg.innerHTML = `<div class="result-icon">⚠️</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
+            resultMsg.classList.remove('hidden');
+            return;
         }
 
         const winIdx = eligible[Math.floor(Math.random() * eligible.length)];
@@ -2235,7 +2376,7 @@ function initWheelOfFortune() {
             if (winningPoints === 0) {
                 icon = "🏆";
                 title = "SUPER PRIZ!";
-                desc = "1 oylik Premium obunani 30 Stars o'rniga <b>atigi 20 Stars</b> evaziga olish chegirmasini yutib oldingiz!";
+                desc = "Siz <b>Super Priz</b> — 3 kunlik Premium Pro chegirmasini yutib oldingiz!";
                 btnText = "Prizni Tasdiqlash 🎁";
             } else {
                 icon = "🎉";

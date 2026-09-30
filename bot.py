@@ -16,6 +16,34 @@ from aiogram.types import (
 from typing import Callable, Dict, Any, Awaitable
 import time
 
+class KeepTyping:
+    def __init__(self, bot: Bot, chat_id: int, action: str = "typing", interval: float = 4.0):
+        self.bot = bot
+        self.chat_id = chat_id
+        self.action = action
+        self.interval = interval
+        self.task = None
+
+    async def _loop(self):
+        while True:
+            try:
+                await self.bot.send_chat_action(chat_id=self.chat_id, action=self.action)
+            except Exception:
+                pass
+            await asyncio.sleep(self.interval)
+
+    async def __aenter__(self):
+        self.task = asyncio.create_task(self._loop())
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+
 class ThrottlingMiddleware(BaseMiddleware):
     def __init__(self, cooldown: float = 1.0):
         self.cooldown = cooldown
@@ -134,6 +162,7 @@ from google.genai import types as genai_types
 # Ma'lumotlarni import qilamiz
 from data import FIRST_AID_DATA, DISEASES
 import database
+import medicine_db
 
 # ═══════════════════════════════════════════════════════════════════
 # MARKDOWN → HTML CONVERTER
@@ -333,58 +362,59 @@ async def stream_gemini_to_message(
         sent_msg = message
 
     last_error = None
-    for model in GEMINI_MODELS:
-        full_text = ""
-        last_edit_time = asyncio.get_event_loop().time()
-        edit_interval = 3.0
-        min_chars_before_edit = 80
-        chars_since_last_edit = 0
+    async with KeepTyping(message.bot, message.chat.id):
+        for model in GEMINI_MODELS:
+            full_text = ""
+            last_edit_time = asyncio.get_event_loop().time()
+            edit_interval = 3.0
+            min_chars_before_edit = 80
+            chars_since_last_edit = 0
 
-        try:
-            stream = await gemini_client.aio.models.generate_content_stream(
-                model=model,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=GEMINI_SYSTEM_INSTRUCTION,
-                    temperature=0.7,
-                )
-            )
-            async for chunk in stream:
-                if chunk.text:
-                    full_text += chunk.text
-                    chars_since_last_edit += len(chunk.text)
-                    now = asyncio.get_event_loop().time()
-                    if now - last_edit_time >= edit_interval and chars_since_last_edit >= min_chars_before_edit:
-                        try:
-                            await sent_msg.edit_text(markdown_to_html(full_text) + " ✍️", parse_mode="HTML")
-                            last_edit_time = now
-                            chars_since_last_edit = 0
-                        except Exception:
-                            pass
-
-            if full_text:
-                try:
-                    await sent_msg.edit_text(
-                        markdown_to_html(full_text),
-                        parse_mode="HTML",
-                        reply_markup=reply_markup
+            try:
+                stream = await gemini_client.aio.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        system_instruction=GEMINI_SYSTEM_INSTRUCTION,
+                        temperature=0.7,
                     )
-                except Exception:
-                    pass
-                return full_text
-            else:
-                logging.warning(f"{model} bo'sh javob qaytardi, keyingisiga o'tilmoqda...")
-                continue
+                )
+                async for chunk in stream:
+                    if chunk.text:
+                        full_text += chunk.text
+                        chars_since_last_edit += len(chunk.text)
+                        now = asyncio.get_event_loop().time()
+                        if now - last_edit_time >= edit_interval and chars_since_last_edit >= min_chars_before_edit:
+                            try:
+                                await sent_msg.edit_text(markdown_to_html(full_text) + " ✍️", parse_mode="HTML")
+                                last_edit_time = now
+                                chars_since_last_edit = 0
+                            except Exception:
+                                pass
 
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
-                logging.warning(f"Streaming: {model} ishlamadi, keyingisiga o'tilmoqda...")
-                last_error = e
-                continue
-            _handle_gemini_error(e)
-            await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
-            return None
+                if full_text:
+                    try:
+                        await sent_msg.edit_text(
+                            markdown_to_html(full_text),
+                            parse_mode="HTML",
+                            reply_markup=reply_markup
+                        )
+                    except Exception:
+                        pass
+                    return full_text
+                else:
+                    logging.warning(f"{model} bo'sh javob qaytardi, keyingisiga o'tilmoqda...")
+                    continue
+
+            except Exception as e:
+                err = str(e)
+                if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
+                    logging.warning(f"Streaming: {model} ishlamadi, keyingisiga o'tilmoqda...")
+                    last_error = e
+                    continue
+                _handle_gemini_error(e)
+                await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
+                return None
 
     logging.warning("Barcha streaming modellari ishlamadi, oddiy javobga o'tilmoqda...")
     fallback_text = await get_gemini_response(prompt)
@@ -1674,9 +1704,10 @@ async def handle_voice(message: types.Message):
 
         # Gemini API ga yuborish (multimodal modellar bilan)
         last_err = None
-        for model in GEMINI_MULTIMODAL_MODELS:
-            try:
-                response = await gemini_client.aio.models.generate_content(
+        async with KeepTyping(message.bot, message.chat.id, action="typing"):
+            for model in GEMINI_MULTIMODAL_MODELS:
+                try:
+                    response = await gemini_client.aio.models.generate_content(
                     model=model,
                     contents=prompt_parts,
                     config=genai_types.GenerateContentConfig(
@@ -1871,18 +1902,29 @@ def _calculate_water(weight: float) -> str:
 # ═══════════════════════════════════════════════════════════════════
 
 async def _show_premium_page(message_or_cb):
-    """Premium sahifasini ko'rsatish — to'liq: Stars to'lov + tekin Premium"""
+    """Premium sahifasini ko'rsatish — to'liq FINAL pricing matrix bo'yicha"""
     is_callback = isinstance(message_or_cb, types.CallbackQuery)
     user_id = message_or_cb.from_user.id
 
-    is_prem, expires = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_prem, expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
     if is_prem and expires:
-        exp_dt = datetime.fromisoformat(expires)
-        exp_str = exp_dt.strftime("%d.%m.%Y")
+        try:
+            exp_dt = datetime.fromisoformat(expires)
+            exp_str = exp_dt.strftime("%d.%m.%Y")
+        except Exception:
+            exp_str = str(expires)
+
+        tier_title = "⭐ Premium Pro"
+        if prem_type == "plus":
+            tier_title = "💎 Premium Plus"
+        elif prem_type == "ultra":
+            tier_title = "👑 Premium Ultra"
+
         text = (
-            f"💎 <b>Siz allaqachon Premium foydalanuvchisiz!</b>\n\n"
-            f"📅 Muddati: <b>{exp_str}</b> gacha\n\n"
-            f"✅ Cheksiz AI so'rovlaridan bahramand bo'ling!"
+            f"💎 <b>Sizda faol obuna mavjud!</b>\n\n"
+            f"🏷️ Tarif: <b>{tier_title}</b>\n"
+            f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
+            f"✅ Barcha imkoniyatlardan unumli foydalaning!"
         )
         if is_callback:
             try:
@@ -1894,46 +1936,43 @@ async def _show_premium_page(message_or_cb):
             await message_or_cb.answer(text, parse_mode="HTML")
         return
 
-    # Ball va chegirma ma'lumotlari
     score = await asyncio.to_thread(database.get_score, user_id)
-    has_disc = await asyncio.to_thread(database.has_discount, user_id)
-    price = 20 if has_disc else PREMIUM_STARS_PRICE
-    balls_needed = max(0, 100 - score)
-
-    price_text = (
-        f"⭐ <b>Narx: <s>{PREMIUM_STARS_PRICE}</s> 20 Telegram Stars</b> (1 oylik) — <i>Omad barabani chegirmasi faol! 🎁</i>\n"
-        if has_disc else
-        f"⭐ <b>Narx: {PREMIUM_STARS_PRICE} Telegram Stars</b> (1 oylik)\n"
-    )
 
     text = (
-        "💎 <b>Premium Obuna</b>\n\n"
-        "🚀 <b>Premium afzalliklari:</b>\n"
-        "• ♾️ Cheksiz AI so'rovlari\n"
-        "• 🎤 Ovozli xabar orqali konsultatsiya\n"
-        "• 🏥 Kasalliklar bo'yicha batafsil tahlil\n"
-        "• 🩺 Tibbiy profilga asoslangan shaxsiy maslahat\n\n"
-        "──────────────────────\n"
-        + price_text +
-        "──────────────────────\n\n"
-        "🎁 <b>Tekin Premium olish yo'llari:</b>\n\n"
-        "1️⃣ 🔥 <b>Kunlik bonus:</b> Har kuni botga kirib ball to'plang\n"
-        "   (1-kun 1 ball, 2-kun 2 ball ... 7-kun 🎁 +20 ball!)\n\n"
-        "2️⃣ 👥 <b>Do'st taklif qilish:</b> Har bir do'stingiz uchun <b>+10 ball</b>\n"
-        "   5 ta do'st = qo'shimcha <b>🎁 +50 ball</b> bonus!\n\n"
-        "3️⃣ 🎡 <b>Omad barabani:</b> Har kuni 1 marta bepul aylantirib\n"
-        "   ball yoki chegirma yutib oling!\n\n"
-        f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n"
-        + (f"⚡ Yana <b>{balls_needed}</b> ball to'plasangiz, Premium avtomatik faollashadi!\n\n"
-           if balls_needed > 0 else
-           "✅ <b>Tabriklaymiz!</b> Ballaringiz yetarli, Premium faollashtirish uchun adminga murojaat qiling!\n\n")
-        + "👇 Qulay usulni tanlang:"
+        "💎 <b>PREMIUM OBS TARIFLARI</b>\n\n"
+        "O'zingizga mos tarifni tanlang va barcha tibbiy imkoniyatlarga ega bo'ling:\n\n"
+        "🎁 <b>BEPUL REWARD</b>\n"
+        "• <b>100 Ball → 3 kun Premium Pro</b>\n"
+        "  <i>Botda to'plagan ballaringiz evaziga!</i>\n\n"
+        "⭐ <b>PREMIUM PRO</b>\n"
+        "• <b>50 ⭐ → 7 kun Premium Pro</b>\n"
+        "  • Kuniga 15 ta AI konsultatsiya\n"
+        "  • Ovozli xabar bilan muloqot\n"
+        "  • Shaxsiy tibbiy profil tahlili\n\n"
+        "💎 <b>PREMIUM PLUS</b>\n"
+        "• <b>150 ⭐ → 30 kun Premium Plus</b>\n"
+        "  • Kuniga 30 ta AI konsultatsiya\n"
+        "  • Barcha Premium Pro imkoniyatlari\n\n"
+        "👑 <b>PREMIUM ULTRA</b>\n"
+        "• <b>300 ⭐ → 30 kun Premium Ultra</b>\n"
+        "  • 100 AI so‘rov/kun + kengaytirilgan AI imkoniyatlari\n"
+        "  • Prioritet AI javobi va barcha Ultra imkoniyatlar\n\n"
+        f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n\n"
+        "👇 Sotib olish yoki almashtirish uchun tugmani bosing:"
     )
 
-    # Tugmalar: Stars to'lov + Omad barabani + Do'stlarni taklif qilish
     web_app_url = await get_web_app_url(user_id, page="wheel")
     builder = InlineKeyboardBuilder()
-    builder.button(text=f"⭐ {price} Stars bilan to'lash", callback_data="pay_stars")
+
+    if score >= 100:
+        builder.button(text="🎁 100 ball → 3 kun Premium Pro", callback_data="redeem_points_premium")
+    else:
+        builder.button(text=f"🎁 100 ball → 3 kun Pro (Yana {100 - score} ball kerak)", callback_data="redeem_points_info")
+
+    builder.button(text="⭐ 50 Stars → 7 kun Premium Pro", callback_data="buy_pro_7")
+    builder.button(text="💎 150 Stars → 30 kun Premium Plus", callback_data="buy_plus_30")
+    builder.button(text="👑 300 Stars → 30 kun Premium Ultra", callback_data="buy_ultra_30")
+
     if web_app_url:
         builder.button(text="🎡 Omad barabani", web_app=types.WebAppInfo(url=web_app_url))
     builder.button(text="👥 Do'stlarni taklif qilish", callback_data="show_ref_from_cmd")
@@ -1952,33 +1991,59 @@ async def _show_premium_page(message_or_cb):
 async def process_buy_premium(callback: types.CallbackQuery):
     await _show_premium_page(callback)
 
-@dp.callback_query(F.data == "pay_stars")
-async def process_pay_stars(callback: types.CallbackQuery):
-    """Telegram Stars invoice yuborish — provider_token shart emas!"""
+@dp.callback_query(F.data == "redeem_points_info")
+async def process_redeem_points_info(callback: types.CallbackQuery):
+    score = await asyncio.to_thread(database.get_score, callback.from_user.id)
+    needed = max(0, 100 - score)
+    await callback.answer(f"⚠️ Sizda {score} ball bor. 3 kunlik Premium Pro uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
+
+@dp.callback_query(F.data == "redeem_points_premium")
+async def process_redeem_points_premium(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    success = await asyncio.to_thread(database.check_and_grant_premium, user_id)
+    if success:
+        await callback.answer("🎉 100 ball yechildi! 3 kunlik Premium Pro aktivlashtirildi!", show_alert=True)
+        await _show_premium_page(callback)
+    else:
+        score = await asyncio.to_thread(database.get_score, user_id)
+        await callback.answer(f"⚠️ Ballaringiz yetarli emas (Hozirda {score} ball bor).", show_alert=True)
+
+@dp.callback_query(F.data.in_(["buy_pro_7", "buy_plus_30", "buy_ultra_30", "pay_stars"]))
+async def process_pay_stars_tariff(callback: types.CallbackQuery):
+    """Telegram Stars tariflari invoice yuborish"""
     try:
         user_id = callback.from_user.id
-        price = 20 if await asyncio.to_thread(database.has_discount, user_id) else PREMIUM_STARS_PRICE
-        prices = [LabeledPrice(label="Premium obuna (1 oy)", amount=price)]
+        action = callback.data
+
+        if action in ("buy_pro_7", "pay_stars"):
+            title = "⭐ Premium Pro — 7 kun"
+            desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
+            payload = "PRO_7_DAYS"
+            stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
+        elif action == "buy_plus_30":
+            title = "💎 Premium Plus — 30 kun"
+            desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
+            payload = "PLUS_30_DAYS"
+            stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+        elif action == "buy_ultra_30":
+            title = "👑 Premium Ultra — 30 kun"
+            desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
+            payload = "ULTRA_30_DAYS"
+            stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
+
+        prices = [LabeledPrice(label=title, amount=stars)]
         await callback.message.answer_invoice(
-            title="💎 Premium Obuna — 1 oy",
-            description=(
-                f"Birinchi Yordam Botida 1 oylik Premium obuna.\n"
-                f"✅ Cheksiz AI so'rovlari\n"
-                f"✅ Ovozli konsultatsiya\n"
-                f"✅ Shaxsiy tibbiy maslahat"
-            ),
-            payload="stars_premium_1month",
-            currency="XTR",       # Telegram Stars uchun maxsus valyuta kodi
+            title=title,
+            description=desc,
+            payload=payload,
+            currency="XTR",
             prices=prices,
-            provider_token="",    # Stars uchun bo'sh qoladi
+            provider_token="",
         )
         await callback.answer()
     except Exception as e:
         logging.error(f"Stars invoice yuborishda xatolik: {e}")
-        await callback.answer(
-            "⚠️ Invoice yuborishda xatolik yuz berdi. Karta orqali to'lang.",
-            show_alert=True
-        )
+        await callback.answer("⚠️ Invoice yuborishda xatolik yuz berdi.", show_alert=True)
 
 @dp.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
@@ -1987,40 +2052,55 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def process_successful_payment(message: types.Message):
-    """Muvaffaqiyatli to'lov — Stars yoki oddiy to'lov"""
+    """Muvaffaqiyatli to'lov — Stars to'lovi va duplicate protection"""
     user_id = message.from_user.id
     payment = message.successful_payment
+    payload = payment.invoice_payload
+    charge_id = payment.telegram_payment_charge_id or f"stars_{user_id}_{payment.total_amount}_{datetime.now().timestamp()}"
 
-    # Stars to'lovi
-    if payment.invoice_payload == "stars_premium_1month":
-        await asyncio.to_thread(database.set_premium, user_id, 1, months=1)
-        stars_count = payment.total_amount
-        
-        # Consume super prize discount if used
-        if await asyncio.to_thread(database.has_discount, user_id):
-            await asyncio.to_thread(database.consume_discount, user_id)
+    product_map = {
+        "PRO_7_DAYS": ("pro", 7, "⭐ Premium Pro (7 kun)"),
+        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)"),
+        "ULTRA_30_DAYS": ("ultra", 30, "👑 Premium Ultra (30 kun)"),
+        "stars_premium_1month": ("pro", 30, "⭐ Premium Pro (30 kun)"),
+    }
+
+    if payload in product_map:
+        prem_type, days, product_title = product_map[payload]
+        recorded = await asyncio.to_thread(
+            database.record_payment_transaction,
+            charge_id, user_id, payload, payment.total_amount, prem_type, days
+        )
+
+        if not recorded:
+            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
+            return
+
+        until = await asyncio.to_thread(database.grant_premium_days, user_id, days, prem_type)
+        exp_str = until.strftime("%d.%m.%Y")
 
         await message.answer(
-            f"🎉 <b>To'lov muvaffaqiyatli!</b>\n\n"
-            f"⭐ <b>{stars_count} Stars</b> qabul qilindi.\n"
-            f"💎 <b>Premium obunangiz faollashtirildi!</b>\n"
-            f"📅 Muddati: 1 oy\n\n"
-            f"Endi AI yordamchisidan cheksiz foydalaning! 🚀",
+            f"🎉 <b>To'lov muvaffaqiyatli qabul qilindi!</b>\n\n"
+            f"📦 Mahsulot: <b>{product_title}</b>\n"
+            f"⭐ Sarflandi: <b>{payment.total_amount} Stars</b>\n"
+            f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
+            f"Barcha imkoniyatlar faollashtirildi! 🚀",
             parse_mode="HTML",
             reply_markup=get_start_keyboard()
         )
 
-        # Adminga xabar
+        # Adminga bildirishnoma
         username = f"@{message.from_user.username}" if message.from_user.username else f"ID:{user_id}"
         try:
             await message.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=(
-                    f"⭐ <b>Stars to'lov qabul qilindi!</b>\n\n"
+                    f"⭐ <b>Yangi Stars To'lovi!</b>\n\n"
                     f"👤 Foydalanuvchi: {username}\n"
                     f"🆔 ID: <code>{user_id}</code>\n"
-                    f"⭐ Stars: {stars_count}\n"
-                    f"✅ Premium avtomatik faollashtirildi!"
+                    f"📦 Mahsulot: {product_title}\n"
+                    f"⭐ Stars: {payment.total_amount}\n"
+                    f"🆔 Charge ID: <code>{charge_id}</code>"
                 ),
                 parse_mode="HTML"
             )
@@ -2184,9 +2264,10 @@ async def handle_general_photo(message: types.Message):
 
         # Gemini modellari orqali sinab ko'ramiz (multimodal)
         last_err = None
-        for model in GEMINI_MULTIMODAL_MODELS:
-            try:
-                response = await gemini_client.aio.models.generate_content(
+        async with KeepTyping(message.bot, message.chat.id, action="typing"):
+            for model in GEMINI_MULTIMODAL_MODELS:
+                try:
+                    response = await gemini_client.aio.models.generate_content(
                     model=model,
                     contents=prompt_parts,
                     config=genai_types.GenerateContentConfig(
@@ -2984,7 +3065,7 @@ async def cmd_unban(message: types.Message):
 
 @dp.message(AiChatStates.chatting, F.text)
 async def handle_ai_chat(message: types.Message, state: FSMContext):
-    """Foydalanuvchining matnli savollariga Gemini AI orqali streaming javob"""
+    """Foydalanuvchining matnli savollariga avval DATABASE, keyin AI orqali javob"""
     
     # Reply tugmalarni tekshirish (ehtiyot chorasi sifatida qoldiramiz)
     skip_texts = [
@@ -3001,6 +3082,17 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
 
     user_id = message.from_user.id
 
+    # ═══ DATABASE-FIRST: Avval lokal bazadan qidiramiz ═══
+    search_result = await asyncio.to_thread(medicine_db.find_medicine, message.text)
+    if search_result["found"]:
+        logging.info(f"[TOKEN_SAVED] user={user_id} source={search_result['source']} query='{message.text}'")
+        await message.answer(
+            search_result["data"],
+            parse_mode="HTML",
+        )
+        return  # AI CHAQIRILMADI — token tejaldi! ✅
+
+    # ═══ DATABASE'da topilmadi — AI ga o'tamiz ═══
     # 1 ta bepul savol tizimi yoki kunlik limit tekshiruvi
     consumed_free = False
     consumed_daily = False
@@ -3039,6 +3131,7 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     profile_context = _build_profile_context(profile)
     full_prompt = message.text + profile_context
 
+    logging.info(f"[AI_FALLBACK] user={user_id} query='{message.text}'")
     result = await stream_gemini_to_message(
         prompt=full_prompt,
         message=placeholder,
@@ -3049,6 +3142,12 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
             await asyncio.to_thread(database.refund_daily_request, user_id)
+    elif result:
+        # AI javobini cache'ga saqlash (keyingi so'rovlar uchun)
+        try:
+            await asyncio.to_thread(medicine_db.save_ai_response, message.text, result, "ai_chat")
+        except Exception as e:
+            logging.warning(f"AI javobini cache'ga saqlashda xato: {e}")
 
 def _build_profile_context(profile) -> str:
     """Tibbiy profildan AI uchun kontekst yaratish"""
@@ -3218,6 +3317,7 @@ async def start_web_server():
 
 async def main():
     await asyncio.to_thread(database.init_db)
+    await asyncio.to_thread(medicine_db.init_medicine_db)
     
     # Diagnostic: list available models to debug 404 NOT FOUND
     if gemini_client:
@@ -3242,7 +3342,7 @@ async def main():
     
     await set_bot_commands(bot)
     print("✅ Bot ishga tushdi!")
-    print("📊 Barcha 7 ta yangi funksiya faol:")
+    print("📊 Barcha 8 ta funksiya faol:")
     print("  1. 👤 Tibbiy Profil")
     print("  2. 💊 Dori Eslatmalari")
     print("  3. 🎙️ Ovozli Xabarlar")
@@ -3250,6 +3350,7 @@ async def main():
     print("  5. ⚖️ Sog'liq Kalkulyatorlari")
     print("  6. 💳 Avtomatik To'lov")
     print("  7. 🔔 Kunlik Maslahatlar")
+    print("  8. 💊 Dori Database-First Search (AI token tejash)")
 
     # Background tasklar ishga tushiramiz
     asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari

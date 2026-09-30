@@ -1,40 +1,81 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import datetime
+import os
+import logging
 
-DB_FILE = "users.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 def get_connection():
-    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-    except sqlite3.OperationalError:
-        pass
+    """PostgreSQL bazaga ulanish. DATABASE_URL muhit o'zgaruvchisidan oladi."""
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = False
     return conn
 
 def init_db():
     """Ma'lumotlar bazasini yaratish"""
     conn = get_connection()
     c = conn.cursor()
-    
+
     # Asosiy users jadvali
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
+            user_id BIGINT PRIMARY KEY,
             registered_at TIMESTAMP,
             is_premium INTEGER DEFAULT 0,
+            premium_type TEXT DEFAULT 'free',
             daily_requests INTEGER DEFAULT 0,
-            last_request_date DATE,
+            last_request_date TEXT,
             medicine_score INTEGER DEFAULT 0,
-            premium_until TIMESTAMP
+            premium_until TIMESTAMP,
+            waiting_receipt INTEGER DEFAULT 0,
+            blood_group TEXT,
+            age INTEGER,
+            weight REAL,
+            height REAL,
+            chronic_diseases TEXT,
+            allergies TEXT,
+            premium_expires_at TIMESTAMP,
+            daily_tips_subscribed INTEGER DEFAULT 0,
+            is_banned INTEGER DEFAULT 0,
+            banned_until TIMESTAMP,
+            full_name TEXT,
+            username TEXT,
+            free_ai_used INTEGER DEFAULT 0,
+            daily_streak INTEGER DEFAULT 0,
+            last_checkin_date TEXT,
+            referred_by BIGINT,
+            last_spin_date TEXT,
+            has_discount INTEGER DEFAULT 0,
+            pending_spin_prize INTEGER
         )
     ''')
-    
+
+    # To'lovlar tarixi va qayta ishlov berishdan himoya jadvali
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS payment_transactions (
+            id SERIAL PRIMARY KEY,
+            charge_id TEXT UNIQUE,
+            user_id BIGINT,
+            product_id TEXT,
+            stars_amount INTEGER,
+            premium_type TEXT,
+            duration_days INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Migration for existing DBs lacking premium_type column
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_type TEXT DEFAULT 'free'")
+    except Exception:
+        pass
+
     # Dori eslatmalari jadvali (Feature 2)
     c.execute('''
         CREATE TABLE IF NOT EXISTS reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
             medicine_name TEXT,
             times TEXT,
             days TEXT DEFAULT 'daily',
@@ -42,61 +83,7 @@ def init_db():
             created_at TIMESTAMP
         )
     ''')
-    
-    # Dinamik tarzda yangi ustunlarni qo'shamiz (avvalgi bazalar buzilmasligi uchun)
-    new_columns = [
-        ("waiting_receipt", "INTEGER DEFAULT 0"),
-        # Feature 1: Tibbiy profil
-        ("blood_group", "TEXT"),
-        ("age", "INTEGER"),
-        ("weight", "REAL"),
-        ("height", "REAL"),
-        ("chronic_diseases", "TEXT"),
-        ("allergies", "TEXT"),
-        # Feature 6: Premium muddati
-        ("premium_expires_at", "TIMESTAMP"),
-        # Feature 7: Kunlik tavsiyalar obunasi
-        ("daily_tips_subscribed", "INTEGER DEFAULT 0"),
-        # Ban tizimi
-        ("is_banned", "INTEGER DEFAULT 0"),
-        ("banned_until", "TIMESTAMP"),
-        # Foydalanuvchi ismi va username
-        ("full_name", "TEXT"),
-        ("username", "TEXT"),
-        # 1 ta bepul AI savol tizimi
-        ("free_ai_used", "INTEGER DEFAULT 0"),
-        # Dori eslatma ball tizimi
-        ("medicine_score", "INTEGER DEFAULT 0"),
-        ("premium_until", "TIMESTAMP"),
-        # Daily bonus streak system
-        ("daily_streak", "INTEGER DEFAULT 0"),
-        ("last_checkin_date", "TEXT"),
-        # Referral system
-        ("referred_by", "INTEGER"),
-        # Wheel of fortune
-        ("last_spin_date", "TEXT"),
-        # Super prize discount
-        ("has_discount", "INTEGER DEFAULT 0"),
-        # Server-side verification for spin
-        ("pending_spin_prize", "INTEGER"),
-    ]
 
-    # reminders jadvalidagi yangi ustunlar (avvalgi bazalar uchun)
-    reminder_columns = [
-        ("days", "TEXT DEFAULT 'daily'"),
-    ]
-    for col_name, col_type in reminder_columns:
-        try:
-            c.execute(f"ALTER TABLE reminders ADD COLUMN {col_name} {col_type}")
-        except sqlite3.OperationalError:
-            pass  # Ustun allaqachon mavjud
-    
-    for col_name, col_type in new_columns:
-        try:
-            c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-        except sqlite3.OperationalError:
-            pass  # Ustun allaqachon mavjud
-        
     conn.commit()
     conn.close()
 
@@ -108,18 +95,18 @@ def register_user(user_id, full_name=None, username=None):
     """Foydalanuvchini bazaga qo'shish (agar yo'q bo'lsa), ismini yangilash"""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
     if not c.fetchone():
         now = datetime.datetime.now()
         c.execute(
-            "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, full_name, username) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, full_name, username) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (user_id, now.isoformat(), 0, 0, now.date().isoformat(), full_name, username)
         )
     else:
         # Ismini yangilaymiz
         if full_name or username:
             c.execute(
-                "UPDATE users SET full_name=?, username=? WHERE user_id=?",
+                "UPDATE users SET full_name=%s, username=%s WHERE user_id=%s",
                 (full_name, username, user_id)
             )
     conn.commit()
@@ -128,60 +115,78 @@ def register_user(user_id, full_name=None, username=None):
 def try_consume_daily_request(user_id) -> bool:
     """
     Foydalanuvchining AI limitsini atomar tarzda tekshiradi va band qiladi.
+    Limitlar: FREE = 5, PRO = 15, ULTRA = 100
     Qaytaradi: True (ruxsat), False (limit tugagan).
     """
     register_user(user_id)
-    
+
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT registered_at, is_premium, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT registered_at, is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
-    
+
     if not row:
         conn.close()
         return False
-        
-    registered_at_str, is_premium, premium_expires_at = row
-    
+
+    registered_at_str, is_premium, premium_expires_at, premium_type = row
+    if not premium_type:
+        premium_type = "free"
+
     # 1. Premium foydalanuvchilar uchun muddatni tekshirish
     if is_premium:
         if premium_expires_at:
-            expires = datetime.datetime.fromisoformat(premium_expires_at)
+            expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
             if datetime.datetime.now() > expires:
-                conn.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
+                c.execute("UPDATE users SET is_premium = 0, premium_type = 'free' WHERE user_id = %s", (user_id,))
                 conn.commit()
-            else:
-                conn.close()
-                return True
+                is_premium = 0
+                premium_type = "free"
         else:
-            conn.close()
-            return True  # Muddatsiz premium
-            
+            # Muddatsiz premium (masalan admin berganda) -> Ultra deb hisoblaymiz
+            premium_type = premium_type if premium_type != "free" else "ultra"
+
     now = datetime.datetime.now()
-    registered_at = datetime.datetime.fromisoformat(registered_at_str)
-    
-    # 2. Birinchi 24 soat mutlaqo bepul
-    if (now - registered_at).total_seconds() < 24 * 3600:
+    registered_at = registered_at_str if isinstance(registered_at_str, datetime.datetime) else datetime.datetime.fromisoformat(str(registered_at_str))
+
+    # 2. Birinchi 24 soat mutlaqo bepul (Free foydalanuvchilar uchun)
+    if not is_premium and (now - registered_at).total_seconds() < 24 * 3600:
         conn.close()
         return True
-        
+
+    # Limitni aniqlaymiz: ULTRA (100), PLUS (30), PRO (15), FREE (5)
+    free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "5"))
+    pro_limit = int(os.environ.get("PRO_AI_DAILY_LIMIT", "15"))
+    plus_limit = int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30"))
+    ultra_limit = int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100"))
+
+    if premium_type == "ultra":
+        max_requests = ultra_limit
+    elif premium_type == "plus":
+        max_requests = plus_limit
+    elif premium_type == "pro":
+        max_requests = pro_limit
+    else:
+        max_requests = free_limit
+
     # 3. Kunlik limitni atomar tekshirish va oshirish
     current_date = now.date().isoformat()
     # Avval kun o'zgargan bo'lsa, nollaymiz
-    conn.execute("UPDATE users SET daily_requests = 0, last_request_date = ? WHERE user_id = ? AND last_request_date != ?", (current_date, user_id, current_date))
-    
+    c.execute("UPDATE users SET daily_requests = 0, last_request_date = %s WHERE user_id = %s AND (last_request_date != %s OR last_request_date IS NULL)", (current_date, user_id, current_date))
+
     # Endi atomar ravishda band qilamiz
-    cur = conn.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = ? AND daily_requests < 5", (user_id,))
-    success = cur.rowcount > 0
+    c.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = %s AND daily_requests < %s", (user_id, max_requests))
+    success = c.rowcount > 0
     conn.commit()
     conn.close()
-    
+
     return success
 
 def refund_daily_request(user_id):
     """Xato yuz berganda band qilingan kunlik limitni qaytarish"""
     conn = get_connection()
-    conn.execute("UPDATE users SET daily_requests = daily_requests - 1 WHERE user_id = ? AND daily_requests > 0", (user_id,))
+    c = conn.cursor()
+    c.execute("UPDATE users SET daily_requests = daily_requests - 1 WHERE user_id = %s AND daily_requests > 0", (user_id,))
     conn.commit()
     conn.close()
 
@@ -193,25 +198,25 @@ def try_consume_free_ai(user_id) -> bool:
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT is_premium, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT is_premium, premium_expires_at FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     if not row:
         conn.close()
         return False
     is_premium, premium_expires_at = row
-    
+
     if is_premium:
         if premium_expires_at:
-            expires = datetime.datetime.fromisoformat(premium_expires_at)
+            expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
             if datetime.datetime.now() <= expires:
                 conn.close()
                 return True
         else:
             conn.close()
             return True
-            
-    cur = conn.execute("UPDATE users SET free_ai_used = 1 WHERE user_id = ? AND COALESCE(free_ai_used, 0) = 0", (user_id,))
-    success = cur.rowcount > 0
+
+    c.execute("UPDATE users SET free_ai_used = 1 WHERE user_id = %s AND COALESCE(free_ai_used, 0) = 0", (user_id,))
+    success = c.rowcount > 0
     conn.commit()
     conn.close()
     return success
@@ -219,35 +224,38 @@ def try_consume_free_ai(user_id) -> bool:
 def refund_free_ai(user_id):
     """Xato yuz berganda bepul savolni qaytarish"""
     conn = get_connection()
-    conn.execute("UPDATE users SET free_ai_used = 0 WHERE user_id = ?", (user_id,))
+    c = conn.cursor()
+    c.execute("UPDATE users SET free_ai_used = 0 WHERE user_id = %s", (user_id,))
     conn.commit()
     conn.close()
 
 def set_premium(user_id, status: int, months: int = 1):
     """Adminga foydalanuvchini Premium qilish uchun. months - necha oylik."""
     conn = get_connection()
+    c = conn.cursor()
     if status == 1:
         # Agar mavjud premium muddati bor bo'lsa, undan boshlab qo'shamiz
-        row = conn.execute(
-            "SELECT premium_expires_at FROM users WHERE user_id = ?", (user_id,)
-        ).fetchone()
+        c.execute(
+            "SELECT premium_expires_at FROM users WHERE user_id = %s", (user_id,)
+        )
+        row = c.fetchone()
         now = datetime.datetime.now()
         base = now
         if row and row[0]:
             try:
-                existing = datetime.datetime.fromisoformat(row[0])
+                existing = row[0] if isinstance(row[0], datetime.datetime) else datetime.datetime.fromisoformat(str(row[0]))
                 if existing > now:
                     base = existing
             except (ValueError, TypeError):
                 pass
         expires_at = (base + datetime.timedelta(days=30 * months)).isoformat()
-        conn.execute(
-            "UPDATE users SET is_premium = ?, premium_expires_at = ?, premium_until = ? WHERE user_id = ?",
+        c.execute(
+            "UPDATE users SET is_premium = %s, premium_expires_at = %s, premium_until = %s WHERE user_id = %s",
             (status, expires_at, expires_at, user_id)
         )
     else:
-        conn.execute(
-            "UPDATE users SET is_premium = ?, premium_expires_at = NULL, premium_until = NULL WHERE user_id = ?",
+        c.execute(
+            "UPDATE users SET is_premium = %s, premium_expires_at = NULL, premium_until = NULL WHERE user_id = %s",
             (status, user_id)
         )
     conn.commit()
@@ -258,7 +266,8 @@ def set_premium(user_id, status: int, months: int = 1):
 def add_score(user_id: int, points: int = 1) -> None:
     """Increase user's medicine_score by points."""
     conn = get_connection()
-    conn.execute("UPDATE users SET medicine_score = COALESCE(medicine_score,0) + ? WHERE user_id = ?", (points, user_id))
+    c = conn.cursor()
+    c.execute("UPDATE users SET medicine_score = COALESCE(medicine_score,0) + %s WHERE user_id = %s", (points, user_id))
     conn.commit()
     conn.close()
 
@@ -266,61 +275,124 @@ def get_score(user_id: int) -> int:
     """Return current medicine_score for user."""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT medicine_score FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT medicine_score FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
     return row[0] if row and row[0] is not None else 0
 
-def set_premium_until(user_id: int, until: datetime.datetime) -> None:
-    """Set premium_until timestamp for user."""
+def set_premium_until(user_id: int, until: datetime.datetime, premium_type: str = "pro") -> None:
+    """Set premium_until timestamp and premium_type for user."""
     conn = get_connection()
-    conn.execute("UPDATE users SET is_premium = 1, premium_until = ?, premium_expires_at = ? WHERE user_id = ?", (until.isoformat(), until.isoformat(), user_id))
+    c = conn.cursor()
+    c.execute("UPDATE users SET is_premium = 1, premium_type = %s, premium_until = %s, premium_expires_at = %s WHERE user_id = %s", (premium_type, until.isoformat(), until.isoformat(), user_id))
     conn.commit()
     conn.close()
 
-def check_and_grant_premium(user_id: int) -> None:
-    """If user reached 100 points, grant 30‑day premium and reset score."""
-    score = get_score(user_id)
-    if score >= 100:
-        until = datetime.datetime.now() + datetime.timedelta(days=30)
-        set_premium_until(user_id, until)
-        # Reset score after granting premium
-        conn = get_connection()
-        conn.execute("UPDATE users SET medicine_score = 0 WHERE user_id = ?", (user_id,))
+def grant_premium_days(user_id: int, days: int, premium_type: str = "pro") -> datetime.datetime:
+    """Grant additional premium days to user, stacking if already active with higher/equal tier."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
+    row = c.fetchone()
+    now = datetime.datetime.now()
+    base = now
+    current_type = "free"
+    
+    if row and row[0]:
+        try:
+            existing = row[0] if isinstance(row[0], datetime.datetime) else datetime.datetime.fromisoformat(str(row[0]))
+            if existing > now:
+                base = existing
+                current_type = row[1] or "pro"
+        except (ValueError, TypeError):
+            pass
+
+    # Tier ranking: ultra (3) > plus (2) > pro (1) > free (0)
+    tier_ranks = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+    new_rank = tier_ranks.get(premium_type, 1)
+    cur_rank = tier_ranks.get(current_type, 0)
+    
+    final_type = premium_type if new_rank >= cur_rank else current_type
+    until = base + datetime.timedelta(days=days)
+    
+    c.execute(
+        "UPDATE users SET is_premium = 1, premium_type = %s, premium_until = %s, premium_expires_at = %s WHERE user_id = %s",
+        (final_type, until.isoformat(), until.isoformat(), user_id)
+    )
+    conn.commit()
+    conn.close()
+    return until
+
+def record_payment_transaction(charge_id: str, user_id: int, product_id: str, stars_amount: int, premium_type: str, duration_days: int) -> bool:
+    """
+    Record payment transaction. Returns True if recorded, False if charge_id already exists (duplicate payment protection).
+    """
+    if not charge_id:
+        return True
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO payment_transactions (charge_id, user_id, product_id, stars_amount, premium_type, duration_days) VALUES (%s, %s, %s, %s, %s, %s)",
+            (charge_id, user_id, product_id, stars_amount, premium_type, duration_days)
+        )
         conn.commit()
         conn.close()
+        return True
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        logging.warning(f"Duplicate payment attempt or error for charge_id {charge_id}: {e}")
+        return False
+
+def check_and_grant_premium(user_id: int) -> bool:
+    """If user has at least 100 points, grant 3-day premium and subtract 100 score."""
+    score = get_score(user_id)
+    if score >= 100:
+        grant_premium_days(user_id, 3, "pro")
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("UPDATE users SET medicine_score = medicine_score - 100 WHERE user_id = %s", (user_id,))
+        conn.commit()
+        conn.close()
+        return True
+    return False
 
 def get_premium_info(user_id):
-    """Premium holati va muddatini olish. Agar muddat tugagan bo'lsa, avtomatik o'chiradi."""
+    """Premium holati, muddati va turini olish. Agar muddat tugagan bo'lsa, avtomatik o'chiradi."""
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT is_premium, premium_expires_at FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
-    
+
     if not row:
-        return (0, None)
-        
-    is_premium, premium_expires_at = row
-    
+        return (0, None, "free")
+
+    is_premium, premium_expires_at, premium_type = row
+    if not premium_type:
+        premium_type = "free"
+
     if is_premium and premium_expires_at:
-        expires = datetime.datetime.fromisoformat(premium_expires_at)
+        expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
         if datetime.datetime.now() > expires:
             # Premium muddati tugagan — avtomatik o'chiramiz
             conn2 = get_connection()
-            conn2.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
+            c2 = conn2.cursor()
+            c2.execute("UPDATE users SET is_premium = 0, premium_type = 'free' WHERE user_id = %s", (user_id,))
             conn2.commit()
             conn2.close()
-            return (0, premium_expires_at)
-            
-    return (is_premium, premium_expires_at)
+            return (0, str(premium_expires_at), "free")
+
+    return (is_premium, str(premium_expires_at) if premium_expires_at else None, premium_type if is_premium else "free")
 
 def set_waiting_receipt(user_id, status: int):
     """Foydalanuvchining to'lov chekini kutish holatini o'zgartirish"""
     register_user(user_id)
     conn = get_connection()
-    conn.execute("UPDATE users SET waiting_receipt = ? WHERE user_id = ?", (status, user_id))
+    c = conn.cursor()
+    c.execute("UPDATE users SET waiting_receipt = %s WHERE user_id = %s", (status, user_id))
     conn.commit()
     conn.close()
 
@@ -329,7 +401,7 @@ def get_waiting_receipt(user_id) -> int:
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT waiting_receipt FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT waiting_receipt FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
     return row[0] if row else 0
@@ -348,7 +420,7 @@ def get_all_users_info(limit=20):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "SELECT user_id, is_premium, registered_at, full_name, username FROM users ORDER BY registered_at DESC LIMIT ?",
+        "SELECT user_id, is_premium, registered_at, full_name, username FROM users ORDER BY registered_at DESC LIMIT %s",
         (limit,)
     )
     rows = c.fetchall()
@@ -360,7 +432,7 @@ def get_all_users_info_ban(limit=20):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "SELECT user_id, is_banned, registered_at, full_name, username FROM users ORDER BY registered_at DESC LIMIT ?",
+        "SELECT user_id, is_banned, registered_at, full_name, username FROM users ORDER BY registered_at DESC LIMIT %s",
         (limit,)
     )
     rows = c.fetchall()
@@ -405,9 +477,10 @@ def save_medical_profile(user_id, blood_group=None, age=None, weight=None, heigh
     """Tibbiy profilni saqlash"""
     register_user(user_id)
     conn = get_connection()
-    conn.execute(
-        """UPDATE users SET blood_group=?, age=?, weight=?, height=?,
-           chronic_diseases=?, allergies=? WHERE user_id=?""",
+    c = conn.cursor()
+    c.execute(
+        """UPDATE users SET blood_group=%s, age=%s, weight=%s, height=%s,
+           chronic_diseases=%s, allergies=%s WHERE user_id=%s""",
         (blood_group, age, weight, height, chronic_diseases, allergies, user_id)
     )
     conn.commit()
@@ -419,7 +492,7 @@ def get_medical_profile(user_id):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "SELECT blood_group, age, weight, height, chronic_diseases, allergies FROM users WHERE user_id = ?",
+        "SELECT blood_group, age, weight, height, chronic_diseases, allergies FROM users WHERE user_id = %s",
         (user_id,)
     )
     row = c.fetchone()
@@ -433,7 +506,8 @@ def update_profile_field(user_id, field: str, value):
         return
     register_user(user_id)
     conn = get_connection()
-    conn.execute(f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id))
+    c = conn.cursor()
+    c.execute(f"UPDATE users SET {field} = %s WHERE user_id = %s", (value, user_id))
     conn.commit()
     conn.close()
 
@@ -451,10 +525,10 @@ def add_reminder(user_id, medicine_name: str, times: str, days: str = "daily") -
     c = conn.cursor()
     now = datetime.datetime.now().isoformat()
     c.execute(
-        "INSERT INTO reminders (user_id, medicine_name, times, days, is_active, created_at) VALUES (?, ?, ?, ?, 1, ?)",
+        "INSERT INTO reminders (user_id, medicine_name, times, days, is_active, created_at) VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
         (user_id, medicine_name, times, days, now)
     )
-    reminder_id = c.lastrowid
+    reminder_id = c.fetchone()[0]
     conn.commit()
     conn.close()
     return reminder_id
@@ -465,7 +539,7 @@ def count_user_active_reminders(user_id: int) -> int:
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "SELECT COUNT(*) FROM reminders WHERE user_id = ? AND is_active = 1",
+        "SELECT COUNT(*) FROM reminders WHERE user_id = %s AND is_active = 1",
         (user_id,)
     )
     row = c.fetchone()
@@ -477,7 +551,7 @@ def get_user_reminders(user_id):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "SELECT id, medicine_name, times, days FROM reminders WHERE user_id = ? AND is_active = 1",
+        "SELECT id, medicine_name, times, days FROM reminders WHERE user_id = %s AND is_active = 1",
         (user_id,)
     )
     rows = c.fetchall()
@@ -487,7 +561,8 @@ def get_user_reminders(user_id):
 def delete_reminder(reminder_id: int, user_id: int):
     """Eslatmani o'chirish"""
     conn = get_connection()
-    conn.execute("UPDATE reminders SET is_active = 0 WHERE id = ? AND user_id = ?", (reminder_id, user_id))
+    c = conn.cursor()
+    c.execute("UPDATE reminders SET is_active = 0 WHERE id = %s AND user_id = %s", (reminder_id, user_id))
     conn.commit()
     conn.close()
 
@@ -508,7 +583,8 @@ def set_daily_tips_subscription(user_id, status: int):
     """Kunlik tavsiyalar obunasini yoqish/o'chirish"""
     register_user(user_id)
     conn = get_connection()
-    conn.execute("UPDATE users SET daily_tips_subscribed = ? WHERE user_id = ?", (status, user_id))
+    c = conn.cursor()
+    c.execute("UPDATE users SET daily_tips_subscribed = %s WHERE user_id = %s", (status, user_id))
     conn.commit()
     conn.close()
 
@@ -526,7 +602,7 @@ def get_daily_tips_status(user_id) -> int:
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT daily_tips_subscribed FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT daily_tips_subscribed FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
     return row[0] if row else 0
@@ -539,15 +615,16 @@ def ban_user(user_id: int, duration_minutes: int = None):
     """Foydalanuvchini ban qilish. duration_minutes berilsa - vaqtinchalik, aks holda - doimiy."""
     register_user(user_id)
     conn = get_connection()
+    c = conn.cursor()
     if duration_minutes:
         banned_until = (datetime.datetime.now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
-        conn.execute(
-            "UPDATE users SET is_banned = 1, banned_until = ? WHERE user_id = ?",
+        c.execute(
+            "UPDATE users SET is_banned = 1, banned_until = %s WHERE user_id = %s",
             (banned_until, user_id)
         )
     else:
-        conn.execute(
-            "UPDATE users SET is_banned = 1, banned_until = NULL WHERE user_id = ?",
+        c.execute(
+            "UPDATE users SET is_banned = 1, banned_until = NULL WHERE user_id = %s",
             (user_id,)
         )
     conn.commit()
@@ -557,8 +634,9 @@ def unban_user(user_id: int):
     """Foydalanuvchini bandan chiqarish."""
     register_user(user_id)
     conn = get_connection()
-    conn.execute(
-        "UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = ?",
+    c = conn.cursor()
+    c.execute(
+        "UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s",
         (user_id,)
     )
     conn.commit()
@@ -572,24 +650,25 @@ def is_user_banned(user_id: int) -> tuple:
     register_user(user_id)
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT is_banned, banned_until FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT is_banned, banned_until FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
-    
+
     if not row:
         return False, ""
-        
-    is_banned, banned_until_str = row
+
+    is_banned, banned_until_val = row
     if not is_banned:
         return False, ""
-        
-    if banned_until_str:
+
+    if banned_until_val:
         try:
-            banned_until = datetime.datetime.fromisoformat(banned_until_str)
+            banned_until = banned_until_val if isinstance(banned_until_val, datetime.datetime) else datetime.datetime.fromisoformat(str(banned_until_val))
             if datetime.datetime.now() > banned_until:
                 # Ban muddati tugagan — avtomatik o'chiramiz
                 conn2 = get_connection()
-                conn2.execute("UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = ?", (user_id,))
+                c2 = conn2.cursor()
+                c2.execute("UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s", (user_id,))
                 conn2.commit()
                 conn2.close()
                 return False, ""
@@ -598,7 +677,7 @@ def is_user_banned(user_id: int) -> tuple:
                 return True, f"🚫 Vaqtinchalik ban muddati: {formatted_time} gacha."
         except Exception:
             return True, "🚫 Vaqtinchalik ban faol."
-            
+
     return True, "🚫 Doimiy (muddatsiz) ban faol."
 
 
@@ -616,9 +695,9 @@ def check_and_grant_daily_bonus(user_id: int) -> tuple:
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT daily_streak, last_checkin_date FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT daily_streak, last_checkin_date FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
-    
+
     if not row:
         conn.close()
         return False, 0, 0
@@ -654,7 +733,7 @@ def check_and_grant_daily_bonus(user_id: int) -> tuple:
 
     # Update database
     c.execute(
-        "UPDATE users SET daily_streak = ?, last_checkin_date = ?, medicine_score = COALESCE(medicine_score, 0) + ? WHERE user_id = ?",
+        "UPDATE users SET daily_streak = %s, last_checkin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s WHERE user_id = %s",
         (new_streak, today_str, points, user_id)
     )
     conn.commit()
@@ -678,13 +757,13 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
     c = conn.cursor()
 
     # Check if referrer exists
-    c.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,))
+    c.execute("SELECT user_id FROM users WHERE user_id = %s", (referrer_id,))
     if not c.fetchone():
         conn.close()
         return False, 0, False
 
     # Check if new_user exists and if they already have a referrer
-    c.execute("SELECT registered_at, referred_by FROM users WHERE user_id = ?", (new_user_id,))
+    c.execute("SELECT registered_at, referred_by FROM users WHERE user_id = %s", (new_user_id,))
     row = c.fetchone()
 
     is_new = False
@@ -692,18 +771,18 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
         # Not registered yet
         now = datetime.datetime.now()
         c.execute(
-            "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, referred_by) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, referred_by) VALUES (%s, %s, %s, %s, %s, %s)",
             (new_user_id, now.isoformat(), 0, 0, now.date().isoformat(), referrer_id)
         )
         is_new = True
     else:
-        reg_time_str, ref_by = row
+        reg_time_val, ref_by = row
         if ref_by is None:
             # Check if registered very recently (e.g. within 2 minutes)
             try:
-                reg_time = datetime.datetime.fromisoformat(reg_time_str)
+                reg_time = reg_time_val if isinstance(reg_time_val, datetime.datetime) else datetime.datetime.fromisoformat(str(reg_time_val))
                 if (datetime.datetime.now() - reg_time).total_seconds() < 120:
-                    c.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, new_user_id))
+                    c.execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, new_user_id))
                     is_new = True
             except Exception:
                 pass
@@ -713,10 +792,10 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
         return False, 0, False
 
     # Give referrer +10 points
-    c.execute("UPDATE users SET medicine_score = COALESCE(medicine_score, 0) + 10 WHERE user_id = ?", (referrer_id,))
-    
+    c.execute("UPDATE users SET medicine_score = COALESCE(medicine_score, 0) + 10 WHERE user_id = %s", (referrer_id,))
+
     # Check total friends referred by this referrer
-    c.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (referrer_id,))
+    c.execute("SELECT COUNT(*) FROM users WHERE referred_by = %s", (referrer_id,))
     count = c.fetchone()[0]
 
     bonus_given = False
@@ -724,7 +803,7 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
 
     if count == 5:
         # Give extra +50 points bonus
-        c.execute("UPDATE users SET medicine_score = COALESCE(medicine_score, 0) + 50 WHERE user_id = ?", (referrer_id,))
+        c.execute("UPDATE users SET medicine_score = COALESCE(medicine_score, 0) + 50 WHERE user_id = %s", (referrer_id,))
         points_given += 50
         bonus_given = True
 
@@ -737,9 +816,10 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
     return True, points_given, bonus_given
 
 
-def check_and_grant_spin_bonus(user_id: int, points: int) -> tuple:
+def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
     """
     Checks if user is eligible for spin bonus.
+    Reward is strictly taken from server-side pending_spin_prize (ignoring client_points).
     If yes, awards points and updates last_spin_date.
     Returns (success, message)
     """
@@ -751,9 +831,9 @@ def check_and_grant_spin_bonus(user_id: int, points: int) -> tuple:
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT last_spin_date, pending_spin_prize FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT last_spin_date, pending_spin_prize FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
-    
+
     if not row:
         conn.close()
         return False, "Foydalanuvchi topilmadi!"
@@ -767,7 +847,7 @@ def check_and_grant_spin_bonus(user_id: int, points: int) -> tuple:
             last_spin_dt = datetime.fromisoformat(last_spin)
             if last_spin_dt.tzinfo is None:
                 last_spin_dt = last_spin_dt.replace(tzinfo=uz_tz)
-            
+
             # Check if 24 hours have passed
             diff = now - last_spin_dt
             if diff.total_seconds() < 24 * 3600:
@@ -787,12 +867,16 @@ def check_and_grant_spin_bonus(user_id: int, points: int) -> tuple:
         conn.close()
         return False, "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan! 🕒"
 
+    # Safe legacy handling: if old DB state has pending_prize > 10 (e.g., 20 or 50), cap to max valid reward (10)
+    if pending_prize not in (0, 1, 3, 5, 10):
+        pending_prize = 10
+
     points = pending_prize
 
     if points == 0:
         # Super Prize: discount
         c.execute(
-            "UPDATE users SET last_spin_date = ?, has_discount = 1, pending_spin_prize = NULL WHERE user_id = ?",
+            "UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL WHERE user_id = %s",
             (now_str, user_id)
         )
         msg = (
@@ -804,7 +888,7 @@ def check_and_grant_spin_bonus(user_id: int, points: int) -> tuple:
     else:
         # Standard points
         c.execute(
-            "UPDATE users SET last_spin_date = ?, medicine_score = COALESCE(medicine_score, 0) + ?, pending_spin_prize = NULL WHERE user_id = ?",
+            "UPDATE users SET last_spin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s, pending_spin_prize = NULL WHERE user_id = %s",
             (now_str, points, user_id)
         )
         msg = f"Tabriklaymiz! Siz Omad barabanidan <b>+{points} ball</b> yutib oldingiz! 🎉"
@@ -824,7 +908,7 @@ def has_discount(user_id: int) -> bool:
     conn = get_connection()
     c = conn.cursor()
     try:
-        c.execute("SELECT has_discount FROM users WHERE user_id = ?", (user_id,))
+        c.execute("SELECT has_discount FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
         val = bool(row[0]) if row else False
     except Exception:
@@ -836,17 +920,18 @@ def has_discount(user_id: int) -> bool:
 def consume_discount(user_id: int) -> None:
     """Consumes the super prize discount"""
     conn = get_connection()
+    c = conn.cursor()
     try:
-        conn.execute("UPDATE users SET has_discount = 0 WHERE user_id = ?", (user_id,))
+        c.execute("UPDATE users SET has_discount = 0 WHERE user_id = %s", (user_id,))
         conn.commit()
     except Exception as e:
-        import logging
         logging.error(f"Error consuming discount: {e}")
     conn.close()
+
 def get_referral_count(user_id: int) -> int:
     conn = get_connection()
     c = conn.cursor()
-    c.execute('SELECT COUNT(*) FROM users WHERE referred_by = ?', (user_id,))
+    c.execute('SELECT COUNT(*) FROM users WHERE referred_by = %s', (user_id,))
     count = c.fetchone()[0]
     conn.close()
     return count
@@ -863,7 +948,7 @@ def generate_or_get_spin_prize(user_id: int):
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT last_spin_date, pending_spin_prize FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT last_spin_date, pending_spin_prize FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
 
     if not row:
@@ -879,7 +964,7 @@ def generate_or_get_spin_prize(user_id: int):
             last_spin_dt = datetime.fromisoformat(last_spin)
             if last_spin_dt.tzinfo is None:
                 last_spin_dt = last_spin_dt.replace(tzinfo=uz_tz)
-            
+
             diff = now - last_spin_dt
             if diff.total_seconds() < 24 * 3600:
                 conn.close()
@@ -895,20 +980,22 @@ def generate_or_get_spin_prize(user_id: int):
         return pending_prize
 
     # Generate new prize
-    # Segments based on app.js: 1, 3, 5, 10, 20, 50, Super (0)
+    # MUHIM: Qiymatlar aynan app.js segments bilan mos bo'lishi kerak!
+    # Frontend segments: 1, 3, 5, 10, 0 (SUPER)
+    # 20 va 50 frontend'da yo'q — ularni generatsiya qilish MUMKIN EMAS
     r = random.random()
-    if r < 0.40: prize = 1
-    elif r < 0.70: prize = 3
-    elif r < 0.85: prize = 5
-    elif r < 0.95: prize = 10
-    elif r < 0.98: prize = 20
-    elif r < 0.99: prize = 50
-    else: prize = 0
+    if r < 0.40:    prize = 1    # 40% ehtimol
+    elif r < 0.65:  prize = 3    # 25% ehtimol
+    elif r < 0.83:  prize = 5    # 18% ehtimol
+    elif r < 0.97:  prize = 10   # 14% ehtimol
+    else:           prize = 0    #  3% ehtimol (SUPER PRIZ)
+    # Jami: 1,3,5,10,SUPER — barcha qiymatlar frontend segments da mavjud
 
-    c.execute("UPDATE users SET pending_spin_prize = ? WHERE user_id = ?", (prize, user_id))
+    c.execute("UPDATE users SET pending_spin_prize = %s WHERE user_id = %s", (prize, user_id))
     conn.commit()
     conn.close()
     return prize
+
 def get_daily_bonus_info(user_id: int) -> dict:
     """
     Returns information about the user's daily bonus status:
@@ -923,7 +1010,7 @@ def get_daily_bonus_info(user_id: int) -> dict:
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT daily_streak, last_checkin_date FROM users WHERE user_id = ?", (user_id,))
+    c.execute("SELECT daily_streak, last_checkin_date FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     conn.close()
 

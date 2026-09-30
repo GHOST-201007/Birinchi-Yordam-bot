@@ -87,6 +87,40 @@ body {
     gap: 8px;
 }
 
+/* Universal Header Back Button */
+.header-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background-color: var(--secondary-bg-color);
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body.dark-mode .header-back-btn {
+    border-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.header-back-btn:active {
+    transform: scale(0.95);
+    background-color: var(--button-color);
+    color: #ffffff;
+}
+
+.header-back-btn.hidden {
+    display: none !important;
+}
+
 /* Theme Toggle Button */
 .theme-toggle-btn {
     width: 36px;
