@@ -36,24 +36,36 @@ const SafeStorage = {
     },
     // Initialize cache from CloudStorage on startup
     initFromCloud: function (callback) {
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
-            window.Telegram.WebApp.CloudStorage.getKeys(function(err, keys) {
-                if (!err && keys && keys.length > 0) {
-                    window.Telegram.WebApp.CloudStorage.getItems(keys, function(err, values) {
-                        if (!err && values) {
-                            for (let k in values) {
-                                if (window.localStorage) window.localStorage.setItem(k, values[k]);
-                            }
-                        }
-                        if (callback) callback();
-                    });
-                } else {
-                    if (callback) callback();
-                }
-            });
-        } else {
-            if (callback) callback();
+        let called = false;
+        function done() {
+            if (!called) {
+                called = true;
+                if (callback) callback();
+            }
         }
+        try {
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage && window.Telegram.WebApp.isVersionAtLeast && window.Telegram.WebApp.isVersionAtLeast('6.9')) {
+                setTimeout(done, 1000);
+                window.Telegram.WebApp.CloudStorage.getKeys(function(err, keys) {
+                    try {
+                        if (!err && keys && keys.length > 0) {
+                            window.Telegram.WebApp.CloudStorage.getItems(keys, function(err, values) {
+                                if (!err && values) {
+                                    for (let k in values) {
+                                        if (window.localStorage) window.localStorage.setItem(k, values[k]);
+                                    }
+                                }
+                                done();
+                            });
+                        } else {
+                            done();
+                        }
+                    } catch(e) { done(); }
+                });
+            } else {
+                done();
+            }
+        } catch(e) { done(); }
     }
 };
 
