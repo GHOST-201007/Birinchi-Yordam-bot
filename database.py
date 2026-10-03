@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+def get_uz_now():
+    from datetime import timezone, timedelta
+    return datetime.datetime.now(timezone(timedelta(hours=5)))
+
 def get_connection():
     """PostgreSQL bazaga ulanish. DATABASE_URL muhit o'zgaruvchisidan oladi."""
     conn = psycopg2.connect(DATABASE_URL)
@@ -99,7 +103,7 @@ def register_user(user_id, full_name=None, username=None):
     c = conn.cursor()
     c.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
     if not c.fetchone():
-        now = datetime.datetime.now()
+        now = get_uz_now()
         c.execute(
             "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, full_name, username) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (user_id, now.isoformat(), 0, 0, now.date().isoformat(), full_name, username)
@@ -139,7 +143,7 @@ def try_consume_daily_request(user_id) -> bool:
     if is_premium:
         if premium_expires_at:
             expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
-            if datetime.datetime.now() > expires:
+            if get_uz_now() > expires:
                 c.execute("UPDATE users SET is_premium = 0, premium_type = 'free' WHERE user_id = %s", (user_id,))
                 conn.commit()
                 is_premium = 0
@@ -148,16 +152,14 @@ def try_consume_daily_request(user_id) -> bool:
             # Muddatsiz premium (masalan admin berganda) -> Ultra deb hisoblaymiz
             premium_type = premium_type if premium_type != "free" else "ultra"
 
-    now = datetime.datetime.now()
+    now = get_uz_now()
     registered_at = registered_at_str if isinstance(registered_at_str, datetime.datetime) else datetime.datetime.fromisoformat(str(registered_at_str))
 
-    # 2. Birinchi 24 soat mutlaqo bepul (Free foydalanuvchilar uchun)
-    if not is_premium and (now - registered_at).total_seconds() < 24 * 3600:
-        conn.close()
-        return True
+    # 2. (O'chirildi) Avvalgi cheksiz 24-soat bepul mantiq kreditni tugatardi.
+    # Endi faqat 1 ta bepul AI try_consume_free_ai() orqali beriladi.
 
-    # Limitni aniqlaymiz: ULTRA (100), PLUS (30), PRO (15), FREE (5)
-    free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "5"))
+    # Limitni aniqlaymiz: ULTRA (100), PLUS (30), PRO (15), FREE (0)
+    free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "0"))
     pro_limit = int(os.environ.get("PRO_AI_DAILY_LIMIT", "15"))
     plus_limit = int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30"))
     ultra_limit = int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100"))
@@ -210,7 +212,7 @@ def try_consume_free_ai(user_id) -> bool:
     if is_premium:
         if premium_expires_at:
             expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
-            if datetime.datetime.now() <= expires:
+            if get_uz_now() <= expires:
                 conn.close()
                 return True
         else:
@@ -241,7 +243,7 @@ def set_premium(user_id, status: int, months: int = 1):
             "SELECT premium_expires_at FROM users WHERE user_id = %s", (user_id,)
         )
         row = c.fetchone()
-        now = datetime.datetime.now()
+        now = get_uz_now()
         base = now
         if row and row[0]:
             try:
@@ -296,7 +298,7 @@ def grant_premium_days(user_id: int, days: int, premium_type: str = "pro") -> da
     c = conn.cursor()
     c.execute("SELECT premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
-    now = datetime.datetime.now()
+    now = get_uz_now()
     base = now
     current_type = "free"
     
@@ -378,7 +380,7 @@ def get_premium_info(user_id):
 
     if is_premium and premium_expires_at:
         expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
-        if datetime.datetime.now() > expires:
+        if get_uz_now() > expires:
             # Premium muddati tugagan — avtomatik o'chiramiz
             conn2 = get_connection()
             c2 = conn2.cursor()
@@ -525,7 +527,7 @@ def add_reminder(user_id, medicine_name: str, times: str, days: str = "daily") -
     """
     conn = get_connection()
     c = conn.cursor()
-    now = datetime.datetime.now().isoformat()
+    now = get_uz_now().isoformat()
     c.execute(
         "INSERT INTO reminders (user_id, medicine_name, times, days, is_active, created_at) VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
         (user_id, medicine_name, times, days, now)
@@ -619,7 +621,7 @@ def ban_user(user_id: int, duration_minutes: int = None):
     conn = get_connection()
     c = conn.cursor()
     if duration_minutes:
-        banned_until = (datetime.datetime.now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+        banned_until = (get_uz_now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
         c.execute(
             "UPDATE users SET is_banned = 1, banned_until = %s WHERE user_id = %s",
             (banned_until, user_id)
@@ -666,7 +668,7 @@ def is_user_banned(user_id: int) -> tuple:
     if banned_until_val:
         try:
             banned_until = banned_until_val if isinstance(banned_until_val, datetime.datetime) else datetime.datetime.fromisoformat(str(banned_until_val))
-            if datetime.datetime.now() > banned_until:
+            if get_uz_now() > banned_until:
                 # Ban muddati tugagan — avtomatik o'chiramiz
                 conn2 = get_connection()
                 c2 = conn2.cursor()
@@ -771,7 +773,7 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
     is_new = False
     if not row:
         # Not registered yet
-        now = datetime.datetime.now()
+        now = get_uz_now()
         c.execute(
             "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, referred_by) VALUES (%s, %s, %s, %s, %s, %s)",
             (new_user_id, now.isoformat(), 0, 0, now.date().isoformat(), referrer_id)
@@ -783,7 +785,7 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
             # Check if registered very recently (e.g. within 2 minutes)
             try:
                 reg_time = reg_time_val if isinstance(reg_time_val, datetime.datetime) else datetime.datetime.fromisoformat(str(reg_time_val))
-                if (datetime.datetime.now() - reg_time).total_seconds() < 120:
+                if (get_uz_now() - reg_time).total_seconds() < 120:
                     c.execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, new_user_id))
                     is_new = True
             except Exception:

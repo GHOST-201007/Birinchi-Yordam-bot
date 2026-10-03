@@ -241,7 +241,17 @@ if not TOKEN or TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
 # Gemini AI sozlamalari
 gemini_client = None
 if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
-    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+    # SDK ichki retry/backoff o'chiriladi (attempts=1): har bir so'rov bitta urinish.
+    # Vaqtinchalik xatoda fallback'ni o'zimiz boshqaramiz (pastda).
+    try:
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=genai_types.HttpOptions(
+                retry_options=genai_types.HttpRetryOptions(attempts=1)
+            ),
+        )
+    except Exception:
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 bot = Bot(token=TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())  # FSM uchun MemoryStorage
@@ -293,14 +303,24 @@ GEMINI_SYSTEM_INSTRUCTION = (
     "Har doim javoblaringiz oxirida, zarur bo'lsa, shifokor bilan maslahatlashishni va jiddiy holatlarda 103 ga qo'ng'iroq qilishni eslatib o'ting."
 )
 
-GEMINI_MODELS = [
-    "gemini-3.7-flash",
-    "gemini-3.5-flash",
-    "gemini-2.5-flash",
-]
+# Real API testi (2026-10-03): gemini-3.5-flash birinchi so'rovdayoq 4/4 muvaffaqiyatli (~4-5s);
+# gemini-3.8-flash / 3.7-flash -> 503 UNAVAILABLE; gemini-2.5-flash -> 404 (yangi userlar uchun yopilgan).
+GEMINI_PRIMARY_MODEL = "gemini-3.5-flash"
+GEMINI_FALLBACK_MODEL = "gemini-3.8-flash"   # faqat vaqtinchalik xatoda (429/5xx/timeout)
+
+# Maksimum 2 ta model: asosiy + bitta fallback. Doimiy xatoda (404 va h.k.) fallback ishlatilmaydi.
+GEMINI_MODELS = [GEMINI_PRIMARY_MODEL, GEMINI_FALLBACK_MODEL]
+
+def _is_temporary_gemini_error(e: Exception) -> bool:
+    """Faqat haqiqiy vaqtinchalik xatolar (fallback modelga o'tishga arziydi)."""
+    err = str(e)
+    markers = ("429", "500", "502", "503", "504", "RESOURCE_EXHAUSTED", "UNAVAILABLE",
+               "DEADLINE_EXCEEDED", "INTERNAL", "timed out", "Timeout", "timeout")
+    return any(m in err for m in markers)
 
 # Audio va rasm uchun multimodal modellar (gemini-2.5 yaxshi qo'llab-quvvatlaydi)
 GEMINI_MULTIMODAL_MODELS = [
+    "gemini-3.8-flash",
     "gemini-2.5-flash",
     "gemini-3.7-flash",
     "gemini-3.5-flash",
@@ -328,11 +348,11 @@ async def get_gemini_response(prompt: str):
             logging.info(f"Model sinashda: {model}")
             return await _try_generate(prompt, model)
         except Exception as e:
-            err = str(e)
-            if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
-                logging.warning(f"{model} ishlamadi, keyingisiga o'tilmoqda...")
+            if _is_temporary_gemini_error(e):
+                logging.warning(f"{model} vaqtinchalik xato, fallback: {str(e)[:120]}")
                 last_error = e
                 continue
+            # Doimiy xato (404/400/401/403...) — boshqa modellarga so'rov yuborilmaydi
             _handle_gemini_error(e)
             return None
     _handle_gemini_error(last_error or Exception("Hech bir model ishlamadi"))
@@ -407,28 +427,24 @@ async def stream_gemini_to_message(
                     continue
 
             except Exception as e:
-                err = str(e)
-                if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
-                    logging.warning(f"Streaming: {model} ishlamadi, keyingisiga o'tilmoqda...")
+                if _is_temporary_gemini_error(e) and not full_text:
+                    logging.warning(f"Streaming: {model} vaqtinchalik xato, fallback: {str(e)[:120]}")
                     last_error = e
                     continue
+                # Doimiy xato (404 va h.k.) yoki oqim o'rtasida uzilish — boshqa modelga so'rov yuborilmaydi
                 _handle_gemini_error(e)
                 await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
                 return None
 
-    logging.warning("Barcha streaming modellari ishlamadi, oddiy javobga o'tilmoqda...")
-    fallback_text = await get_gemini_response(prompt)
-    if fallback_text is None:
-        try:
-            await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
-        except Exception:
-            pass
-        return None
+    # Asosiy va fallback model ikkalasi ham vaqtinchalik xato berdi — qo'shimcha so'rovlar yuborilmaydi
+    if last_error is not None:
+        _handle_gemini_error(last_error)
+    logging.warning("Streaming: asosiy va fallback model javob bermadi.")
     try:
-        await sent_msg.edit_text(markdown_to_html(fallback_text), parse_mode="HTML", reply_markup=reply_markup)
+        await sent_msg.edit_text(markdown_to_html("🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."), parse_mode="HTML", reply_markup=reply_markup)
     except Exception:
         pass
-    return fallback_text
+    return None
 
 async def get_web_app_url(user_id: int, page: str = None) -> str:
     if not MINI_APP_URL:
@@ -1749,23 +1765,17 @@ async def handle_voice(message: types.Message):
         import base64
         audio_b64 = base64.b64encode(audio_data).decode("utf-8")
 
+        # Gemini API ga yuborish (multimodal modellar bilan)
+        # google-genai SDK requires types.Part.from_bytes()
         prompt_parts = [
-            {
-                "inline_data": {
-                    "mime_type": "audio/ogg",
-                    "data": audio_b64
-                }
-            },
-            {
-                "text": (
-                    "Bu audio xabarni o'zbek yoki rus tilida tinglab, "
-                    "mazmunini o'zbekcha yozing va unga tibbiy/sog'liq nuqtai nazaridan javob bering. "
-                    "Agar savol tibbiyotga oid bo'lmasa, faqat sog'liq mavzusida gapirishingizni ayting."
-                )
-            }
+            genai_types.Part.from_bytes(data=audio_data, mime_type="audio/ogg"),
+            (
+                "Bu audio xabarni o'zbek yoki rus tilida tinglab, "
+                "mazmunini o'zbekcha yozing va unga tibbiy/sog'liq nuqtai nazaridan javob bering. "
+                "Agar savol tibbiyotga oid bo'lmasa, faqat sog'liq mavzusida gapirishingizni ayting."
+            )
         ]
 
-        # Gemini API ga yuborish (multimodal modellar bilan)
         last_err = None
         async with KeepTyping(message.bot, message.chat.id, action="typing"):
             for model in GEMINI_MULTIMODAL_MODELS:
@@ -2532,6 +2542,7 @@ async def _send_due_reminders(now_dt):
             continue
         times_list = [t.strip() for t in times_str.split(",")]
         if now_time in times_list:
+            logging.info(f"[SCHEDULER] Reminder matched: user_id={user_id} time={now_time}")
             try:
                 sent_ts = int(now_dt.timestamp())
                 builder = InlineKeyboardBuilder()
@@ -2553,23 +2564,30 @@ async def _send_due_reminders(now_dt):
                     parse_mode="HTML"
                 )
                 await asyncio.sleep(0.05)
+                logging.info(f"[SCHEDULER] Reminder sent successfully: user_id={user_id}")
             except Exception as e:
-                logging.warning(f"Eslatma yuborib bo'lmadi (user: {user_id}): {e}")
+                logging.warning(f"[SCHEDULER] Reminder send failed: user_id={user_id} error={e}")
 
 async def check_and_send_reminders():
     """Har daqiqa ishlab, dori vaqti kelganini tekshiradi"""
+    logging.info("[SCHEDULER] check_and_send_reminders started")
     from datetime import timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
     last = datetime.now(uz_tz).replace(second=0, microsecond=0) - timedelta(minutes=1)
     while True:
-        now = datetime.now(uz_tz).replace(second=0, microsecond=0)
-        while last < now:  # o'tib ketgan daqiqalarni ham qamraydi
-            last += timedelta(minutes=1)
-            try:
-                await _send_due_reminders(last)
-            except Exception:
-                logging.exception("Eslatma scheduler xatosi: %s", last)
-        await asyncio.sleep(60 - datetime.now(uz_tz).second + 0.5)
+        try:
+            now = datetime.now(uz_tz).replace(second=0, microsecond=0)
+            while last < now:  # o'tib ketgan daqiqalarni ham qamraydi
+                last += timedelta(minutes=1)
+                try:
+                    await _send_due_reminders(last)
+                except Exception as e:
+                    logging.exception(f"[SCHEDULER] ERROR in check_and_send_reminders (inner): {e}")
+            await asyncio.sleep(60 - datetime.now(uz_tz).second + 0.5)
+        except Exception as e:
+            logging.exception(f"[SCHEDULER] ERROR in check_and_send_reminders (outer loop): {e}")
+            await asyncio.sleep(60)
+    logging.info("[SCHEDULER] check_and_send_reminders stopped")
 
 
 @dp.callback_query(F.data.startswith("med_taken_"))
@@ -2601,12 +2619,22 @@ async def web_app_data_handler(message: types.Message):
     try:
         data = json.loads(message.web_app_data.data)
         if data.get("action") == "ai_consult":
-            body_part_title = data.get("title", "noma'lum a'zo")
             user_id = message.from_user.id
             
-            await message.answer(
+            consumed_free = False
+            consumed_daily = False
+            if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+                consumed_free = True
+            elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+                consumed_daily = True
+            else:
+                await premium_upsell(message)
+                return
+                
+            body_part_title = data.get("title", "noma'lum a'zo")
+            
+            placeholder = await message.answer(
                 f"🤖 <b>AI Konsultatsiya ({body_part_title}):</b>\n\n"
-                f"Siz <b>{body_part_title}</b> sohasidagi muammoni tanladingiz.\n"
                 f"Tahlil qilinmoqda, iltimos kuting... ⏳",
                 parse_mode="HTML"
             )
@@ -2618,10 +2646,8 @@ async def web_app_data_handler(message: types.Message):
                 f"chiroyli va tushunarli o'zbek tilida maslahat ber."
             )
             
-            ai_response = await get_gemini_response(prompt)
-            if ai_response is None:
-                ai_response = "🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."
-            await message.answer(ai_response, parse_mode="HTML")
+            await stream_gemini_to_message(prompt=prompt, message=placeholder)
+
     except Exception as e:
         logging.error(f"web_app_data xatolik: {e}")
         await message.answer("⚠️ Ma'lumotlarni qayta ishlashda xatolik yuz berdi.")
@@ -2632,23 +2658,50 @@ async def web_app_data_handler(message: types.Message):
 
 async def daily_tips_scheduler():
     """Har kuni 08:00 da kunlik maslahatlarni yuboradi"""
+    logging.info("[SCHEDULER] daily_tips_scheduler started")
     from datetime import timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
     while True:
-        now = datetime.now(uz_tz)
-        # Keyingi 08:00 ni hisoblash
-        target = now.replace(hour=8, minute=0, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        logging.info(f"Keyingi kunlik maslahat {wait_seconds/3600:.1f} soatdan keyin yuboriladi.")
-        await asyncio.sleep(wait_seconds)
-        await send_daily_tips()
+        try:
+            now = datetime.now(uz_tz)
+            # Keyingi 08:00 ni hisoblash
+            target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            if now >= target:
+                target += timedelta(days=1)
+            wait_seconds = (target - now).total_seconds()
+            logging.info(f"[SCHEDULER] Keyingi kunlik maslahat {wait_seconds/3600:.1f} soatdan keyin yuboriladi.")
+            await asyncio.sleep(wait_seconds)
+            logging.info(f"[SCHEDULER] daily_tips_scheduler job triggered at {datetime.now(uz_tz)}")
+            await send_daily_tips()
+        except Exception as e:
+            logging.exception(f"[SCHEDULER] ERROR in daily_tips_scheduler: {e}")
+            await asyncio.sleep(3600)
+    logging.info("[SCHEDULER] daily_tips_scheduler stopped")
 
 # ═══════════════════════════════════════════════════════════════════
 # ADMIN BUYRUQLARI
 # ═══════════════════════════════════════════════════════════════════
 
+@dp.message(Command("test_scheduler"))
+async def cmd_test_scheduler(message: types.Message):
+    """Admin uchun scheduler mexanizmlarini test qilish"""
+    if str(message.from_user.id) != str(ADMIN_ID):
+        return await message.answer("Buning uchun huquqingiz yo'q.")
+    
+    await message.answer("🔄 <b>Scheduler test boshlandi...</b>", parse_mode="HTML")
+    
+    try:
+        from datetime import timezone, timedelta
+        uz_tz = timezone(timedelta(hours=5))
+        now_dt = datetime.now(uz_tz).replace(second=0, microsecond=0)
+        
+        logging.info("[SCHEDULER TEST] Reminder test boshlandi")
+        await _send_due_reminders(now_dt)
+        
+        await message.answer("✅ <b>Test yakunlandi:</b> `_send_due_reminders` joriy vaqt uchun ishlab chiqildi.", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ <b>Test xatosi:</b> {e}", parse_mode="HTML")
+        logging.exception(f"[SCHEDULER TEST] ERROR: {e}")
 
 def _build_premium_list_keyboard(users_info):
     """Premium boshqaruv uchun keyboard quradi"""
@@ -3416,9 +3469,20 @@ async def main():
     print("  8. 💊 Dori Database-First Search (AI token tejash)")
 
     # Background tasklar ishga tushiramiz
-    asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari
-    asyncio.create_task(daily_tips_scheduler())       # Feature 7: Kunlik maslahatlar
-    asyncio.create_task(start_web_server())           # Render web server
+    global background_tasks
+    background_tasks = set()
+    
+    task1 = asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari
+    background_tasks.add(task1)
+    task1.add_done_callback(background_tasks.discard)
+    
+    task2 = asyncio.create_task(daily_tips_scheduler())       # Feature 7: Kunlik maslahatlar
+    background_tasks.add(task2)
+    task2.add_done_callback(background_tasks.discard)
+    
+    task3 = asyncio.create_task(start_web_server())           # Render web server
+    background_tasks.add(task3)
+    task3.add_done_callback(background_tasks.discard)
 
     await dp.start_polling(bot)
 

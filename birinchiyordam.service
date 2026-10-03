@@ -1,0 +1,16 @@
+[Unit]
+Description=Birinchi Yordam Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Birinchi-Yordam-bot
+ExecStart=/root/Birinchi-Yordam-bot/venv/bin/python run_dev.py
+Restart=always
+RestartSec=5
+Environment="PATH=/root/Birinchi-Yordam-bot/venv/bin"
+EnvironmentFile=/root/Birinchi-Yordam-bot/.env
+
+[Install]
+WantedBy=multi-user.target

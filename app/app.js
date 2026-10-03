@@ -1,4 +1,4 @@
-// Safe localStorage wrapper with Telegram CloudStorage sync
+﻿// Safe localStorage wrapper with Telegram CloudStorage sync
 const SafeStorage = {
     getItem: function (key) {
         try {
@@ -69,9 +69,9 @@ if (tg) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // UNIVERSAL NAVIGATION MANAGER
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 const AppNavigation = (function () {
     const stack = [];   // [{type, close}]
     let backBtn = null;
@@ -129,9 +129,9 @@ const AppNavigation = (function () {
 
 document.addEventListener('DOMContentLoaded', () => { AppNavigation.init(); });
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // GLOBAL SCORE DISPLAY
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 const urlParams = new URLSearchParams(window.location.search);
 const userScore = urlParams.get('score');
 if (userScore !== null) {
@@ -145,9 +145,9 @@ if (userScore !== null) {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // DARK / LIGHT MODE
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 function initTheme() {
     const saved = SafeStorage.getItem('theme') || 'light';
@@ -155,10 +155,10 @@ function initTheme() {
     if (btn) {
         if (saved === 'dark') {
             document.body.classList.add('dark-mode');
-            btn.textContent = '☀️';
+            btn.textContent = 'вЂпёЏ';
         } else {
             document.body.classList.remove('dark-mode');
-            btn.textContent = '🌙';
+            btn.textContent = 'рџЊ™';
         }
     }
 }
@@ -168,20 +168,20 @@ function bindThemeToggle() {
     if (btn) {
         btn.onclick = () => {
             const isDark = document.body.classList.toggle('dark-mode');
-            btn.textContent = isDark ? '☀️' : '🌙';
+            btn.textContent = isDark ? 'вЂпёЏ' : 'рџЊ™';
             SafeStorage.setItem('theme', isDark ? 'dark' : 'light');
         };
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // DATA SETS
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 const FIRST_AID_ITEMS = [
     {
         id: "kuyish",
-        title: "🔥 Kuyish",
+        title: "рџ”Ґ Kuyish",
         icon: "fa-fire-burner",
         color: "var(--accent-orange)",
         bgColor: "var(--accent-orange-bg)",
@@ -190,18 +190,18 @@ const FIRST_AID_ITEMS = [
         symptoms: ["Qizarish va shish paydo bo'lishi", "Pufakchalar hosil bo'lishi", "Kuchli achishish va og'riq", "3-darajali kuyishda teri qorayib, sezgisiz bo'lib qoladi"],
         steps: [
             "Kuygan joyni zudlik bilan kamida 20 daqiqa davomida oqib turgan sovuq (lekin muzdek emas) suv ostida tuting.",
-            "Kuygan sohaga steril bog'lam yoki toza latta yoping — mahkam o'ramasdan, yumshoq qo'ying.",
+            "Kuygan sohaga steril bog'lam yoki toza latta yoping вЂ” mahkam o'ramasdan, yumshoq qo'ying.",
             "Agar kiyim teriga yopishib qolgan bo'lsa, uni majburlab sug'urib olmang! Atrofini kesib oling.",
-            "Bemorga ko'proq suyuqlik (suv, choy) ichiring — organizm suyuqlikni ko'p yo'qotadi.",
+            "Bemorga ko'proq suyuqlik (suv, choy) ichiring вЂ” organizm suyuqlikni ko'p yo'qotadi.",
             "Og'riqni kamaytirish uchun ibuprofen yoki paracetamol bering."
         ],
         prohibited: "Kuygan joyga yog', sariyog', tish pastasi yoki spirt surtmang! Hosil bo'lgan pufakchalarni aslo yormang!",
-        tips: ["Kuyish maydoni kaft o'lchamidan katta bo'lsa — shifokorga boring", "Qovoq yoki kartoshka shirasi xalq tabobatida ishlatilsa ham, tibbiy jihatdan tavsiya etilmaydi"],
+        tips: ["Kuyish maydoni kaft o'lchamidan katta bo'lsa вЂ” shifokorga boring", "Qovoq yoki kartoshka shirasi xalq tabobatida ishlatilsa ham, tibbiy jihatdan tavsiya etilmaydi"],
         whenToCall103: ["Kuyish maydoni katta bo'lsa (kaft o'lchamidan katta)", "Yuz, qo'l, oyoq, jinsiy a'zolar yoki bo'g'imlar kuygan bo'lsa", "Bemor 5 yoshdan kichik yoki 60 yoshdan katta bo'lsa", "Kuyish kimyoviy modda yoki elektr tokidan bo'lsa"]
     },
     {
         id: "qon_ketishi",
-        title: "🩸 Qon ketishi",
+        title: "рџ©ё Qon ketishi",
         icon: "fa-droplet",
         color: "var(--accent-red)",
         bgColor: "var(--accent-red-bg)",
@@ -213,15 +213,15 @@ const FIRST_AID_ITEMS = [
             "Iloji bo'lsa, jarohatlangan a'zoni yurak sathidan balandroq ko'taring.",
             "Kuchli arterial qon ketishida yaraning yuqori qismidan turniket (jgut) bog'lang va ALBATTA vaqtini yozib qo'ying.",
             "Birinchi yordamchi jgutni aslo bo'shatmasligi kerak, uni faqat shifokor bo'shatishi yoki yechishi mumkin.",
-            "Qon bog'lamni shimib o'tgan bo'lsa, uni surib olmang — ustiga yangi qavat qo'ying."
+            "Qon bog'lamni shimib o'tgan bo'lsa, uni surib olmang вЂ” ustiga yangi qavat qo'ying."
         ],
         prohibited: "Yaradagi yot jismlarni (shisha bo'lagi, sim, mix) o'zboshimchalik bilan sug'urib olmang! Bu qon ketishini kuchaytiradi.",
-        tips: ["Turniket vaqtini bemorning manglayiga yoki qog'ozga yozing — shifoxona uchun muhim", "Qo'lqop bilan qon bilan aloqani cheklang — infeksiyadan himoya"],
+        tips: ["Turniket vaqtini bemorning manglayiga yoki qog'ozga yozing вЂ” shifoxona uchun muhim", "Qo'lqop bilan qon bilan aloqani cheklang вЂ” infeksiyadan himoya"],
         whenToCall103: ["Qon ketish to'xtatib bo'lmasa", "Kuchli arterial qon ketish bo'lsa", "Bemor hushini yo'qotsa", "Yara juda katta va chuqur bo'lsa"]
     },
     {
         id: "sinish",
-        title: "🦴 Suyak sinishi",
+        title: "рџ¦ґ Suyak sinishi",
         icon: "fa-bone",
         color: "var(--accent-blue)",
         bgColor: "var(--accent-blue-bg)",
@@ -230,18 +230,18 @@ const FIRST_AID_ITEMS = [
         symptoms: ["Shikastlangan joyda keskin og'riq", "Shish va ko'karish paydo bo'lishi", "A'zoni harakatlantira olmaslik", "Ba'zan suyak ko'rinib qolishi (ochiq sinish)"],
         steps: [
             "Shikastlangan a'zoni harakatsiz holatga keltiring.",
-            "Shina sifatida taxtacha, qattiq karton yoki tekis buyumdan foydalanib bog'lang — singan bo'g'imning pastki va yuqori qismini qamrab olsin.",
+            "Shina sifatida taxtacha, qattiq karton yoki tekis buyumdan foydalanib bog'lang вЂ” singan bo'g'imning pastki va yuqori qismini qamrab olsin.",
             "Shish va og'riqni kamaytirish uchun latta bilan o'ralgan muz qo'ying (20 daq, keyin 20 daq tanaffus).",
             "Ochiq sinishda avval yaraga steril bog'lam qo'ying, so'ngra shinani mahkamlang.",
             "Og'riqsizlantirish uchun ibuprofen bering va tez yordamni kutish davomida bemorni iliq saqlang."
         ],
         prohibited: "Singan suyakni o'z joyiga solishga yoki to'g'rilashga urinmang! Bemorni ortiqcha harakatlantirmang.",
-        tips: ["Shina juda qattiq bog'lanmasin — barmoqlar ko'karsa bo'shatib qo'ying", "Sinish sohasini yurakdan baland tutish shishni kamaytiradi"],
+        tips: ["Shina juda qattiq bog'lanmasin вЂ” barmoqlar ko'karsa bo'shatib qo'ying", "Sinish sohasini yurakdan baland tutish shishni kamaytiradi"],
         whenToCall103: ["Bel umurtqasi, tos suyagi yoki bosh suyagi singanda", "Suyak teriga tashqariga chiqib qolgan bo'lsa (ochiq sinish)", "Bemor qo'l-oyog'ini his qilmayotgan bo'lsa", "A'zo g'ayriy tabiiy holda qiyshayib qolgan bo'lsa"]
     },
     {
         id: "bogilish",
-        title: "🫣 Bo\'g\'ilish",
+        title: "рџ«Ј Bo\'g\'ilish",
         icon: "fa-head-side-cough",
         color: "var(--accent-orange)",
         bgColor: "var(--accent-orange-bg)",
@@ -249,19 +249,19 @@ const FIRST_AID_ITEMS = [
         desc: "Tomoqqa narsa tiqilib qolganda Geymlix usulini qo\'llash.",
         symptoms: ["Birdan gapirishda qiynalish yoki ovoz chiqmasligi", "Nafas olishda xirillash yoki hech nafas yo'qligi", "Yuz binafsha yoki ko'karishi", "Ikkala qo'l bilan tomoqni ushlab turish (universal bo'g'ilish belgisi)"],
         steps: [
-            "Agar bemor yo'tala olsa, uni qattiqroq yo'talishga undang — eng yaxshi tabiiy yo'l.",
+            "Agar bemor yo'tala olsa, uni qattiqroq yo'talishga undang вЂ” eng yaxshi tabiiy yo'l.",
             "Bemor ozroq oldinga engashsin. Kaftingiz asosi bilan kuraklari orasiga 5 marta kuchli zarb bilan uring.",
             "Geymlix usuli: Bemor orqasidan turib, belidan quchoqlang. Bir qo'lni musht qilib, kindikdan biroz yuqoriga qo'ying. Ikkinchi qo'l bilan mushtni tutib, o'zingizga va yuqoriga 5 marta keskin torting. (1 yoshgacha bolalarga qo'llanilmaydi).",
             "Kerak bo'lsa, 5 zarb + 5 Geymlix kombinatsiyasini navbatlashing.",
             "Hushsiz holatda: Bemorni yotqizib, og'izni tekshiring, ko'rinadigan jismni olib tashlang va CPR boshlang."
         ],
         prohibited: "Tomoqdagi yot jismni ko'rmasdan turib barmoq bilan qidirib tortishga urinmang! Uni yanada chuqurroq tiqib yuborishingiz mumkin.",
-        tips: ["Chaqaloqlarda (1 yoshgacha) Geymlix usuli QILINMAYDI — maxsus usul qo'llaniladi", "Jism chiqqan bo'lsa ham, 103 ga qo'ng'iroq qiling — shifokor tekshirishi kerak"],
-        whenToCall103: ["Jism chiqmasa va bemor nafas ololmayotgan bo'lsa — DARHOL", "Bemor hushini yo'qotsa", "Jism chiqqandan keyin ham nafas qiynalsa", "Bolada bo'g'ilish bo'lsa"]
+        tips: ["Chaqaloqlarda (1 yoshgacha) Geymlix usuli QILINMAYDI вЂ” maxsus usul qo'llaniladi", "Jism chiqqan bo'lsa ham, 103 ga qo'ng'iroq qiling вЂ” shifokor tekshirishi kerak"],
+        whenToCall103: ["Jism chiqmasa va bemor nafas ololmayotgan bo'lsa вЂ” DARHOL", "Bemor hushini yo'qotsa", "Jism chiqqandan keyin ham nafas qiynalsa", "Bolada bo'g'ilish bo'lsa"]
     },
     {
         id: "yurak_xuruji",
-        title: "💔 Yurak xuruji",
+        title: "рџ’” Yurak xuruji",
         icon: "fa-heart-circle-xmark",
         color: "var(--accent-red)",
         bgColor: "var(--accent-red-bg)",
@@ -271,17 +271,17 @@ const FIRST_AID_ITEMS = [
         steps: [
             "Bemorni zudlik bilan yarim o'tirgan holatga keltiring, tinchlantiring.",
             "Yoqasini oching, bo'yinbog'ini bo'shating, toza havo kelishini ta'minlang.",
-            "DARHOL 103 chaqiring — har daqiqa muhim!",
-            "Agar mavjud bo'lsa, til ostiga 1 ta Nitrogliserin tabletkasini qo'ying — 5 daqiqadan keyin o'tmasa yana 1 ta.",
-            "Bemor hushini yo'qotsa va nafasdan qolsa — CPR (yurak-o'pka reanimatsiyasi) ni boshlang."
+            "DARHOL 103 chaqiring вЂ” har daqiqa muhim!",
+            "Agar mavjud bo'lsa, til ostiga 1 ta Nitrogliserin tabletkasini qo'ying вЂ” 5 daqiqadan keyin o'tmasa yana 1 ta.",
+            "Bemor hushini yo'qotsa va nafasdan qolsa вЂ” CPR (yurak-o'pka reanimatsiyasi) ni boshlang."
         ],
         prohibited: "Bemorni turishga, yurishga yoki jismoniy zo'riqishga majburlamang! Bemorni yolg'iz qoldirmang.",
-        tips: ["CPR: To'sh suyagining markaziga ikkala qo'l bilan minutiga 100-120 marta 5 sm chuqurlikda bosing", "Aspirin chaynash (qon suyultiradi) — faqat allergiyasi bo'lmasa"],
-        whenToCall103: ["Ko'krakda og'riq 5 daqiqadan ko'p davom etsa — DARHOL", "Nafas qisilishi boshlanib qolsa", "Bemor hushini yo'qotsa", "Birinchi marta shunday og'riq bo'lsa"]
+        tips: ["CPR: To'sh suyagining markaziga ikkala qo'l bilan minutiga 100-120 marta 5 sm chuqurlikda bosing", "Aspirin chaynash (qon suyultiradi) вЂ” faqat allergiyasi bo'lmasa"],
+        whenToCall103: ["Ko'krakda og'riq 5 daqiqadan ko'p davom etsa вЂ” DARHOL", "Nafas qisilishi boshlanib qolsa", "Bemor hushini yo'qotsa", "Birinchi marta shunday og'riq bo'lsa"]
     },
     {
         id: "hushdan_ketish",
-        title: "😵 Hushdan ketish",
+        title: "рџµ Hushdan ketish",
         icon: "fa-face-dizzy",
         color: "var(--accent-blue)",
         bgColor: "var(--accent-blue-bg)",
@@ -289,19 +289,19 @@ const FIRST_AID_ITEMS = [
         desc: "Hushini yo'qotgan odamni o'ziga keltirish va yotqizish.",
         symptoms: ["To'satdan kuchsizlanish va ko'z qorayishi", "Ko'ngil aynishi va terlash", "Rangi o'chib, terisi oqarishi", "Quloqlarda shovqin"],
         steps: [
-            "Bemorni tekis joyga orqasi bilan yotqizib, oyoqlarini 30 sm balandlikka ko'taring — miyaga qon oqimini oshirish uchun.",
+            "Bemorni tekis joyga orqasi bilan yotqizib, oyoqlarini 30 sm balandlikka ko'taring вЂ” miyaga qon oqimini oshirish uchun.",
             "Nafas olishini osonlashtirish uchun kiyimlarini bo'shating.",
             "Agar bemor 1 daqiqada o'ziga kelmasa yoki nafas olmasa, zudlik bilan 103 chaqiring va kerak bo'lsa yurak-o'pka reanimatsiyasini boshlang.",
             "Agar bemor nafas olayotgan bo'lsa-yu hushiga kelmasa, uni xavfsiz yonbosh holatga yotqizib qo'ying.",
-            "Hushiga kelgach, 5-10 daqiqa yotsin — shoshilinch turg'izib yubormang."
+            "Hushiga kelgach, 5-10 daqiqa yotsin вЂ” shoshilinch turg'izib yubormang."
         ],
         prohibited: "Hushsiz odamning og'ziga suv quymang yoki dori tiqmang! U bo'g'ilib qolishi mumkin.",
-        tips: ["Hushdan ketishdan oldin ko'pincha ogohlantiruv belgilari bo'ladi — darhol o'tirib qolsa qon aylanish tiklanadi", "Ko'p takrorlansa — shifokorga murojaat zarur (yurak yoki asab kasalligi)"],
+        tips: ["Hushdan ketishdan oldin ko'pincha ogohlantiruv belgilari bo'ladi вЂ” darhol o'tirib qolsa qon aylanish tiklanadi", "Ko'p takrorlansa вЂ” shifokorga murojaat zarur (yurak yoki asab kasalligi)"],
         whenToCall103: ["Bemor 1 daqiqadan ko'p hushsiz qolsa", "Hushiga kelgandan keyin gapirishda muammo bo'lsa", "Yiqilib, boshini urib olgan bo'lsa", "Yurak kasalligi tarixi bo'lgan odamda hushdan ketish bo'lsa"]
     },
     {
         id: "zaharlanish",
-        title: "🧪 Zaharlanish",
+        title: "рџ§Є Zaharlanish",
         icon: "fa-vial",
         color: "var(--accent-green)",
         bgColor: "var(--accent-green-bg)",
@@ -311,37 +311,37 @@ const FIRST_AID_ITEMS = [
         steps: [
             "Darhol 103 ga qo'ng'iroq qiling: nima, qancha va qachon ichilganini ayting.",
             "Bemorni qustirishga urinmang. Zahar turiga ko'ra bu vaziyatni yomonlashtirishi mumkin.",
-            "Qadoqni saqlab qo'ying — bu shifoxonada davolashni osonlashtiradi.",
+            "Qadoqni saqlab qo'ying вЂ” bu shifoxonada davolashni osonlashtiradi.",
             "Zaharli gazdan zaharlanganda zudlik bilan toza havoga olib chiqing va kiyimlarini bo'shating.",
             "Agar bemor hushsiz, lekin nafas olayotgan bo'lsa, xavfsiz yonbosh holatga yotqizib qo'ying."
         ],
         prohibited: "Kislota, ishqor yoki neft mahsulotlari bilan zaharlanganda qustirish mutlaqo taqiqlanadi! (Va umuman, oddiy odamga qustirish tavsiya etilmaydi).",
-        tips: ["Zaharlanish o'tgan ovqatni saqlang yoki rasmga oling — laboratoriya uchun kerak", "Zahar qutisini yoki nomini yozib, 103 operatoriga ayting"],
-        whenToCall103: ["Kimyoviy modda bilan zaharlanishda — DARHOL", "Bemor hushsiz bo'lsa", "Bolada zaharlanish bo'lsa", "Simptomlar 6 soatdan ko'p davom etsa"]
+        tips: ["Zaharlanish o'tgan ovqatni saqlang yoki rasmga oling вЂ” laboratoriya uchun kerak", "Zahar qutisini yoki nomini yozib, 103 operatoriga ayting"],
+        whenToCall103: ["Kimyoviy modda bilan zaharlanishda вЂ” DARHOL", "Bemor hushsiz bo'lsa", "Bolada zaharlanish bo'lsa", "Simptomlar 6 soatdan ko'p davom etsa"]
     },
     {
         id: "issiqlik_urishi",
-        title: "☀️ Issiqlik urishi",
+        title: "вЂпёЏ Issiqlik urishi",
         icon: "fa-sun",
         color: "var(--accent-orange)",
         bgColor: "var(--accent-orange-bg)",
         urgency: "high",
         desc: "Quyosh va issiq havoda tana harorati ko'tarilganda sovutish.",
-        symptoms: ["Tana harorati 40°C dan oshishi", "Ter chiqmasligi — xavfli belgi!", "Qizil va quruq teri", "Bosh og'rig'i, ko'ngil aynishi, qayt qilish", "Ong butalishi yoki hushdan ketish"],
+        symptoms: ["Tana harorati 40В°C dan oshishi", "Ter chiqmasligi вЂ” xavfli belgi!", "Qizil va quruq teri", "Bosh og'rig'i, ko'ngil aynishi, qayt qilish", "Ong butalishi yoki hushdan ketish"],
         steps: [
             "Bemorni ZUDLIK bilan soya, salqin va havo aylanadigan joyga olib o'ting.",
             "Ustki kiyimlarini yeching yoki bo'shating.",
             "Peshonasiga, bo'yniga, qo'ltiq ostiga sovuq suvda ho'llangan latta qo'ying.",
             "Hushida bo'lsa, tez-tez oz-ozdan sovuq suv yoki mineral suv ichiring.",
-            "Tana haroratini 38°C gacha tushirishga harakat qiling."
+            "Tana haroratini 38В°C gacha tushirishga harakat qiling."
         ],
-        prohibited: "Tana harorati juda yuqori bo'lganda bemorni muzdek suvli vannaga birdan solmang — shok holatiga tushishi mumkin.",
-        tips: ["Issiq kunlarda qorni to'q holda, tush paytida uzoq qolmang", "Harorat 38°C ga tushgach, sovutishni to'xtating — ortiqcha sovutish ham xavfli"],
-        whenToCall103: ["Tez yordam: issiqlik urishi shoshilinch holat, zudlik bilan 103 chaqiring!", "Bemor hushini yo'qotsa", "Tana harorati 40°C dan oshsa", "Ter chiqmayotgan bo'lsa"]
+        prohibited: "Tana harorati juda yuqori bo'lganda bemorni muzdek suvli vannaga birdan solmang вЂ” shok holatiga tushishi mumkin.",
+        tips: ["Issiq kunlarda qorni to'q holda, tush paytida uzoq qolmang", "Harorat 38В°C ga tushgach, sovutishni to'xtating вЂ” ortiqcha sovutish ham xavfli"],
+        whenToCall103: ["Tez yordam: issiqlik urishi shoshilinch holat, zudlik bilan 103 chaqiring!", "Bemor hushini yo'qotsa", "Tana harorati 40В°C dan oshsa", "Ter chiqmayotgan bo'lsa"]
     },
     {
         id: "reanimatsiya",
-        title: "🫀 CPR (Yurak-o'pka reanimatsiyasi)",
+        title: "рџ«Ђ CPR (Yurak-o'pka reanimatsiyasi)",
         icon: "fa-heart-pulse",
         color: "var(--accent-red)",
         bgColor: "var(--accent-red-bg)",
@@ -469,9 +469,9 @@ const DISEASES_DATA = [
     { name: "Moychechak terapiyasi", cat: "Profilaktika", desc: "Tinchlantiruvchi va yallig'lanishga qarshi o'simlik damlamasi.", aid: "Moychechak gullarini qaynoq suvda damlab, iliq holda ichish yoki tomoq chayish." }
 ];
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // UI LOGIC & EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 document.addEventListener('DOMContentLoaded', () => {
     SafeStorage.initFromCloud(function() {
@@ -586,7 +586,7 @@ function openFirstAidDetail(item) {
     if (item.symptoms && item.symptoms.length) {
         symptomsHtml = `
             <div class="detail-section">
-                <div class="detail-section-title"><span class="detail-icon">🩺</span> Alomatlar</div>
+                <div class="detail-section-title"><span class="detail-icon">рџ©є</span> Alomatlar</div>
                 <div class="detail-tags-grid">
                     ${item.symptoms.map(s => `<div class="symptom-tag">${s}</div>`).join('')}
                 </div>
@@ -599,14 +599,14 @@ function openFirstAidDetail(item) {
         call103Html = `
             <div class="call103-card">
                 <div class="call103-header">
-                    <span class="call103-icon">📞</span>
+                    <span class="call103-icon">рџ“ћ</span>
                     <span>Qachon <strong>103</strong> chaqirish kerak?</span>
                 </div>
                 <ul class="call103-list">
                     ${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}
                 </ul>
                 <a href="tel:103" class="call103-btn" onclick="if(window.Telegram&&window.Telegram.WebApp){window.Telegram.WebApp.openLink('tel:103');return false;}">
-                    📞 103 — Tez yordam
+                    рџ“ћ 103 вЂ” Tez yordam
                 </a>
             </div>`;
     }
@@ -616,26 +616,26 @@ function openFirstAidDetail(item) {
     if (item.tips && item.tips.length) {
         tipsHtml = `
             <div class="detail-section">
-                <div class="detail-section-title"><span class="detail-icon">💡</span> Foydali maslahatlar</div>
-                ${item.tips.map(t => `<div class="tip-item"><span class="tip-dot">•</span><span>${t}</span></div>`).join('')}
+                <div class="detail-section-title"><span class="detail-icon">рџ’Ў</span> Foydali maslahatlar</div>
+                ${item.tips.map(t => `<div class="tip-item"><span class="tip-dot">вЂў</span><span>${t}</span></div>`).join('')}
             </div>`;
     }
 
     body.innerHTML = `
         <div class="detail-urgency-badge" style="background:${urg.bg}; color:${urg.color};">
-            ⚡ ${urg.label} HOLAT
+            вљЎ ${urg.label} HOLAT
         </div>
         <p class="detail-desc">${item.desc}</p>
 
         ${symptomsHtml}
 
         <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">🛠️</span> Bosqichma-bosqich yordam</div>
+            <div class="detail-section-title"><span class="detail-icon">рџ› пёЏ</span> Bosqichma-bosqich yordam</div>
             <div style="margin-top: 10px;">${stepsHtml}</div>
         </div>
 
         <div class="prohibited-card">
-            <div class="prohibited-title">🚫 Mutlaqo taqiqlanadi</div>
+            <div class="prohibited-title">рџљ« Mutlaqo taqiqlanadi</div>
             <p>${item.prohibited}</p>
         </div>
 
@@ -662,7 +662,7 @@ function renderDiseases(data) {
     container.innerHTML = '';
 
     if (data.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--hint-color);">Natija topilmadi 😕</div>`;
+        container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--hint-color);">Natija topilmadi рџ•</div>`;
         return;
     }
 
@@ -673,7 +673,7 @@ function renderDiseases(data) {
         div.innerHTML = `
             <div class="disease-info">
                 <h4>${item.name}</h4>
-                <span>📁 ${item.cat}</span>
+                <span>рџ“Ѓ ${item.cat}</span>
             </div>
             <i class="fa-solid fa-chevron-right"></i>
         `;
@@ -705,23 +705,23 @@ function openDiseaseDetail(item) {
 
     body.innerHTML = `
         <div style="display:inline-flex; align-items:center; gap:8px; background:${catColor}20; color:${catColor}; padding:5px 12px; border-radius:20px; font-size:13px; font-weight:600; margin-bottom:14px;">
-            📁 ${item.cat}
+            рџ“Ѓ ${item.cat}
         </div>
 
         <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">📋</span> Kasallik tavsifi</div>
+            <div class="detail-section-title"><span class="detail-icon">рџ“‹</span> Kasallik tavsifi</div>
             <p class="detail-desc-text">${item.desc}</p>
         </div>
 
         <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">💊</span> Birinchi yordam va chora</div>
+            <div class="detail-section-title"><span class="detail-icon">рџ’Љ</span> Birinchi yordam va chora</div>
             <div class="aid-card">
                 <p>${item.aid}</p>
             </div>
         </div>
 
         <div class="tip-item" style="margin-top:12px; padding:12px 14px; background:var(--secondary-bg-color); border-radius:10px;">
-            <span>⚠️</span>
+            <span>вљ пёЏ</span>
             <span style="font-size:13px; color:var(--hint-color);">Har qanday kasallikda o'z-o'zini davolashdan ko'ra, malakali shifokor ko'rigidan o'tish tavsiya etiladi.</span>
         </div>
     `;
@@ -827,19 +827,19 @@ function initCalculators() {
         let pointerPos = 0; // % from left
 
         if (bmi < 18.5) {
-            status = "Kam vazn ⚠️";
+            status = "Kam vazn вљ пёЏ";
             desc = "Sizning tana vazningiz me'yordan past. Sog'lom va to'yimli ovqatlanishga harakat qiling.";
             pointerPos = 15;
         } else if (bmi >= 18.5 && bmi < 25) {
-            status = "Normal vazn ✅";
+            status = "Normal vazn вњ…";
             desc = "Sizning vazningiz mutlaqo me'yorda! Faol bo'ling va to'g'ri ovqatlanishda davom eting.";
             pointerPos = 40;
         } else if (bmi >= 25 && bmi < 30) {
-            status = "Ortiqcha vazn ⚠️";
+            status = "Ortiqcha vazn вљ пёЏ";
             desc = "Tana vazningiz me'yordan bir oz yuqori. Jismoniy mashqlar va shirinliklarni kamaytirish tavsiya etiladi.";
             pointerPos = 65;
         } else {
-            status = "Semizlik 🚨";
+            status = "Semizlik рџљЁ";
             desc = "Sizda semizlik darajasi aniqlandi. Sog'lig'ingiz uchun shifokor-dietolog bilan maslahatlashishni tavsiya qilamiz.";
             pointerPos = 90;
         }
@@ -920,20 +920,20 @@ function initCalculators() {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // QUIZ
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-// ═══════════════════════════════════════════════════════════════════
-// QUIZ — 65 ta savollik havza, har sessiyada 10 ta tasodifiy
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+// QUIZ вЂ” 65 ta savollik havza, har sessiyada 10 ta tasodifiy
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 const QUIZ_POOL = [
     { q: "Kuyganda birinchi nima qilish kerak?", options: ["Yog' surish", "Muz qo'yish", "Sovuq suv ostida ushlab turish", "Tish pastasi surtish"], answer: 2 },
     { q: "Qon ketishini to'xtatish uchun qanday bosim o'rnatiladi?", options: ["Yaraning pastki qismiga", "Yaraning yuqori qismiga", "Yara ustiga to'g'ridan-to'g'ri", "Yon tomonga"], answer: 2 },
     { q: "Yurak xurujida bemorni qanday o'tqizish kerak?", options: ["To'liq yotqizish", "Yarim o'tirgan holatda", "Tik turdirish", "Oyoqlarini ko'targan holda yotqizish"], answer: 1 },
-    { q: "BMI qanday formulada hisoblanadi?", options: ["Vazn × bo'y", "Vazn / (bo'y²)", "(Vazn + bo'y) / 2", "Vazn - bo'y"], answer: 1 },
-    { q: "Normal BMI qiymati qancha?", options: ["10 – 15", "15 – 18.5", "18.5 – 24.9", "25 – 30"], answer: 2 },
+    { q: "BMI qanday formulada hisoblanadi?", options: ["Vazn Г— bo'y", "Vazn / (bo'yВІ)", "(Vazn + bo'y) / 2", "Vazn - bo'y"], answer: 1 },
+    { q: "Normal BMI qiymati qancha?", options: ["10 вЂ“ 15", "15 вЂ“ 18.5", "18.5 вЂ“ 24.9", "25 вЂ“ 30"], answer: 2 },
     { q: "Tomoqqa narsa tiqilganda qaysi usul qo'llaniladi?", options: ["Geymlix usuli", "CPR usuli", "Turniket usuli", "Shina usuli"], answer: 0 },
     { q: "Tez yordam raqami qancha?", options: ["101", "102", "103", "104"], answer: 2 },
     { q: "Hushidan ketgan bemorning oyoqlari qanday bo'lishi kerak?", options: ["Pastga tushirilgan", "30 sm ko'tarilgan", "Bukib qo'yilgan", "Ikki yon tomonga yozilgan"], answer: 1 },
@@ -945,7 +945,7 @@ const QUIZ_POOL = [
     { q: "Insult belgilarida birinchi yordam:", options: ["Bemorni yurgizish", "Yotqizib boshini biroz ko'tarish va 103 chaqirish", "Sovuq suv ichirish", "Dori berish"], answer: 1 },
     { q: "Faollashtirilgan ko'mir har necha kg vazn uchun 1 tabletka beriladi?", options: ["5 kg", "10 kg", "15 kg", "20 kg"], answer: 1 },
     { q: "Noshadir spirti nima uchun ishlatiladi?", options: ["Yaralarni dezinfeksiya qilish", "Hushidan ketgan odamni o'ziga keltirish", "Harorat tushirish", "Og'riq qoldirish"], answer: 1 },
-    { q: "Burun qonganda boshni qanday tutish kerak?", options: ["Orqaga eğish", "Oldinga engashtirish", "Yon tomonga burish", "Boshni ko'tarish"], answer: 1 },
+    { q: "Burun qonganda boshni qanday tutish kerak?", options: ["Orqaga eДџish", "Oldinga engashtirish", "Yon tomonga burish", "Boshni ko'tarish"], answer: 1 },
     { q: "CPR (yurak-o'pka reanimatsiyasi) qanday bajariladi?", options: ["Ko'krak siqish + sun'iy nafas", "Faqat sun'iy nafas", "Faqat ko'krak siqish", "Orqaga zarba berish"], answer: 0 },
     { q: "Elektr toki ursa birinchi nima qilish kerak?", options: ["Bemorni qo'llar bilan tortish", "Elektr manbaini o'chirish yoki bemorni quruq tayoq bilan itarish", "Suvga yaxshiroq ulash", "Hech narsa qilmay 103 kutish"], answer: 1 },
     { q: "Ilon chaqganda nima QILISH MUMKIN EMAS?", options: ["A'zoni harakatsiz saqlash", "Zaharni og'iz bilan so'rib chiqarish", "103 chaqirish", "Bemorni tinch saqlash"], answer: 1 },
@@ -957,7 +957,7 @@ const QUIZ_POOL = [
     { q: "FVV (Favqulodda vaziyatlar xizmati) raqami qancha?", options: ["101", "102", "103", "1050"], answer: 3 },
     { q: "Ari chaqganda birinchi nima qilish kerak?", options: ["Jarohatni ovqatga bosish", "Nishni pinset bilan chiqarib olish", "Nishni barmoq bilan siqish", "Isitish"], answer: 1 },
     { q: "Miya chayqalishida bemor qanday bo'lishi kerak?", options: ["Tik turishi", "Yugurishi", "Tekis yotishi", "Sakrashi"], answer: 2 },
-    { q: "Lat yeyishda (bruise) birinchi chorа:", options: ["Issiq kompres", "Massaj", "Muz qo'yish", "Sport qilish"], answer: 2 },
+    { q: "Lat yeyishda (bruise) birinchi chorР°:", options: ["Issiq kompres", "Massaj", "Muz qo'yish", "Sport qilish"], answer: 2 },
     { q: "Pay cho'zilganda bo'g'imni nima bilan mahkamlash kerak?", options: ["Ip bilan", "Elastik bint bilan", "Qattiq sim bilan", "Mahkamlash kerak emas"], answer: 1 },
     { q: "Kimyoviy kuyishda yara necha daqiqa suv ostida tutiladi?", options: ["5 daqiqa", "10 daqiqa", "20 daqiqa", "1 daqiqa"], answer: 2 },
     { q: "Zaharlanishda nima uchun bemorni qustirish tavsiya etilmaydi?", options: ["Samarasiz bo'lgani uchun", "Zahar qizilo'ngachni qaytishda yana kuydirishi va nafas yo'liga tushishi mumkinligi uchun", "Qon bosimini tushirib yuborishi uchun", "Bemorni charchatgani uchun"], answer: 1 },
@@ -1118,9 +1118,9 @@ function finishQuiz() {
     updateQuizStats();
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // HISTORY (LocalStorage + Canvas Chart)
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 function saveHistory(type, data) {
     const key = `history_${type}`;
@@ -1271,13 +1271,13 @@ function drawChart(type) {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // BODY MAP FEATURE
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-// ═══════════════════════════════════════════════════════════════════
-// BODY MAP FEATURE — Medical Scanner with Front & Back Views
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+// BODY MAP FEATURE вЂ” Medical Scanner with Front & Back Views
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 let bodyMapData = null;
 let selectedBodyPartKey = null;
@@ -1500,7 +1500,7 @@ const BACK_BODY_SVG = `
         <line x1="140" y1="128" x2="140" y2="250" stroke="#5eead4" stroke-width="2" stroke-dasharray="3 3"/>
         <circle cx="140" cy="180" r="4.5" fill="#fde047" class="part-pin"/>
         <rect x="110" y="170" width="60" height="20" class="part-label-bg" style="fill: rgba(15,23,42,0.9); stroke: #fde047; stroke-width: 1.5;"/>
-        <text x="140" y="184" class="part-label" style="fill: #fde047; font-size: 11px;">🔙 Bel / Orqa</text>
+        <text x="140" y="184" class="part-label" style="fill: #fde047; font-size: 11px;">рџ”™ Bel / Orqa</text>
     </g>
 
     <!-- Left Arm Back -->
@@ -1620,19 +1620,19 @@ async function initBodyMap() {
 
     // Local fallback in case body_map_data.json fails to load
     const fallbackBodyParts = {
-      head: { title: "🧠 Bosh", icon: "🧠", problems: ["Bosh og'rig'i", "Bosh aylanishi", "Migren", "Charchoq"], tip: "Dam olish, yetarli suyuqlik ichish va ekran vaqtini kamaytirish yordam berishi mumkin." },
-      neck: { title: "🦴 Bo'yin", icon: "🦴", problems: ["Bo'yin og'rig'i", "Mushak zo'riqishi", "Qotish"], tip: "Yengil mashqlar qilish va issiq dush qabul qilish tavsiya etiladi." },
-      chest: { title: "🫁 Ko'krak", icon: "🫁", problems: ["Mushak zo'riqishi", "Ko'krak sohasidagi noqulaylik"], tip: "Chuqur nafas oling va tinchlanishga harakat qiling. Og'riq davom etsa, darhol shifokorga murojaat qiling." },
-      abdomen: { title: "🫃 Qorin", icon: "🫃", problems: ["Qorin og'rig'i", "Dam bo'lish", "Hazm noqulayligi"], tip: "Yengil ovqatlaning va gazli ichimliklardan saqlaning." },
-      hip: { title: "🦴 Chanoq / Dumba", icon: "🦴", problems: ["Og'riq", "Asab siqilishi", "Mushak zo'riqishi"], tip: "Uzoq o'tirmaslikka va vaqti-vaqti bilan yurishga harakat qiling." },
-      thigh: { title: "🦵 Son", icon: "🦵", problems: ["Mushak og'rig'i", "Zo'riqish"], tip: "Yengil massaj va oyoqni balandroq qilib yotish foydali." },
-      knee: { title: "🦿 Tizza", icon: "🦿", problems: ["Tizza og'rig'i", "Zo'riqish"], tip: "Tizzaga og'irlik tushirmang va elastik bint bilan o'rab oling." },
-      shin: { title: "🦴 Boldir", icon: "🦴", problems: ["Mushak og'rig'i", "Zo'riqish", "Charchoq"], tip: "Issiq vanna yoki yengil massaj qiling." },
-      foot: { title: "🦶 Panja / Tovon", icon: "🦶", problems: ["Panja og'rig'i", "Zo'riqish", "Charchoq"], tip: "Poyabzalni yechib, oyoqlarga dam bering." },
-      shoulder: { title: "💪 Yelka", icon: "💪", problems: ["Yelka og'rig'i", "Qotish", "Mushak zo'riqishi"], tip: "Yelkani issiq tuting va og'ir narsa ko'tarmang." },
-      arm: { title: "🤲 Qo'l", icon: "🤲", problems: ["Qo'l og'rig'i", "Charchoq", "Uvishish"], tip: "Qo'lni bo'sh qo'yib, bilak mashqlarini bajaring." },
-      hand: { title: "🖐 Kaft", icon: "🖐", problems: ["Barmoqlar og'rig'i", "Uvishish", "Siqilish"], tip: "Barmoqlarni qisib-yozib mashq qiling." },
-      back: { title: "🔙 Bel va Orqa", icon: "🔙", problems: ["Bel og'rig'i", "Qotish", "Zo'riqish"], tip: "Qattiqroq joyda yotish va og'irlik ko'tarmaslik tavsiya etiladi." }
+      head: { title: "рџ§  Bosh", icon: "рџ§ ", problems: ["Bosh og'rig'i", "Bosh aylanishi", "Migren", "Charchoq"], tip: "Dam olish, yetarli suyuqlik ichish va ekran vaqtini kamaytirish yordam berishi mumkin." },
+      neck: { title: "рџ¦ґ Bo'yin", icon: "рџ¦ґ", problems: ["Bo'yin og'rig'i", "Mushak zo'riqishi", "Qotish"], tip: "Yengil mashqlar qilish va issiq dush qabul qilish tavsiya etiladi." },
+      chest: { title: "рџ«Ѓ Ko'krak", icon: "рџ«Ѓ", problems: ["Mushak zo'riqishi", "Ko'krak sohasidagi noqulaylik"], tip: "Chuqur nafas oling va tinchlanishga harakat qiling. Og'riq davom etsa, darhol shifokorga murojaat qiling." },
+      abdomen: { title: "рџ«ѓ Qorin", icon: "рџ«ѓ", problems: ["Qorin og'rig'i", "Dam bo'lish", "Hazm noqulayligi"], tip: "Yengil ovqatlaning va gazli ichimliklardan saqlaning." },
+      hip: { title: "рџ¦ґ Chanoq / Dumba", icon: "рџ¦ґ", problems: ["Og'riq", "Asab siqilishi", "Mushak zo'riqishi"], tip: "Uzoq o'tirmaslikka va vaqti-vaqti bilan yurishga harakat qiling." },
+      thigh: { title: "рџ¦µ Son", icon: "рџ¦µ", problems: ["Mushak og'rig'i", "Zo'riqish"], tip: "Yengil massaj va oyoqni balandroq qilib yotish foydali." },
+      knee: { title: "рџ¦ї Tizza", icon: "рџ¦ї", problems: ["Tizza og'rig'i", "Zo'riqish"], tip: "Tizzaga og'irlik tushirmang va elastik bint bilan o'rab oling." },
+      shin: { title: "рџ¦ґ Boldir", icon: "рџ¦ґ", problems: ["Mushak og'rig'i", "Zo'riqish", "Charchoq"], tip: "Issiq vanna yoki yengil massaj qiling." },
+      foot: { title: "рџ¦¶ Panja / Tovon", icon: "рџ¦¶", problems: ["Panja og'rig'i", "Zo'riqish", "Charchoq"], tip: "Poyabzalni yechib, oyoqlarga dam bering." },
+      shoulder: { title: "рџ’Є Yelka", icon: "рџ’Є", problems: ["Yelka og'rig'i", "Qotish", "Mushak zo'riqishi"], tip: "Yelkani issiq tuting va og'ir narsa ko'tarmang." },
+      arm: { title: "рџ¤І Qo'l", icon: "рџ¤І", problems: ["Qo'l og'rig'i", "Charchoq", "Uvishish"], tip: "Qo'lni bo'sh qo'yib, bilak mashqlarini bajaring." },
+      hand: { title: "рџ–ђ Kaft", icon: "рџ–ђ", problems: ["Barmoqlar og'rig'i", "Uvishish", "Siqilish"], tip: "Barmoqlarni qisib-yozib mashq qiling." },
+      back: { title: "рџ”™ Bel va Orqa", icon: "рџ”™", problems: ["Bel og'rig'i", "Qotish", "Zo'riqish"], tip: "Qattiqroq joyda yotish va og'irlik ko'tarmaslik tavsiya etiladi." }
     };
 
     try {
@@ -1700,7 +1700,22 @@ async function initBodyMap() {
         aiBtn.onclick = () => {
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
-            // Close modal first
+            aiBtn.disabled = true;
+            const originalContent = aiBtn.innerHTML;
+            aiBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Ulanmoqda...';
+
+            setTimeout(() => {
+                aiBtn.disabled = false;
+                aiBtn.innerHTML = originalContent;
+                if (tg && tg.sendData) {
+                    try {
+                        const pData = bodyMapData && selectedBodyPartKey ? bodyMapData[selectedBodyPartKey.replace('left_', '').replace('right_', '')] : null;
+                        const pLabel = pData ? pData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (selectedBodyPartKey || 'bosh');
+                        tg.sendData(JSON.stringify({ action: "ai_consult", title: pLabel }));
+                    } catch (e) {}
+                }
+
+                // Close modal first
             const modal = document.getElementById('body-map-modal');
             if (modal) {
                 modal.classList.add('hidden');
@@ -1717,7 +1732,7 @@ async function initBodyMap() {
                 tg.openTelegramLink(url);
                 tg.close();
             } else {
-                alert(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
+                alert(`AI konsultant: Tana qismi вЂ” ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
             }
         };
     }
@@ -1781,15 +1796,15 @@ function populateQuickChips() {
     if (!chipsContainer || !bodyMapData) return;
 
     const chipsList = [
-        { key: 'head', icon: '🧠', name: 'Bosh' },
-        { key: 'neck', icon: '🦴', name: "Bo'yin" },
-        { key: 'chest', icon: '🫁', name: "Ko'krak" },
-        { key: 'abdomen', icon: '🫃', name: 'Qorin' },
-        { key: 'back', icon: '🔙', name: 'Bel va Orqa' },
-        { key: 'shoulder', icon: '💪', name: 'Yelka' },
-        { key: 'arm', icon: '🤲', name: "Qo'l" },
-        { key: 'knee', icon: '🦿', name: 'Tizza' },
-        { key: 'foot', icon: '🦶', name: 'Panja' }
+        { key: 'head', icon: 'рџ§ ', name: 'Bosh' },
+        { key: 'neck', icon: 'рџ¦ґ', name: "Bo'yin" },
+        { key: 'chest', icon: 'рџ«Ѓ', name: "Ko'krak" },
+        { key: 'abdomen', icon: 'рџ«ѓ', name: 'Qorin' },
+        { key: 'back', icon: 'рџ”™', name: 'Bel va Orqa' },
+        { key: 'shoulder', icon: 'рџ’Є', name: 'Yelka' },
+        { key: 'arm', icon: 'рџ¤І', name: "Qo'l" },
+        { key: 'knee', icon: 'рџ¦ї', name: 'Tizza' },
+        { key: 'foot', icon: 'рџ¦¶', name: 'Panja' }
     ];
 
     chipsContainer.innerHTML = '';
@@ -1873,7 +1888,7 @@ function _openFullModal(partKey, data) {
 
         // Set title and icon
         if (titleEl) titleEl.innerText = data.name || partKey;
-        if (iconEl) iconEl.innerText = data.icon || '🩺';
+        if (iconEl) iconEl.innerText = data.icon || 'рџ©є';
 
         // Build disease list with tips and urgent badges
         if (listEl) {
@@ -1895,7 +1910,7 @@ function _openFullModal(partKey, data) {
                             <p class="disease-desc" style="margin-top: 8px; margin-bottom: 8px;">${d.desc || ''}</p>
                             ${d.tip ? `
                             <div class="disease-tip">
-                                <span class="tip-icon">💡</span>
+                                <span class="tip-icon">рџ’Ў</span>
                                 <span>${d.tip}</span>
                             </div>` : ''}
                         </div>
@@ -1997,9 +2012,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ═══════════════════════════════════════════════════════════════════
-// OMAD BARABANI (Wheel of Fortune) — Luxury Casino-Grade Engine
-// ═══════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+// OMAD BARABANI (Wheel of Fortune) вЂ” Luxury Casino-Grade Engine
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 let isSpinning = false;
 let hasSpunThisSession = false;
 
@@ -2091,7 +2106,7 @@ function initWheelOfFortune() {
     if (remainingTimeMs > 0) {
         spinBtn.disabled = true;
         if (centerText) centerText.textContent = "KUTISH";
-        resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+        resultMsg.innerHTML = '<div class="result-icon">рџ•’</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
         resultMsg.classList.remove('hidden');
         startCountdown(remainingTimeMs);
     }
@@ -2109,7 +2124,7 @@ function initWheelOfFortune() {
                         remainingTimeMs = remaining;
                         spinBtn.disabled = true;
                         if (centerText) centerText.textContent = "KUTISH";
-                        resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+                        resultMsg.innerHTML = '<div class="result-icon">рџ•’</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
                         resultMsg.classList.remove('hidden');
                         startCountdown(remaining);
                     }
@@ -2127,7 +2142,7 @@ function initWheelOfFortune() {
         if (remainingTimeMs > 0 || hasSpunThisSession) {
             spinBtn.disabled = true;
             if (centerText) centerText.textContent = "KUTISH";
-            resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+            resultMsg.innerHTML = '<div class="result-icon">рџ•’</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
             resultMsg.classList.remove('hidden');
             const timeToUse = remainingTimeMs > 0 ? remainingTimeMs : 24 * 60 * 60 * 1000;
             startCountdown(timeToUse);
@@ -2148,7 +2163,7 @@ function initWheelOfFortune() {
         };
     }
 
-    // Wheel modal open — push navigation
+    // Wheel modal open вЂ” push navigation
     const _wheelOpen = openBtn.onclick;
     function pushWheelNav() {
         AppNavigation.push({
@@ -2187,18 +2202,18 @@ function initWheelOfFortune() {
         }
     };
 
-    // Segments — vibrant luxury palette
+    // Segments вЂ” vibrant luxury palette
     const segments = [
-        { text: "+1", label: "ball", points: 1, bg: "#0d9488", emoji: "💊" },
-        { text: "+3", label: "ball", points: 3, bg: "#0284c7", emoji: "💉" },
-        { text: "+5", label: "ball", points: 5, bg: "#0f766e", emoji: "🩺" },
-        { text: "+1", label: "ball", points: 1, bg: "#10b981", emoji: "🧬" },
-        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "⭐" },
-        { text: "SUPER", label: "PRIZ", points: 0, bg: "#dc2626", emoji: "🏆" },
-        { text: "+1", label: "ball", points: 1, bg: "#0284c7", emoji: "💊" },
-        { text: "+3", label: "ball", points: 3, bg: "#10b981", emoji: "💉" },
-        { text: "+5", label: "ball", points: 5, bg: "#0d9488", emoji: "🩺" },
-        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "⭐" }
+        { text: "+1", label: "ball", points: 1, bg: "#0d9488", emoji: "рџ’Љ" },
+        { text: "+3", label: "ball", points: 3, bg: "#0284c7", emoji: "рџ’‰" },
+        { text: "+5", label: "ball", points: 5, bg: "#0f766e", emoji: "рџ©є" },
+        { text: "+1", label: "ball", points: 1, bg: "#10b981", emoji: "рџ§¬" },
+        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "в­ђ" },
+        { text: "SUPER", label: "PRIZ", points: 0, bg: "#dc2626", emoji: "рџЏ†" },
+        { text: "+1", label: "ball", points: 1, bg: "#0284c7", emoji: "рџ’Љ" },
+        { text: "+3", label: "ball", points: 3, bg: "#10b981", emoji: "рџ’‰" },
+        { text: "+5", label: "ball", points: 5, bg: "#0d9488", emoji: "рџ©є" },
+        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "в­ђ" }
     ];
 
     function drawWheel() {
@@ -2336,7 +2351,7 @@ function initWheelOfFortune() {
         // XAVFSIZLIK: server prize frontend da mavjud bo'lmasa blokla
         if (!eligible.length) {
             isSpinning = false;
-            resultMsg.innerHTML = `<div class="result-icon">⚠️</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
+            resultMsg.innerHTML = `<div class="result-icon">вљ пёЏ</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
             resultMsg.classList.remove('hidden');
             return;
         }
@@ -2374,15 +2389,15 @@ function initWheelOfFortune() {
 
             let icon, title, desc, btnText;
             if (winningPoints === 0) {
-                icon = "🏆";
+                icon = "рџЏ†";
                 title = "SUPER PRIZ!";
-                desc = "Siz <b>Super Priz</b> — 3 kunlik Premium Pro chegirmasini yutib oldingiz!";
-                btnText = "Prizni Tasdiqlash 🎁";
+                desc = "Siz <b>Super Priz</b> вЂ” 3 kunlik Premium Pro chegirmasini yutib oldingiz!";
+                btnText = "Prizni Tasdiqlash рџЋЃ";
             } else {
-                icon = "🎉";
+                icon = "рџЋ‰";
                 title = `+${winningPoints} ball yutdingiz!`;
                 desc = "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang.";
-                btnText = "Hisobga qo'shish ✅";
+                btnText = "Hisobga qo'shish вњ…";
             }
 
             resultMsg.innerHTML = `
@@ -2538,7 +2553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dailyClaimed) {
             btnClaim.style.opacity = '0.5';
             btnClaim.style.cursor = 'not-allowed';
-            btnClaim.querySelector('.wheel-center-text').textContent = '✅ Bugungi bonus olindi';
+            btnClaim.querySelector('.wheel-center-text').textContent = 'вњ… Bugungi bonus olindi';
             btnClaim.onclick = null;
         } else {
             btnClaim.onclick = () => {
@@ -2620,3 +2635,4 @@ function buyPremium(plan) {
         window.open(url, '_blank');
     }
 }
+
