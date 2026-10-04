@@ -447,7 +447,8 @@ async def stream_gemini_to_message(
     return None
 
 async def get_web_app_url(user_id: int, page: str = None) -> str:
-    if not MINI_APP_URL:
+    base_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
+    if not base_url:
         return ""
     
     import urllib.parse
@@ -470,7 +471,7 @@ async def get_web_app_url(user_id: int, page: str = None) -> str:
     params["streak"] = bonus_info["streak"]
     params["daily_claimed"] = "1" if bonus_info["is_claimed_today"] else "0"
         
-    return f"{MINI_APP_URL}?{urllib.parse.urlencode(params)}"
+    return f"{base_url}?{urllib.parse.urlencode(params)}"
 
 # ═══════════════════════════════════════════════════════════════════
 # KLAVIATURALAR (KEYBOARDS)
@@ -478,33 +479,40 @@ async def get_web_app_url(user_id: int, page: str = None) -> str:
 
 def get_start_keyboard():
     """Asosiy reply menyu tugmalari"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="📋 Holatlar ro'yxati"),
-                KeyboardButton(text="📚 Kasalliklar")
-            ],
-            [
-                KeyboardButton(text="💬 AI Konsultatsiya (Chat)"),
-                KeyboardButton(text="🚨 Favqulodda raqamlar")
-            ],
-            [
-                KeyboardButton(text="🏥 Yaqin kasalxona"),
-                KeyboardButton(text="💊 Dori Eslatmalari")
-            ],
-            [
-                KeyboardButton(text="👤 Tibbiy Profilim"),
-                KeyboardButton(text="🔔 Kunlik Maslahatlar")
-            ],
-            [
-                KeyboardButton(text="💎 Premium"),
-                KeyboardButton(text="👥 Do'stlarni taklif qilish")
-            ],
-            [
-                KeyboardButton(text="🌐 Mening ballarim"),
-                KeyboardButton(text="📣 Reklama")
-            ],
+    base_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
+    kb_rows = []
+    if base_url:
+        kb_rows.append([KeyboardButton(text="🚀 Mini Ilovani ochish", web_app=types.WebAppInfo(url=base_url))])
+    
+    kb_rows.extend([
+        [
+            KeyboardButton(text="📋 Holatlar ro'yxati"),
+            KeyboardButton(text="📚 Kasalliklar")
         ],
+        [
+            KeyboardButton(text="💬 AI Konsultatsiya (Chat)"),
+            KeyboardButton(text="🚨 Favqulodda raqamlar")
+        ],
+        [
+            KeyboardButton(text="🏥 Yaqin kasalxona"),
+            KeyboardButton(text="💊 Dori Eslatmalari")
+        ],
+        [
+            KeyboardButton(text="👤 Tibbiy Profilim"),
+            KeyboardButton(text="🔔 Kunlik Maslahatlar")
+        ],
+        [
+            KeyboardButton(text="💎 Premium"),
+            KeyboardButton(text="👥 Do'stlarni taklif qilish")
+        ],
+        [
+            KeyboardButton(text="🌐 Mening ballarim"),
+            KeyboardButton(text="📣 Reklama")
+        ],
+    ])
+
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=kb_rows,
         resize_keyboard=True,
         persistent=True
     )
@@ -2657,15 +2665,15 @@ async def web_app_data_handler(message: types.Message):
 # ═══════════════════════════════════════════════════════════════════
 
 async def daily_tips_scheduler():
-    """Har kuni 08:00 da kunlik maslahatlarni yuboradi"""
+    """Har kuni 20:30 da kunlik maslahatlarni yuboradi"""
     logging.info("[SCHEDULER] daily_tips_scheduler started")
     from datetime import timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
     while True:
         try:
             now = datetime.now(uz_tz)
-            # Keyingi 08:00 ni hisoblash
-            target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            # Keyingi 20:30 ni hisoblash
+            target = now.replace(hour=20, minute=30, second=0, microsecond=0)
             if now >= target:
                 target += timedelta(days=1)
             wait_seconds = (target - now).total_seconds()
