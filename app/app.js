@@ -1,4 +1,4 @@
-﻿// Safe localStorage wrapper with Telegram CloudStorage sync
+// Safe localStorage wrapper with Telegram CloudStorage sync
 const SafeStorage = {
     getItem: function (key) {
         try {
@@ -1744,8 +1744,9 @@ async function initBodyMap() {
                 tg.openTelegramLink(url);
                 tg.close();
             } else {
-                alert(`AI konsultant: Tana qismi вЂ” ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
+                alert(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
             }
+            }, 300);
         };
     }
 }

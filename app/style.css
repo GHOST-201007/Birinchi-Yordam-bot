@@ -1936,16 +1936,30 @@ body.dark-mode .body-disease-modal::before {
     display: flex;
     align-items: center;
     gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
     background: linear-gradient(135deg, #042f2e 0%, #0f766e 50%, #0d9488 100%);
     color: #ffffff;
     border-radius: 18px;
     padding: 16px 18px;
-    margin: 8px 0 20px 0;
+    margin: 8px 0 14px 0;
     box-shadow: 0 10px 28px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
     border: 1px solid rgba(45, 212, 191, 0.3);
     position: relative;
     overflow: hidden;
     cursor: pointer;
+}
+
+.wheel-promo-card.daily-bonus-promo {
+    background: linear-gradient(135deg, #064e3b 0%, #047857 50%, #059669 100%);
+    box-shadow: 0 10px 28px rgba(5, 150, 105, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.wheel-promo-card.premium-promo {
+    background: linear-gradient(135deg, #3b0764 0%, #581c87 50%, #7e22ce 100%);
+    box-shadow: 0 10px 28px rgba(126, 34, 206, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 1px solid rgba(192, 132, 252, 0.4);
 }
 
 .wheel-promo-card::after {
@@ -2107,6 +2121,7 @@ body.dark-mode .body-disease-modal::before {
     letter-spacing: -0.5px;
     background: linear-gradient(180deg, #ffffff 0%, #99f6e4 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
