@@ -2665,15 +2665,15 @@ async def web_app_data_handler(message: types.Message):
 # ═══════════════════════════════════════════════════════════════════
 
 async def daily_tips_scheduler():
-    """Har kuni 20:30 da kunlik maslahatlarni yuboradi"""
+    """Har kuni 08:00 da kunlik maslahatlarni yuboradi"""
     logging.info("[SCHEDULER] daily_tips_scheduler started")
     from datetime import timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
     while True:
         try:
             now = datetime.now(uz_tz)
-            # Keyingi 20:30 ni hisoblash
-            target = now.replace(hour=20, minute=30, second=0, microsecond=0)
+            # Keyingi 08:00 ni hisoblash
+            target = now.replace(hour=8, minute=0, second=0, microsecond=0)
             if now >= target:
                 target += timedelta(days=1)
             wait_seconds = (target - now).total_seconds()
