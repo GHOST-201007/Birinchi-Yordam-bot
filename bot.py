@@ -479,12 +479,7 @@ async def get_web_app_url(user_id: int, page: str = None) -> str:
 
 def get_start_keyboard():
     """Asosiy reply menyu tugmalari"""
-    base_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
-    kb_rows = []
-    if base_url:
-        kb_rows.append([KeyboardButton(text="🚀 Mini Ilovani ochish", web_app=types.WebAppInfo(url=base_url))])
-    
-    kb_rows.extend([
+    kb_rows = [
         [
             KeyboardButton(text="📋 Holatlar ro'yxati"),
             KeyboardButton(text="📚 Kasalliklar")
@@ -508,8 +503,8 @@ def get_start_keyboard():
         [
             KeyboardButton(text="🌐 Mening ballarim"),
             KeyboardButton(text="📣 Reklama")
-        ],
-    ])
+        ]
+    ]
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=kb_rows,
