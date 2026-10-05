@@ -59,9 +59,8 @@ def _cache_set(key: str, data: dict):
 
 def _get_conn():
     if DB_TYPE == "postgres":
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.autocommit = False
-        return conn
+        import database
+        return database.get_connection()
     else:
         db_path = os.path.join(os.path.dirname(__file__), "medicine_knowledge.db")
         return sqlite3.connect(db_path)

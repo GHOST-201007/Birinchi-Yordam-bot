@@ -4,6 +4,7 @@ import datetime
 import os
 import logging
 from dotenv import load_dotenv
+from psycopg2.pool import ThreadedConnectionPool
 
 load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -12,11 +13,40 @@ def get_uz_now():
     from datetime import timezone, timedelta
     return datetime.datetime.now(timezone(timedelta(hours=5)))
 
+# Pool initializatsiyasi
+db_pool = None
+
+class PooledConnectionWrapper:
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+        
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+        
+    def commit(self):
+        self._conn.commit()
+        
+    def rollback(self):
+        self._conn.rollback()
+        
+    def close(self):
+        if self._conn:
+            self._pool.putconn(self._conn)
+            self._conn = None
+            
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 def get_connection():
-    """PostgreSQL bazaga ulanish. DATABASE_URL muhit o'zgaruvchisidan oladi."""
-    conn = psycopg2.connect(DATABASE_URL)
+    """PostgreSQL bazaga ulanish. Pooling orqali ishlaydi."""
+    global db_pool
+    if db_pool is None:
+        db_pool = ThreadedConnectionPool(minconn=1, maxconn=50, dsn=DATABASE_URL)
+    
+    conn = db_pool.getconn()
     conn.autocommit = False
-    return conn
+    return PooledConnectionWrapper(conn, db_pool)
 
 def init_db():
     """Ma'lumotlar bazasini yaratish"""
@@ -90,8 +120,36 @@ def init_db():
         )
     ''')
 
+    # Daily Engagement jadvallari
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS user_interests (
+            user_id BIGINT,
+            interest TEXT,
+            weight INTEGER DEFAULT 1,
+            updated_at TIMESTAMP,
+            PRIMARY KEY (user_id, interest)
+        )
+    ''')
+    
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS engagement_logs (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            event_type TEXT, -- '08:00', '10:10', 'premium_checkin'
+            event_date TEXT, -- 'YYYY-MM-DD'
+            question TEXT,
+            category TEXT,
+            sent_at TIMESTAMP,
+            answered_at TIMESTAMP,
+            answer_text TEXT,
+            bot_reply TEXT,
+            UNIQUE (user_id, event_type, event_date)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
 
 # ─────────────────────────────────────────────────────────────────
 # ASOSIY FOYDALANUVCHI FUNKSIYALARI

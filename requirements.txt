@@ -2,3 +2,4 @@ aiogram>=3.0.0
 python-dotenv
 google-genai
 psycopg2-binary
+APScheduler

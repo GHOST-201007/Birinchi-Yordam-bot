@@ -805,7 +805,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer(ai_response, parse_mode="HTML")
         return
 
-    web_app_url = await get_web_app_url(user.id)  # Bir marta yuklanadi
+    # (web_app_url yuklash olib tashlandi, keraksiz DB query tejaldı)
     
     start_text = (
         "🚑 <b>Assalomu alaykum!</b>\n\n"
@@ -846,7 +846,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await update_user_menu_button(user.id, message.bot)
 
 async def update_user_menu_button(user_id: int, current_bot: Bot):
-    web_app_url = await get_web_app_url(user_id)
+    # Telegram API requires MenuButton WebAppInfo URL to have NO query params
+    web_app_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
     if web_app_url:
         try:
             await current_bot.set_chat_menu_button(
@@ -3412,6 +3413,47 @@ async def fallback_contact(message: types.Message):
 @dp.message(F.text)
 async def fallback_text(message: types.Message, state: FSMContext):
     logging.info("message_type=text")
+    user_id = message.from_user.id
+    
+    # Engagement javoblarini tekshirish
+    from services import engagement
+    import database
+    
+    now = database.get_uz_now()
+    event_date = now.strftime("%Y-%m-%d")
+    
+    conn = database.get_connection()
+    c = conn.cursor()
+    try:
+        c.execute('''
+            SELECT id, event_type, question, sent_at
+            FROM engagement_logs
+            WHERE user_id = %s AND event_date = %s AND answered_at IS NULL
+            ORDER BY sent_at DESC LIMIT 1
+        ''', (user_id, event_date))
+        unanswered = c.fetchone()
+    except Exception as e:
+        logging.error(f"Error checking engagement log: {e}")
+        unanswered = None
+    finally:
+        conn.close()
+        
+    if unanswered:
+        event_type = unanswered[1]
+        engagement.update_engagement_answer(user_id, event_type, event_date, message.text)
+        
+        if event_type == 'premium_checkin':
+            reply = await engagement.generate_premium_reply(message.text, get_gemini_response)
+            engagement.update_engagement_answer(user_id, event_type, event_date, message.text, bot_reply=reply)
+            await message.reply(reply, parse_mode="HTML")
+            return
+        elif event_type == '10:10':
+            await message.reply("Fikringiz uchun rahmat! 😊 O'zingizni asrang.", parse_mode="HTML")
+            return
+        elif event_type == '08:00':
+            await message.reply("Ajoyib! Javobingiz qabul qilindi. 👍", parse_mode="HTML")
+            return
+
     # Tizimdagi komandalarga yoki menyularga tushmagan har qanday oddiy matnni AI ga yo'naltiramiz
     await state.set_state(AiChatStates.chatting)
     await handle_ai_chat(message, state)
@@ -3484,9 +3526,9 @@ async def main():
     background_tasks.add(task1)
     task1.add_done_callback(background_tasks.discard)
     
-    task2 = asyncio.create_task(daily_tips_scheduler())       # Feature 7: Kunlik maslahatlar
-    background_tasks.add(task2)
-    task2.add_done_callback(background_tasks.discard)
+    # Yangi Daily Engagement tizimi
+    from services import engagement_scheduler
+    engagement_scheduler.start_scheduler(bot, get_gemini_response)
     
     task3 = asyncio.create_task(start_web_server())           # Render web server
     background_tasks.add(task3)
