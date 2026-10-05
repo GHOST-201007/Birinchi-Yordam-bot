@@ -116,7 +116,7 @@ def start_scheduler(bot, get_gemini_response):
     # Schedule the jobs
     scheduler.add_job(run_0800_engagement, 'cron', hour=8, minute=0)
     scheduler.add_job(run_1010_engagement, 'cron', hour=10, minute=10)
-    scheduler.add_job(run_premium_checkin, 'cron', hour=18, minute=0)
+    scheduler.add_job(run_premium_checkin, 'cron', hour=20, minute=30)
     
     # Check for missed jobs (e.g. restart happened at 08:05)
     async def run_missed_jobs():
@@ -132,9 +132,9 @@ def start_scheduler(bot, get_gemini_response):
             logging.info("[ENGAGEMENT] Restart in 10:xx window. Running 10:10 job.")
             await run_1010_engagement()
             
-        # Agar 18:00 dan 20:59 gacha bo'lsa, premium checkin
-        if now.hour >= 18 and now.hour < 21:
-            logging.info("[ENGAGEMENT] Restart in 18:xx window. Running premium_checkin job.")
+        # Agar 20:30 dan 22:59 gacha bo'lsa, premium checkin
+        if (now.hour == 20 and now.minute >= 30) or (now.hour >= 21 and now.hour < 23):
+            logging.info("[ENGAGEMENT] Restart in 20:30 window. Running premium_checkin job.")
             await run_premium_checkin()
 
     scheduler.start()
