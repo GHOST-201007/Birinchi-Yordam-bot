@@ -206,6 +206,8 @@ load_dotenv()
 
 TOKEN          = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+logging.info(f"GEMINI_API_KEY configured: {'YES' if GEMINI_API_KEY else 'NO'}")
+logging.info(f"GEMINI_API_KEY placeholder: {'YES' if GEMINI_API_KEY == 'YOUR_GEMINI_API_KEY_HERE' else 'NO'}")
 ADMIN_ID       = os.getenv("ADMIN_ID", "YOUR_ADMIN_ID")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "YOUR_ADMIN_USERNAME")
 CARD_NUMBER         = os.getenv("CARD_NUMBER", "")
@@ -240,9 +242,8 @@ if not TOKEN or TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
 
 # Gemini AI sozlamalari
 gemini_client = None
+gemini_client_initialized = False
 if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
-    # SDK ichki retry/backoff o'chiriladi (attempts=1): har bir so'rov bitta urinish.
-    # Vaqtinchalik xatoda fallback'ni o'zimiz boshqaramiz (pastda).
     try:
         gemini_client = genai.Client(
             api_key=GEMINI_API_KEY,
@@ -250,8 +251,16 @@ if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
                 retry_options=genai_types.HttpRetryOptions(attempts=1)
             ),
         )
-    except Exception:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        gemini_client_initialized = True
+    except Exception as e:
+        logging.error(f"Gemini client initialization failure: {e}")
+        try:
+            gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+            gemini_client_initialized = True
+        except Exception as e2:
+            logging.error(f"Fallback Gemini client init failed: {e2}")
+            gemini_client = None
+logging.info(f"Gemini client initialized: {'YES' if gemini_client_initialized else 'NO'}")
 
 bot = Bot(token=TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())  # FSM uchun MemoryStorage
@@ -3407,6 +3416,10 @@ async def fallback_contact(message: types.Message):
 
 @dp.message(F.text)
 async def fallback_text(message: types.Message, state: FSMContext):
+    # Skip if already in AI chat state to avoid duplicate handling
+    current_state = await state.get_state()
+    if current_state == AiChatStates.chatting.state:
+        return
     logging.info("message_type=text")
     user_id = message.from_user.id
     
@@ -3455,9 +3468,13 @@ async def fallback_text(message: types.Message, state: FSMContext):
 
 @dp.message()
 async def fallback_all(message: types.Message):
+    # Ignore text messages – they are handled by fallback_text / AI handlers.
+    if message.content_type == "text":
+        return
     msg_type = message.content_type
     logging.info(f"message_type={msg_type}")
     await message.reply("ℹ️ Bu turdagi xabar qabul qilindi, lekin hozircha uni qayta ishlash imkonim yo'q.")
+    return
 
 async def health_check(request):
     return web.Response(text="Birinchi Yordam bot is running!")
