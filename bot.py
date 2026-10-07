@@ -603,6 +603,8 @@ async def premium_upsell(event):
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     """/start yuborilganda"""
+    start_ts = time.time()
+    logging.info(f"START received at {start_ts:.3f}")
     await state.clear()
     user = message.from_user
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or None
@@ -610,12 +612,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     # Always register user first to ensure they exist in database
     await asyncio.to_thread(database.register_user, user.id, full_name=full_name, username=username)
+    db_reg_ts = time.time()
+    logging.info(f"DB register_user: {(db_reg_ts - start_ts) * 1000:.1f} ms")
     
     args = message.text.split() if message.text else []
     
     # Check for daily bonus claim
     if len(args) > 1 and args[1] == "claim_daily":
+        daily_start = time.time()
         success, points, streak = await asyncio.to_thread(database.check_and_grant_daily_bonus, user.id)
+        daily_end = time.time()
+        logging.info(f"Daily bonus check: {(daily_end - daily_start) * 1000:.1f} ms")
         if success:
             streak_stars = "⭐" * min(streak, 7)
             bonus_msg = (
@@ -627,11 +634,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
         else:
             bonus_msg = "✅ Siz bugungi bonusni olib bo'lgansiz!\n⏰ Ertaga yana kiring."
         await message.answer(bonus_msg, parse_mode="HTML", reply_markup=get_start_keyboard())
-        await update_user_menu_button(user.id, message.bot)
+        # await update_user_menu_button(user.id, message.bot)  # removed to set menu button only at startup
+        total_ts = time.time()
+        logging.info(f"TOTAL /start (daily bonus path): {(total_ts - start_ts) * 1000:.1f} ms")
         return
 
     # Deep link orqali premium xarid tugmasi bosilganda
     if len(args) > 1 and args[1] in ("buy_pro_7", "buy_plus_30", "buy_ultra_30"):
+        premium_start = time.time()
+        logging.info(f"Premium check start: {premium_start - start_ts:.3f}s")
         action = args[1]
         user_info = await asyncio.to_thread(database.get_user_info, user.id)
         current_type = user_info.get("premium_type", "free") if user_info else "free"
@@ -652,9 +663,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 parse_mode="HTML",
                 reply_markup=get_start_keyboard()
             )
-            await update_user_menu_button(user.id, message.bot)
+            # await update_user_menu_button(user.id, message.bot)  # removed
             return
-
         if action == "buy_pro_7":
             title = "⭐ Premium Pro — 7 kun"
             desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
@@ -690,7 +700,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         except Exception as e:
             logging.error(f"Deep link invoice xato: {e}")
             await message.answer("⚠️ Invoice yuborishda xatolik. Iltimos /premium buyrug'ini ishlating.", parse_mode="HTML")
-        await update_user_menu_button(user.id, message.bot)
+        # await update_user_menu_button(user.id, message.bot)  # removed
         return
         
     # Check for spin bonus parameter from Wheel of Fortune Web App
@@ -711,7 +721,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 reply_markup = builder.as_markup()
 
             await message.answer(msg, parse_mode="HTML", reply_markup=reply_markup)
-            await update_user_menu_button(user.id, message.bot)
+            # await update_user_menu_button(user.id, message.bot)  # removed
             return
         except Exception as e:
             logging.error(f"Error handling spin parameter: {e}")
@@ -846,8 +856,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=get_start_keyboard(),
         parse_mode="HTML"
     )
-
-    await update_user_menu_button(user.id, message.bot)
+    
+# await update_user_menu_button(user.id, message.bot)  # removed; now set at startup
+    after_menu_ts = time.time()
+    logging.info(f"Menu button update latency: {(after_menu_ts - start_ts) * 1000:.1f} ms")
+    logging.info(f"TOTAL /start latency: {(after_menu_ts - start_ts) * 1000:.1f} ms")
 
 async def update_user_menu_button(user_id: int, current_bot: Bot):
     # Telegram API requires MenuButton WebAppInfo URL to have NO query params
