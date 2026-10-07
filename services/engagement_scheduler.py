@@ -3,6 +3,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import database
 from services import engagement
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def start_scheduler(bot, get_gemini_response):
     scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
@@ -64,14 +65,23 @@ def start_scheduler(bot, get_gemini_response):
                 msg_text = None
                 category = "followup"
                 
-                if morning_log and morning_log[3]: # answer_text
-                    # User answered! AI follow up
+                # Determine message text based on previous morning engagement
+                if morning_log and morning_log[3]:  # answer_text exists
+                    # User answered the 08:00 question, generate AI follow‑up
                     msg_text = await engagement.generate_1010_followup(morning_log[3], get_gemini_response)
+                    category = "followup"
                 else:
-                    # User didn't answer, pick a new different question
+                    # No answer yet – send a new morning‑style question
                     q_item = engagement.pick_morning_question(user_id)
                     msg_text = f"🌞 <b>Kuningiz qanday o'tyapti?</b>\n\n{q_item['question']}"
-                    category = q_item['category']
+                    category = q_item["category"]
+                
+                # Add inline button for AI answer retrieval
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                # Callback data includes event type and date for safe identification
+                builder.button(text="🤖 Javob olish", callback_data=f"engagement_answer:10:10:{event_date}")
+                reply_markup = builder.as_markup()
                 
                 is_new = engagement.log_engagement_event(
                     user_id, '10:10', event_date, msg_text, category
@@ -79,7 +89,12 @@ def start_scheduler(bot, get_gemini_response):
                 
                 if is_new:
                     try:
-                        await bot.send_message(chat_id=user_id, text=msg_text, parse_mode="HTML")
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=msg_text,
+                            parse_mode="HTML",
+                            reply_markup=reply_markup,
+                        )
                         await asyncio.sleep(0.05)
                     except Exception:
                         pass
@@ -92,8 +107,9 @@ def start_scheduler(bot, get_gemini_response):
         c = conn.cursor()
         try:
             # Faqat activ premiumlar
-            c.execute("SELECT user_id FROM users WHERE is_banned = 0 AND is_premium = 1 AND premium_type != 'free'")
+            c.execute("SELECT user_id FROM users WHERE is_banned = 0 AND is_premium = 1")
             users = c.fetchall()
+            logging.info(f"[ENGAGEMENT] Premium check-in target users: {len(users)}")
             event_date = database.get_uz_now().strftime("%Y-%m-%d")
             
             question = "🌆 Kuningiz yaxshi o'tdimi? Bugun o'zingizni qanday his qilyapsiz?"
@@ -115,7 +131,8 @@ def start_scheduler(bot, get_gemini_response):
 
     # Schedule the jobs
     scheduler.add_job(run_0800_engagement, 'cron', hour=8, minute=0)
-    scheduler.add_job(run_1010_engagement, 'cron', hour=10, minute=10)
+    # 10:10 job runs only on even calendar days
+    scheduler.add_job(run_1010_engagement, 'cron', hour=10, minute=10, day='2-30/2')
     scheduler.add_job(run_premium_checkin, 'cron', hour=20, minute=30)
     
     # Check for missed jobs (e.g. restart happened at 08:05)
