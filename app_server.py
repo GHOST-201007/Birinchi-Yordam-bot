@@ -5,8 +5,52 @@ import os
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+# Added for Mini App initData validation
+import urllib.parse
+import hmac
+import hashlib
+import datetime
+
+def validate_init_data(init_data: str) -> bool:
+    """Validate Telegram WebApp initData string.
+    Returns True if data is authentic and not expired (24‑hour window).
+    """
+    try:
+        params = urllib.parse.parse_qs(init_data, keep_blank_values=True)
+        hash_vals = params.pop('hash', None)
+        if not hash_vals:
+            return False
+        received_hash = hash_vals[0]
+        sorted_items = sorted((k, v[0]) for k, v in params.items())
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted_items)
+        bot_token = os.getenv('BOT_TOKEN')
+        if not bot_token:
+            return False
+        # Generate secret key as per Telegram Web Apps spec
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        hmac_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(hmac_hash, received_hash):
+            return False
+        auth_date_str = params.get('auth_date', [None])[0]
+        if not auth_date_str:
+            return False
+        try:
+            auth_ts = int(auth_date_str)
+        except ValueError:
+            return False
+        now_ts = int(datetime.datetime.utcnow().timestamp())
+        # Reject if auth_date is in the future beyond a small clock‑skew (60 s)
+        if auth_ts > now_ts + 60:
+            return False
+        # Reject if auth_date is older than 24 h plus a small skew
+        if now_ts - auth_ts > 86400 + 60:
+            return False
+        return True
+    except Exception:
+        return False
+
 APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
-PORT = 8000
+PORT = 8080
 
 def get_file_version(filepath):
     try:
