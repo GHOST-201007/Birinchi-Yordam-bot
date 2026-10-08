@@ -1,17 +1,49 @@
 import random
 import datetime
 import database
+import logging
 
 QUESTION_BANK = [
-    {"category": "hydration", "question": "Bugun qancha suv ichishni rejalashtirgansiz? O'zingizni yaxshi his qilish uchun kichik bir stakan ko'proq ichishga nima deysiz?"},
-    {"category": "sleep", "question": "Kechasi yaxshi dam ola oldingizmi? Bugun energiya bilan to'la bo'lish uchun qanday kichik odat sizga yordam beradi?"},
-    {"category": "physical_activity", "question": "Bugun jismoniy faollik uchun atigi 10 daqiqa ajrata olsangiz, qaysi mashqni tanlagan bo'lardingiz?"},
-    {"category": "stress_management", "question": "Hozirgi paytda sizni charchatayotgan narsalar bormi? Bugun 5 daqiqa o'zingiz yoqtirgan ishni qilish imkoni bormi?"},
-    {"category": "healthy_habits", "question": "Bugun sog'ligingiz uchun foydali bo'lgan qanday bitta kichik tanlov qila olasiz?"},
-    {"category": "nutrition", "question": "Bugungi tushlik yoki kechki ovqatda qanday foydali mahsulot qo'shmoqchisiz?"},
-    {"category": "motivation", "question": "O'z sog'ligingizni yaxshilash yo'lida sizga eng ko'p nima turtki beradi?"},
-    {"category": "self_care", "question": "Bugun faqat o'zingiz uchun qiladigan bitta yoqimli ish nima bo'lishi mumkin?"}
+    {"category": "hydration", "question": "Suv ichish sizga energiya beradi. Bugun qancha ichishni rejalashtiryapsiz?"},
+    {"category": "sleep", "question": "Kechagi damni qoniqtirdimi? Bugun quvvatni oshirish uchun biror kichik odatingiz bormi?"},
+    {"category": "physical_activity", "question": "Bugun 10 daqiqalik jismoniy harakatni rejalashtiryapsiz. Qaysi mashqni tanlaysiz?"},
+    {"category": "stress_management", "question": "Bugun asabiylashtirgan narsa bormi? Uni 5 daqiqada qanday kamaytirardingiz?"},
+    {"category": "healthy_habits", "question": "Sog‘lig‘ingiz uchun kichik bir o‘zgarish qilishni xohlaysizmi? Bugun nimalarni sinab ko‘rmoqchisiz?"},
+    {"category": "nutrition", "question": "Tushlik yoki kechki ovqatga qanday foydali qo‘shimchalar qo‘shasiz?"},
+    {"category": "motivation", "question": "Bugun sizni ilhomlantirgan narsa nima?"},
+    {"category": "self_care", "question": "O‘zingizga bir payt ajratib, nima qilishni xohlaysiz?"},
+    {"category": "mindfulness", "question": "Bugun bir necha daqiqa nafas olishga e’tibor qaratdingizmi? Qanday his qildingiz?"}
 ]
+
+
+# Additional premium check‑in prompts – short, friendly and varied
+PREMIUM_CHECKIN_QUESTIONS = [
+    "🌆 Kuningiz yaxshi o'tdimi? Bugun qanday his qilyapsiz?",
+    "💎 Sizning bugungi kayfiyatingiz qanday? Qanday yangiliklar bo‘ldi?",
+    "✨ Sizni bugun nima ilhomlantirdi? Qisqacha ayting!",
+    "🌟 Sizni qoniqtirgan biror narsa bo‘ldimi? Qisqa fikr bildiring.",
+    "🔹 Bugun o'zingizga qanday g'amxo'rlik qildingiz?",
+]
+
+def pick_premium_checkin_question():
+    """Return a random premium check‑in message.
+    Keeps messages short, personal and varied.
+    """
+    return random.choice(PREMIUM_CHECKIN_QUESTIONS)
+
+# Morning greeting variations for daily engagement
+MORNING_GREETINGS = [
+    "☀️ <b>Xayrli tong!</b>",
+    "🌅 <b>Salom, yangi kun!</b>",
+    "👋 <b>Yaxshi tong, do‘stim!</b>",
+    "🌞 <b>Kun yorqin bo‘lsin!</b>",
+]
+
+def pick_morning_greeting():
+    """Return a random short morning greeting.
+    Used to prepend daily engagement questions.
+    """
+    return random.choice(MORNING_GREETINGS)
 
 def log_engagement_event(user_id, event_type, event_date, question, category=None):
     """Event yuborilganda log ga yozish"""
@@ -98,7 +130,8 @@ async def generate_1010_followup(user_answer, ai_generate_func):
     )
     try:
         return await ai_generate_func(prompt)
-    except:
+    except Exception as e:
+        logging.exception("Error generating 10:10 follow-up")
         return "Ajoyib tanlov! Bugungi kuningiz samarali va yoqimli o'tishini tilayman. O'zingizni asrang!"
 
 async def generate_premium_reply(user_answer, ai_generate_func):
@@ -110,5 +143,6 @@ async def generate_premium_reply(user_answer, ai_generate_func):
     )
     try:
         return await ai_generate_func(prompt)
-    except:
+    except Exception as e:
+        logging.exception("Error generating premium reply")
         return "Rahmat, ulashganingiz uchun. O'zingizga qarab yuring, siz biz uchun qadrlisiz! ❤️"

@@ -35,7 +35,7 @@ def start_scheduler(bot, get_gemini_response):
                     try:
                         await bot.send_message(
                             chat_id=user_id,
-                            text=f"☀️ <b>Xayrli tong!</b>\n\n{q_item['question']}",
+                            text=f"{engagement.pick_morning_greeting()}\n\n{q_item['question']}",
                             parse_mode="HTML"
                         )
                         sent += 1
@@ -112,7 +112,7 @@ def start_scheduler(bot, get_gemini_response):
             logging.info(f"[ENGAGEMENT] Premium check-in target users: {len(users)}")
             event_date = database.get_uz_now().strftime("%Y-%m-%d")
             
-            question = "🌆 Kuningiz yaxshi o'tdimi? Bugun o'zingizni qanday his qilyapsiz?"
+            question = engagement.pick_premium_checkin_question()
             
             for row in users:
                 user_id = row[0]
@@ -149,10 +149,8 @@ def start_scheduler(bot, get_gemini_response):
             logging.info("[ENGAGEMENT] Restart in 10:xx window. Running 10:10 job.")
             await run_1010_engagement()
             
-        # Agar 20:30 dan 22:59 gacha bo'lsa, premium checkin
-        if (now.hour == 20 and now.minute >= 30) or (now.hour >= 21 and now.hour < 23):
-            logging.info("[ENGAGEMENT] Restart in 20:30 window. Running premium_checkin job.")
-            await run_premium_checkin()
+        # Premium check‑in missed‑job recovery disabled – wait for next day's 20:30 schedule.
+        # (Do not run premium_checkin on restart, even if within the 20:30‑22:59 window.)
 
     scheduler.start()
     asyncio.create_task(run_missed_jobs())

@@ -28,8 +28,8 @@ class KeepTyping:
         while True:
             try:
                 await self.bot.send_chat_action(chat_id=self.chat_id, action=self.action)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.exception("Failed to send chat action in KeepTyping loop")
             await asyncio.sleep(self.interval)
 
     async def __aenter__(self):
@@ -74,13 +74,13 @@ class ThrottlingMiddleware(BaseMiddleware):
                                 "⚠️ <b>Iltimos, shoshilmang!</b> Bot faoliyatini himoya qilish uchun so'rovlar oralig'i kamida 1 soniya bo'lishi kerak. 🕒",
                                 parse_mode="HTML"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.exception("Failed to send throttling warning message for Message")
                     elif isinstance(event, types.CallbackQuery):
                         try:
                             await event.answer("⚠️ Iltimos, shoshilmang! Biroz kuting. 🕒", show_alert=True)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.exception("Failed to send throttling warning message for CallbackQuery")
                 return # Stop processing
                 
             self.last_requests[user_id] = now
@@ -1647,7 +1647,8 @@ async def reminder_times(message: types.Message, state: FSMContext):
                 valid_times.append(f"{int(h):02d}:{int(m):02d}")
             else:
                 raise ValueError
-        except:
+        except Exception as e:
+            logging.exception("Invalid time format for reminder")
             await message.answer(
                 f"⚠️ <code>{t}</code> noto'g'ri vaqt formati!\n"
                 "Iltimos <code>HH:MM</code> ko'rinishida kiriting (masalan: 08:00,14:00):",
@@ -2094,6 +2095,7 @@ async def process_buy_premium(callback: types.CallbackQuery):
 async def process_redeem_points_info(callback: types.CallbackQuery):
     score = await asyncio.to_thread(database.get_score, callback.from_user.id)
     needed = max(0, 100 - score)
+    logging.info(f"User {callback.from_user.id} requested redeem points info: score={score}, needed={needed}")
     await callback.answer(f"⚠️ Sizda {score} ball bor. 3 kunlik Premium Pro uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
 
 @dp.callback_query(F.data == "redeem_points_premium")
@@ -2101,10 +2103,12 @@ async def process_redeem_points_premium(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     success = await asyncio.to_thread(database.check_and_grant_premium, user_id)
     if success:
+        logging.info(f"User {user_id} successfully redeemed 100 points for Premium Pro.")
         await callback.answer("🎉 100 ball yechildi! 3 kunlik Premium Pro aktivlashtirildi!", show_alert=True)
         await _show_premium_page(callback)
     else:
         score = await asyncio.to_thread(database.get_score, user_id)
+        logging.info(f"User {user_id} failed redeem: score={score}")
         await callback.answer(f"⚠️ Ballaringiz yetarli emas (Hozirda {score} ball bor).", show_alert=True)
 
 @dp.callback_query(F.data.in_(["buy_pro_7", "buy_plus_30", "buy_ultra_30", "pay_stars"]))
@@ -2130,6 +2134,13 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             payload = "ULTRA_30_DAYS"
             stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
 
+        # Validate configuration
+        if not PROVIDER_TOKEN:
+            raise ValueError("Telegram provider token not configured")
+        # Validate stars amount
+        if stars <= 0:
+            raise ValueError("Stars price must be greater than zero")
+
         prices = [LabeledPrice(label=title, amount=stars)]
         await callback.message.answer_invoice(
             title=title,
@@ -2137,12 +2148,12 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             payload=payload,
             currency="XTR",
             prices=prices,
-            provider_token="",
+            provider_token=PROVIDER_TOKEN,
         )
         await callback.answer()
     except Exception as e:
-        logging.error(f"Stars invoice yuborishda xatolik: {e}")
-        await callback.answer("⚠️ Invoice yuborishda xatolik yuz berdi.", show_alert=True)
+        logging.error(f"Stars invoice generation error: {e}")
+        await callback.answer("⚠️ Invoice yaratishda xatolik yuz berdi. Administrator bilan bog'laning.", show_alert=True)
 
 @dp.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
@@ -2208,7 +2219,26 @@ async def process_successful_payment(message: types.Message):
 
     # Eski UZS to'lovi (agar PROVIDER_TOKEN bo'lsa)
     elif payment.invoice_payload == "premium_1month":
-        await asyncio.to_thread(database.set_premium, user_id, 1, months=1)
+        # Record legacy payment as a synthetic transaction for duplicate protection
+        synthetic_payload = "premium_1month"
+        recorded = await asyncio.to_thread(
+            database.record_payment_transaction,
+            f"legacy_{user_id}_{payment.total_amount}",
+            user_id,
+            synthetic_payload,
+            payment.total_amount,
+            "pro",
+            30
+        )
+        if not recorded:
+            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
+            return
+        try:
+            await asyncio.to_thread(database.set_premium, user_id, 1, months=1)
+        except Exception as e:
+            logging.error(f"Legacy premium activation error for user {user_id}: {e}")
+            await message.answer("⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.", parse_mode="HTML")
+            return
         amount = payment.total_amount / 100
         await message.answer(
             "🎉 <b>To'lov muvaffaqiyatli amalga oshirildi!</b>\n\n"
@@ -2233,6 +2263,7 @@ async def process_successful_payment(message: types.Message):
             )
         except Exception as e:
             logging.error(f"Adminga to'lov xabari yuborishda xato: {e}")
+            await message.answer("⚠️ To'lov qabul qilindi, lekin admin xabarnomasida texnik muammo yuz berdi.", parse_mode="HTML")
 
 # ─── Manual to'lov (karta cheki yuborish) ─────────────────────────
 
@@ -2284,35 +2315,33 @@ async def handle_receipt_photo(message: types.Message, state: FSMContext):
             "Admin tekshirib, sizga xabar yuboradi. Iltimos kuting...",
             parse_mode="HTML"
         )
+        # Schedule a timeout reminder if admin does not respond within 5 min
+        async def receipt_timeout(uid: int, chat_id: int):
+            await asyncio.sleep(300)  # 5 minutes
+            waiting = await asyncio.to_thread(database.is_waiting_receipt, uid)
+            if waiting:
+                try:
+                    await bot.send_message(chat_id, f"⚠️ {username}, karta to'lovingiz hali admin tomonidan tasdiqlanmagan. Iltimos admin bilan bog'laning.")
+                except Exception as ex:
+                    logging.error(f"Failed to send receipt timeout message to user {uid}: {ex}")
+        asyncio.create_task(receipt_timeout(user_id, message.chat.id))
     except Exception as e:
         logging.error(f"Adminga chek yuborishda xatolik: {e}")
         await message.answer("⚠️ Texnik xatolik. Iltimos, to'g'ridan-to'g'ri adminga yozing.")
-
-@dp.message(F.photo)
-async def handle_general_photo(message: types.Message):
-    user_id = message.from_user.id
-    
-    # Agar rasm ostida buyruq yozilgan bo'lsa (masalan, /broadcast) — o'tkazib yuboramiz
-
-    # Agar rasm ostida buyruq yozilgan bo'lsa (masalan, /broadcast)
-    if message.caption and message.caption.strip().startswith('/'):
+# @dp.callback_query(F.data.startswith("adm_app_"))
+async def _duplicate_process_admin_approve(callback: types.CallbackQuery):
+    # Extract user ID from callback data
+    try:
+        target_id = int(callback.data.split("adm_app_")[1])
+    except Exception:
+        await callback.answer("⚠️ Noto‘g‘ri admin tasdiqlash ma‘lumoti.", show_alert=True)
         return
-
-    consumed_free = False
-    consumed_daily = False
-    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
-        consumed_free = True
-    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
-        consumed_daily = True
-    else:
-        await premium_upsell(message)
-        return
-
-    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-
-    if not gemini_client:
-        await message.answer(
-            "⚠️ Rasmlarni tahlil qilish uchun AI sozlanmagan.\n"
+    # Grant premium (30 kun) – same as legacy
+    try:
+        await asyncio.to_thread(database.set_premium, target_id, 1, months=1)
+    except Exception as e:
+        logging.error(f"Admin approval premium activation error for user {target_id}: {e}")
+        await callback.answer("⚠️ Premium aktivlaish uchun AI sozlanmagan.\n"
             "Iltimos, matnli savol yuboring.",
             reply_markup=get_start_keyboard()
         )
@@ -2418,7 +2447,20 @@ async def process_admin_approve(callback: types.CallbackQuery):
         await callback.answer("Siz admin emassiz!", show_alert=True)
         return
     user_id = int(callback.data.replace("adm_app_", ""))
-    await asyncio.to_thread(database.set_premium, user_id, 1)
+    # Activate premium in DB – handle potential errors
+    try:
+        await asyncio.to_thread(database.set_premium, user_id, 1)
+    except Exception as db_err:
+        logging.error(f"Admin approval DB error for user {user_id}: {db_err}")
+        # Update admin message to indicate failure
+        await callback.message.edit_caption(
+            caption=callback.message.caption + "\n\n❌ <b>Premium aktivatsiya xatosi.</b>",
+            reply_markup=None,
+            parse_mode="HTML"
+        )
+        await callback.answer("❌ Premium aktivatsiya qilinmadi. Admin xabari yuborildi.", show_alert=True)
+        return
+    # DB activation succeeded – update admin message
     await callback.message.edit_caption(
         caption=callback.message.caption + "\n\n✅ <b>Tasdiqlandi! Premium berildi.</b>",
         reply_markup=None,
@@ -2429,7 +2471,7 @@ async def process_admin_approve(callback: types.CallbackQuery):
             chat_id=user_id,
             text=(
                 "🎉 <b>Tabriklaymiz!</b>\n\n"
-                "To'lovingiz tasdiqlandi va <b>Premium</b> obunangiz faollashtirildi!\n"
+                "Administrator sizga <b>1 oy Premium</b> taqdim etdi.\n"
                 "Endi AI yordamchisidan mutlaqo cheksiz foydalanishingiz mumkin. 🚀"
             ),
             parse_mode="HTML"
@@ -3479,11 +3521,87 @@ async def fallback_text(message: types.Message, state: FSMContext):
     await state.set_state(AiChatStates.chatting)
     await handle_ai_chat(message, state)
 
+# =============================================================================
+# Engagement answer button handler ("Javobini olish")
+# =============================================================================
+    @dp.callback_query(F.data.startswith("engagement_answer"))
+    async def handle_engagement_answer(callback: types.CallbackQuery):
+        """Process the 'Javobini olish' button for engagement questions.
+        Expected callback_data format: engagement_answer:<event_type>:<event_date>
+        """
+        try:
+            _, event_type, event_date = callback.data.split(":")
+        except Exception as e:
+            logging.error(f"Invalid engagement_answer callback data '{callback.data}': {e}")
+            await callback.answer("Noto'g'ri ma'lumot.", show_alert=True)
+            return
+
+        user_id = callback.from_user.id
+        # Retrieve the original question and any existing answer/bot_reply
+        try:
+            conn = database.get_connection()
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT question, answer_text, bot_reply FROM engagement_logs
+                WHERE user_id = %s AND event_type = %s AND event_date = %s
+                ORDER BY sent_at DESC LIMIT 1
+                """,
+                (user_id, event_type, event_date),
+            )
+            row = c.fetchone()
+        except Exception as e:
+            logging.error(f"Error fetching engagement log for answer: {e}")
+            row = None
+        finally:
+            conn.close()
+
+        question = row[0] if row else ""
+        user_answer = row[1] if row else None
+        existing_bot_reply = row[2] if row else None
+
+        # If a bot reply was already sent, avoid duplicate sending
+        if existing_bot_reply:
+            await callback.message.reply(existing_bot_reply, parse_mode="HTML")
+            await callback.answer()
+            return
+
+        # Generate AI reply based on the event type
+        answer = None
+        if event_type == "10:10" and user_answer:
+            # Follow‑up based on user's morning answer
+            answer = await engagement.generate_1010_followup(user_answer, get_gemini_response)
+        elif event_type == "premium_checkin":
+            # Premium check‑in specific reply
+            answer = await engagement.generate_premium_reply(question, get_gemini_response)
+        else:
+            # Generic answer: ask Gemini to generate a short helpful response to the question
+            prompt = (
+                f"Foydalanuvchi quyidagi savolni berdi: '{question}'. "
+                "Javobini qisqa (1‑2 gap), samimiy, foydali shaklda yoz. "
+                "Shifokor yoki farmatsevt rolini o'ynama."
+            )
+            async with KeepTyping(callback.bot, callback.message.chat.id):
+                answer = await get_gemini_response(prompt)
+            if not answer:
+                answer = "⚠️ AI hozir mavjud emas, keyinroq qayta urinib ko'ring."
+
+        # Record bot reply in DB (no user answer text stored)
+        try:
+            engagement.update_engagement_answer(user_id, event_type, event_date, "", bot_reply=answer)
+        except Exception as e:
+            logging.error(f"Failed to update engagement answer in DB: {e}")
+
+        await callback.message.reply(answer, parse_mode="HTML")
+        await callback.answer()
+
 @dp.message()
 async def fallback_all(message: types.Message):
     # Ignore text messages – they are handled by fallback_text / AI handlers.
     if message.content_type == "text":
+        # No processing needed for plain text messages
         return
+
     msg_type = message.content_type
     logging.info(f"message_type={msg_type}")
     await message.reply("ℹ️ Bu turdagi xabar qabul qilindi, lekin hozircha uni qayta ishlash imkonim yo'q.")
