@@ -13,6 +13,19 @@ def get_uz_now():
     from datetime import timezone, timedelta
     return datetime.datetime.now(timezone(timedelta(hours=5)))
 
+
+def _to_uz_datetime(value):
+    """Bazadan kelgan vaqtni Toshkent timezone'iga moslaydi."""
+    if not isinstance(value, datetime.datetime):
+        value = datetime.datetime.fromisoformat(str(value))
+
+    uz_tz = datetime.timezone(datetime.timedelta(hours=5))
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=uz_tz)
+
+    return value.astimezone(uz_tz)
+
 # Pool initializatsiyasi
 db_pool = None
 
@@ -200,7 +213,7 @@ def try_consume_daily_request(user_id) -> bool:
     # 1. Premium foydalanuvchilar uchun muddatni tekshirish
     if is_premium:
         if premium_expires_at:
-            expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
+            expires = _to_uz_datetime(premium_expires_at)
             if get_uz_now() > expires:
                 c.execute("UPDATE users SET is_premium = 0, premium_type = 'free' WHERE user_id = %s", (user_id,))
                 conn.commit()
@@ -211,7 +224,7 @@ def try_consume_daily_request(user_id) -> bool:
             premium_type = premium_type if premium_type != "free" else "ultra"
 
     now = get_uz_now()
-    registered_at = registered_at_str if isinstance(registered_at_str, datetime.datetime) else datetime.datetime.fromisoformat(str(registered_at_str))
+    registered_at = _to_uz_datetime(registered_at_str)
 
     # 2. (O'chirildi) Avvalgi cheksiz 24-soat bepul mantiq kreditni tugatardi.
     # Endi faqat 1 ta bepul AI try_consume_free_ai() orqali beriladi.
@@ -269,7 +282,7 @@ def try_consume_free_ai(user_id) -> bool:
 
     if is_premium:
         if premium_expires_at:
-            expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
+            expires = _to_uz_datetime(premium_expires_at)
             if get_uz_now() <= expires:
                 conn.close()
                 return True
@@ -305,7 +318,7 @@ def set_premium(user_id, status: int, months: int = 1):
         base = now
         if row and row[0]:
             try:
-                existing = row[0] if isinstance(row[0], datetime.datetime) else datetime.datetime.fromisoformat(str(row[0]))
+                existing = _to_uz_datetime(row[0])
                 if existing > now:
                     base = existing
             except (ValueError, TypeError):
@@ -362,7 +375,7 @@ def grant_premium_days(user_id: int, days: int, premium_type: str = "pro") -> da
     
     if row and row[0]:
         try:
-            existing = row[0] if isinstance(row[0], datetime.datetime) else datetime.datetime.fromisoformat(str(row[0]))
+            existing = _to_uz_datetime(row[0])
             if existing > now:
                 base = existing
                 current_type = row[1] or "pro"
@@ -437,7 +450,7 @@ def get_premium_info(user_id):
         premium_type = "free"
 
     if is_premium and premium_expires_at:
-        expires = premium_expires_at if isinstance(premium_expires_at, datetime.datetime) else datetime.datetime.fromisoformat(str(premium_expires_at))
+        expires = _to_uz_datetime(premium_expires_at)
         if get_uz_now() > expires:
             # Premium muddati tugagan — avtomatik o'chiramiz
             conn2 = get_connection()

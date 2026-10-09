@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def start_scheduler(bot, get_gemini_response):
     scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
+    premium_checkin_lock = asyncio.Lock()
 
     async def run_0800_engagement():
         logging.info("[ENGAGEMENT] 08:00 job started")
@@ -102,32 +103,45 @@ def start_scheduler(bot, get_gemini_response):
             conn.close()
 
     async def run_premium_checkin():
-        logging.info("[ENGAGEMENT] Premium check-in started")
-        conn = database.get_connection()
-        c = conn.cursor()
-        try:
-            # Faqat activ premiumlar
-            c.execute("SELECT user_id FROM users WHERE is_banned = 0 AND is_premium = 1")
-            users = c.fetchall()
-            logging.info(f"[ENGAGEMENT] Premium check-in target users: {len(users)}")
-            event_date = database.get_uz_now().strftime("%Y-%m-%d")
-            
-            question = engagement.pick_premium_checkin_question()
-            
-            for row in users:
-                user_id = row[0]
-                is_new = engagement.log_engagement_event(
-                    user_id, 'premium_checkin', event_date, question, "premium"
+        async with premium_checkin_lock:
+            logging.info("[ENGAGEMENT] Premium check-in started")
+            conn = database.get_connection()
+            c = conn.cursor()
+            try:
+                c.execute(
+                    "SELECT user_id FROM users WHERE is_banned = 0 AND is_premium = 1"
                 )
-                
-                if is_new:
+                users = c.fetchall()
+                event_date = database.get_uz_now().strftime("%Y-%m-%d")
+                logging.info(
+                    f"[ENGAGEMENT] Premium check-in target users: {len(users)}"
+                )
+
+                for row in users:
+                    user_id = row[0]
+                    question = engagement.pick_premium_checkin_question()
+
                     try:
-                        await bot.send_message(chat_id=user_id, text=f"💎 <b>Premium Check-in</b>\n\n{question}", parse_mode="HTML")
+                        pending_question = engagement.prepare_premium_checkin(
+                            user_id, event_date, question, "premium"
+                        )
+                        if pending_question is None:
+                            continue
+
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=f"💎 <b>Premium Check-in</b>\n\n{pending_question}",
+                            parse_mode="HTML",
+                        )
+                        engagement.mark_premium_checkin_sent(user_id, event_date)
                         await asyncio.sleep(0.05)
                     except Exception:
-                        pass
-        finally:
-            conn.close()
+                        logging.exception(
+                            "[ENGAGEMENT] Premium check-in failed for user %s",
+                            user_id,
+                        )
+            finally:
+                conn.close()
 
     # Schedule the jobs
     scheduler.add_job(run_0800_engagement, 'cron', hour=8, minute=0)
@@ -149,8 +163,15 @@ def start_scheduler(bot, get_gemini_response):
             logging.info("[ENGAGEMENT] Restart in 10:xx window. Running 10:10 job.")
             await run_1010_engagement()
             
-        # Premium check‑in missed‑job recovery disabled – wait for next day's 20:30 schedule.
-        # (Do not run premium_checkin on restart, even if within the 20:30‑22:59 window.)
+        # Premium Check-in: faqat bugun 20:30 dan keyin, yarim tungacha.
+        if (
+            (now.hour == 20 and now.minute >= 30)
+            or 21 <= now.hour <= 23
+        ):
+            logging.info(
+                "[ENGAGEMENT] Restart recovery: today's Premium Check-in"
+            )
+            await run_premium_checkin()
 
     scheduler.start()
     asyncio.create_task(run_missed_jobs())

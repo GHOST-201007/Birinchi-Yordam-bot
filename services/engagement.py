@@ -67,6 +67,61 @@ def log_engagement_event(user_id, event_type, event_date, question, category=Non
     finally:
         conn.close()
 
+def prepare_premium_checkin(user_id, event_date, question, category="premium"):
+    """Bugungi Premium Check-in qaydini tayyorlaydi; yuborilmagan bo'lsa savolni qaytaradi."""
+    conn = database.get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("""
+            INSERT INTO engagement_logs
+                (user_id, event_type, event_date, question, category, sent_at)
+            VALUES (%s, 'premium_checkin', %s, %s, %s, NULL)
+            ON CONFLICT (user_id, event_type, event_date) DO NOTHING
+        """, (user_id, event_date, question, category))
+        conn.commit()
+
+        c.execute("""
+            SELECT sent_at, question
+            FROM engagement_logs
+            WHERE user_id = %s
+              AND event_type = 'premium_checkin'
+              AND event_date = %s
+        """, (user_id, event_date))
+        row = c.fetchone()
+
+        if not row or row[0] is not None:
+            return None
+
+        return row[1]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def mark_premium_checkin_sent(user_id, event_date):
+    """Faqat Telegram xabari muvaffaqiyatli yuborilgandan keyin chaqiriladi."""
+    conn = database.get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("""
+            UPDATE engagement_logs
+            SET sent_at = %s
+            WHERE user_id = %s
+              AND event_type = 'premium_checkin'
+              AND event_date = %s
+              AND sent_at IS NULL
+        """, (database.get_uz_now(), user_id, event_date))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def update_engagement_answer(user_id, event_type, event_date, answer_text, bot_reply=None):
     """User javob berganida saqlash"""
     conn = database.get_connection()
