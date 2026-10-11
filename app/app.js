@@ -1,4 +1,4 @@
-﻿// Safe localStorage wrapper with Telegram CloudStorage sync
+// Safe localStorage wrapper with Telegram CloudStorage sync
 const SafeStorage = {
     getItem: function (key) {
         try {
@@ -617,7 +617,7 @@ function openFirstAidDetail(item) {
                 <ul class="call103-list">
                     ${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}
                 </ul>
-                <a href="tel:103" class="call103-btn" onclick="if(window.Telegram&&window.Telegram.WebApp){window.Telegram.WebApp.openLink('tel:103');return false;}">
+                <a href="tel:103" class="call103-btn">
                     📞 103 — Tez yordam
                 </a>
             </div>`;
