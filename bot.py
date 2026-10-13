@@ -81,12 +81,46 @@ class ThrottlingMiddleware(BaseMiddleware):
                             await event.answer("⚠️ Iltimos, shoshilmang! Biroz kuting. 🕒", show_alert=True)
                         except Exception as e:
                             logging.exception("Failed to send throttling warning message for CallbackQuery")
+                elif isinstance(event, types.CallbackQuery):
+                    # Ogohlantirish cooldown'da ham spinner qotib qolmasligi uchun jim javob beramiz
+                    try:
+                        await event.answer()
+                    except Exception:
+                        logging.warning("Failed to answer throttled CallbackQuery", exc_info=True)
                 return # Stop processing
                 
             self.last_requests[user_id] = now
         return await handler(event, data)
 
 class BanMiddleware(BaseMiddleware):
+    ERROR_ALERT_COOLDOWN = 30.0
+    ERROR_MAP_MAX = 2000
+
+    def __init__(self):
+        self._last_error_alert = {}
+        super().__init__()
+
+    async def _notify_db_error(self, event: TelegramObject, user_id: int):
+        """DB xatosida: CallbackQuery doim javob oladi; alert/xabar faqat cooldown o'tganda."""
+        now = time.monotonic()
+        last = self._last_error_alert.get(user_id)
+        allow_alert = last is None or now - last >= self.ERROR_ALERT_COOLDOWN
+        if allow_alert:
+            if len(self._last_error_alert) >= self.ERROR_MAP_MAX:
+                self._last_error_alert.clear()
+            self._last_error_alert[user_id] = now
+        text = "⚠️ Vaqtinchalik texnik xatolik. Iltimos, birozdan so'ng qayta urinib ko'ring."
+        try:
+            if isinstance(event, types.CallbackQuery):
+                if allow_alert:
+                    await event.answer(text, show_alert=True)
+                else:
+                    await event.answer()
+            elif isinstance(event, types.Message) and allow_alert:
+                await event.answer(text)
+        except Exception:
+            logging.warning("Failed to notify user about ban-check DB error", exc_info=True)
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
@@ -95,7 +129,12 @@ class BanMiddleware(BaseMiddleware):
     ) -> Any:
         user = data.get("event_from_user")
         if user:
-            is_banned, ban_msg = await asyncio.to_thread(database.is_user_banned, user.id)
+            try:
+                is_banned, ban_msg = await asyncio.to_thread(database.is_user_banned, user.id)
+            except Exception:
+                logging.exception("Ban check failed for user %s; blocking update (fail-closed)", user.id)
+                await self._notify_db_error(event, user.id)
+                return  # handler chaqirilmaydi
             if is_banned:
                 contact_info = f"Murojaat uchun: @{ADMIN_USERNAME}" if (ADMIN_USERNAME and ADMIN_USERNAME != "YOUR_ADMIN_USERNAME") else "Murojaat uchun administratorga yozing."
                 if isinstance(event, types.Message):

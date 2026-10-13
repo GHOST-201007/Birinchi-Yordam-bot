@@ -3,6 +3,10 @@ import psycopg2.extras
 import datetime
 import os
 import logging
+import threading
+import time as _time
+from collections import OrderedDict
+from contextlib import contextmanager
 from dotenv import load_dotenv
 from psycopg2.pool import ThreadedConnectionPool
 
@@ -686,74 +690,181 @@ def get_daily_tips_status(user_id) -> int:
 # BAN TIZIMI (ADMIN BUYRUQLARI UCHUN)
 # ─────────────────────────────────────────────────────────────────
 
+# --- Xavfsiz tozalash yordamchilari (asl istisnoni hech qachon almashtirmaydi) ---
+
+def _safe_close_cursor(c):
+    if c is None:
+        return
+    try:
+        c.close()
+    except Exception:
+        logging.warning("cursor close failed", exc_info=True)
+
+
+def _safe_rollback(conn):
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except Exception:
+        logging.warning("rollback failed", exc_info=True)
+
+
+def _safe_release(conn):
+    """Connection'ni mavjud wrapper.close() orqali poolga qaytaradi (pool.putconn bevosita chaqirilmaydi)."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:
+        logging.warning("connection return failed", exc_info=True)
+
+
+@contextmanager
+def _managed_cursor():
+    """(conn, cursor) beradi. Xatoda rollback urinadi, har doim cursor yopiladi va connection qaytariladi."""
+    conn = None
+    c = None
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        yield conn, c
+    except BaseException:
+        _safe_rollback(conn)
+        raise
+    finally:
+        _safe_close_cursor(c)
+        _safe_release(conn)
+
+
+# --- Ban keshi: thread-safe, FIFO, maks 2000 yozuv, maks 30 s TTL, monotonic soat ---
+
+class _BanCache:
+    MAX_ENTRIES = 2000
+    MAX_TTL = 30.0
+
+    def __init__(self, clock=_time.monotonic):
+        self._clock = clock          # testlarda lokal soat beriladi
+        self._lock = threading.Lock()
+        self._data = OrderedDict()   # user_id -> (expires_at, (bool, str))
+        self._epoch = 0
+
+    def get(self, user_id):
+        with self._lock:
+            entry = self._data.get(user_id)
+            if entry is None:
+                return None
+            if entry[0] <= self._clock():
+                del self._data[user_id]
+                return None
+            return entry[1]
+
+    def epoch(self):
+        with self._lock:
+            return self._epoch
+
+    def put(self, user_id, result, ttl, epoch):
+        """Faqat o'qish boshlanganidan beri invalidatsiya bo'lmagan bo'lsa yozadi."""
+        ttl = min(float(ttl), self.MAX_TTL)
+        if ttl <= 0:
+            return
+        with self._lock:
+            if epoch != self._epoch:
+                return
+            self._data.pop(user_id, None)
+            self._data[user_id] = (self._clock() + ttl, result)
+            while len(self._data) > self.MAX_ENTRIES:
+                self._data.popitem(last=False)   # FIFO
+
+    def invalidate(self, user_id):
+        with self._lock:
+            self._epoch += 1
+            self._data.pop(user_id, None)
+
+
+_ban_cache = _BanCache()
+
+
 def ban_user(user_id: int, duration_minutes: int = None):
     """Foydalanuvchini ban qilish. duration_minutes berilsa - vaqtinchalik, aks holda - doimiy."""
     register_user(user_id)
-    conn = get_connection()
-    c = conn.cursor()
-    if duration_minutes:
-        banned_until = (get_uz_now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
-        c.execute(
-            "UPDATE users SET is_banned = 1, banned_until = %s WHERE user_id = %s",
-            (banned_until, user_id)
-        )
-    else:
-        c.execute(
-            "UPDATE users SET is_banned = 1, banned_until = NULL WHERE user_id = %s",
-            (user_id,)
-        )
-    conn.commit()
-    conn.close()
+    with _managed_cursor() as (conn, c):
+        if duration_minutes:
+            banned_until = (get_uz_now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+            c.execute(
+                "UPDATE users SET is_banned = 1, banned_until = %s WHERE user_id = %s",
+                (banned_until, user_id)
+            )
+        else:
+            c.execute(
+                "UPDATE users SET is_banned = 1, banned_until = NULL WHERE user_id = %s",
+                (user_id,)
+            )
+        conn.commit()
+        _ban_cache.invalidate(user_id)   # faqat muvaffaqiyatli commitdan keyin
 
 def unban_user(user_id: int):
     """Foydalanuvchini bandan chiqarish."""
     register_user(user_id)
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute(
-        "UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s",
-        (user_id,)
-    )
-    conn.commit()
-    conn.close()
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s",
+            (user_id,)
+        )
+        conn.commit()
+        _ban_cache.invalidate(user_id)   # faqat muvaffaqiyatli commitdan keyin
 
 def is_user_banned(user_id: int) -> tuple:
     """
     Foydalanuvchi banlanganligini tekshirish.
     Qaytaradi: (is_banned: bool, message: str)
     """
+    hit = _ban_cache.get(user_id)
+    if hit is not None:
+        # Yozuv faqat register_user() va DB o'qish muvaffaqiyatli bo'lgandan keyin yaratiladi.
+        return hit
+
+    epoch = _ban_cache.epoch()   # o'qishdan OLDIN olinadi (poyga himoyasi)
     register_user(user_id)
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT is_banned, banned_until FROM users WHERE user_id = %s", (user_id,))
-    row = c.fetchone()
-    conn.close()
+    result, ttl = _read_ban_state(user_id)
+    if ttl:
+        _ban_cache.put(user_id, result, ttl, epoch)   # DB xatosida bu yerga yetib kelinmaydi
+    return result
 
-    if not row:
-        return False, ""
 
-    is_banned, banned_until_val = row
-    if not is_banned:
-        return False, ""
+def _read_ban_state(user_id: int):
+    """Qaytaradi: ((is_banned, message), ttl_sekund yoki None). ttl=None - keshlanmaydi."""
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT is_banned, banned_until FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
 
-    if banned_until_val:
-        try:
-            banned_until = banned_until_val if isinstance(banned_until_val, datetime.datetime) else datetime.datetime.fromisoformat(str(banned_until_val))
-            if get_uz_now() > banned_until:
-                # Ban muddati tugagan — avtomatik o'chiramiz
-                conn2 = get_connection()
-                c2 = conn2.cursor()
-                c2.execute("UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s", (user_id,))
-                conn2.commit()
-                conn2.close()
-                return False, ""
-            else:
-                formatted_time = banned_until.strftime("%d.%m.%Y %H:%M")
-                return True, f"🚫 Vaqtinchalik ban muddati: {formatted_time} gacha."
-        except Exception:
-            return True, "🚫 Vaqtinchalik ban faol."
+        if not row:
+            return (False, ""), None
 
-    return True, "🚫 Doimiy (muddatsiz) ban faol."
+        is_banned, banned_until_val = row
+        if not is_banned:
+            return (False, ""), _BanCache.MAX_TTL
+
+        if banned_until_val:
+            # Bazadagi TIMESTAMP (zonasiz) qiymati Toshkent (UTC+5) devor soati; _to_uz_datetime shuni aware qiladi.
+            try:
+                banned_until = _to_uz_datetime(banned_until_val)
+                now = get_uz_now()
+                expired = now > banned_until
+            except Exception:
+                return (True, "🚫 Vaqtinchalik ban faol."), None   # tahlil xatosi keshlanmaydi
+
+            if expired:
+                # Ban muddati tugagan — avtomatik o'chiramiz (shu connection'da)
+                c.execute("UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s", (user_id,))
+                conn.commit()
+                return (False, ""), _BanCache.MAX_TTL
+
+            formatted_time = banned_until.strftime("%d.%m.%Y %H:%M")
+            remaining = (banned_until - now).total_seconds()
+            return (True, f"🚫 Vaqtinchalik ban muddati: {formatted_time} gacha."), min(_BanCache.MAX_TTL, remaining)
+
+        return (True, "🚫 Doimiy (muddatsiz) ban faol."), _BanCache.MAX_TTL
 
 
 def check_and_grant_daily_bonus(user_id: int) -> tuple:
