@@ -633,19 +633,29 @@ def _search_alias(conn, query: str):
     return None
 
 
+_MIN_INGREDIENT_QUERY_LEN = 5
+
+
 def _search_active_ingredient(conn, query: str):
-    """4-bosqich: Faol modda bo'yicha qidirish"""
+    """4-bosqich: Faol modda bo'yicha qidirish.
+    Faqat butun so'z mos kelsa topiladi ("ha" → "acetylsalicylic" ichida topilmasin — P1-1)."""
+    query_lower = query.lower().strip()
+    if len(query_lower) < _MIN_INGREDIENT_QUERY_LEN:
+        return None
     c = conn.cursor()
     try:
-        ph = _placeholder()
-        like_query = f"%{query.lower()}%"
-        c.execute(f"SELECT * FROM medicines WHERE LOWER(active_ingredient) LIKE {ph}", (like_query,))
-        return c.fetchone()
+        c.execute("SELECT * FROM medicines WHERE active_ingredient IS NOT NULL")
+        rows = c.fetchall()
     finally:
         _safe_close(c)
+    pattern = re.compile(r"(?<!\w)" + re.escape(query_lower) + r"(?!\w)")
+    for row in rows:
+        if row[3] and pattern.search(row[3].lower()):
+            return row
+    return None
 
 
-def _search_fuzzy(conn, query: str, threshold: float = 0.55):
+def _search_fuzzy(conn, query: str, threshold: float = 0.8):
     """6-bosqich: O'xshashlik bo'yicha qidirish (fuzzy match)"""
     c = conn.cursor()
     try:
@@ -705,6 +715,9 @@ def _format_medicine_response(row) -> str:
 # ASOSIY QIDIRUV FUNKSIYASI
 # ═══════════════════════════════════════════════════════════════════
 
+_MIN_QUERY_LEN = 4
+
+
 def find_medicine(query: str) -> dict:
     """
     Asosiy qidiruv funksiyasi. Qidiruv tartibi:
@@ -725,10 +738,14 @@ def find_medicine(query: str) -> dict:
             "data": str  # Formatted response text
         }
     """
-    if not query or len(query.strip()) < 2:
-        return {"found": False, "source": "none", "data": ""}
+    not_found = {"found": False, "source": "none", "data": ""}
+    if not query or not query.strip():
+        return not_found
 
     normalized = normalize_query(query)
+    # Juda qisqa so'rov ("ha", "ok", "yo'q") dori qidiruviga yuborilmaydi (P1-1)
+    if len(normalized.replace(" ", "")) < _MIN_QUERY_LEN:
+        return not_found
     logging.info(f"[SEARCH] query='{query}' → normalized='{normalized}'")
 
     # Kiril varianti ham yasaymiz
