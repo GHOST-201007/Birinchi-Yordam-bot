@@ -227,15 +227,15 @@ def register_user(user_id, full_name=None, username=None):
     try:
         conn = get_connection()
         c = conn.cursor()
-        c.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-        if not c.fetchone():
-            now = get_uz_now()
-            c.execute(
-                "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, full_name, username) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (user_id, now.isoformat(), 0, 0, now.date().isoformat(), full_name, username)
-            )
-        else:
-            # Ismini yangilaymiz
+        # SELECT -> INSERT o'rniga atomik INSERT: parallel /start da dublikat xatosi bo'lmaydi (P1-2)
+        now = get_uz_now()
+        c.execute(
+            "INSERT INTO users (user_id, registered_at, is_premium, daily_requests, last_request_date, full_name, username) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (user_id) DO NOTHING",
+            (user_id, now.isoformat(), 0, 0, now.date().isoformat(), full_name, username)
+        )
+        if c.rowcount == 0:
+            # Mavjud foydalanuvchi — ismini yangilaymiz
             if full_name or username:
                 c.execute(
                     "UPDATE users SET full_name=%s, username=%s WHERE user_id=%s",
@@ -1280,11 +1280,15 @@ def check_and_grant_daily_bonus(user_id: int) -> tuple:
         else:
             points = 3 # days 4, 5, 6 give +3 points
 
-        # Update database
+        # Shartli UPDATE: parallel so'rovlardan faqat bittasi bonus oladi (P1-2)
         c.execute(
-            "UPDATE users SET daily_streak = %s, last_checkin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s WHERE user_id = %s",
-            (new_streak, today_str, points, user_id)
+            "UPDATE users SET daily_streak = %s, last_checkin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s "
+            "WHERE user_id = %s AND last_checkin_date IS DISTINCT FROM %s",
+            (new_streak, today_str, points, user_id, today_str)
         )
+        if c.rowcount == 0:
+            conn.rollback()
+            return False, 0, streak
         conn.commit()
 
     # Also automatically check if user qualifies for Premium upgrade
@@ -1421,7 +1425,8 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
         if points == 0:
             # Super Prize: discount
             c.execute(
-                "UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL WHERE user_id = %s",
+                "UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
+                "WHERE user_id = %s AND pending_spin_prize IS NOT NULL",
                 (now_str, user_id)
             )
             msg = (
@@ -1433,11 +1438,16 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
         else:
             # Standard points
             c.execute(
-                "UPDATE users SET last_spin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s, pending_spin_prize = NULL WHERE user_id = %s",
+                "UPDATE users SET last_spin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s, pending_spin_prize = NULL "
+                "WHERE user_id = %s AND pending_spin_prize IS NOT NULL",
                 (now_str, points, user_id)
             )
             msg = f"Tabriklaymiz! Siz Omad barabanidan <b>+{points} ball</b> yutib oldingiz! 🎉"
 
+        # Shartli UPDATE: yutuq parallel so'rovlarda faqat bir marta beriladi (P1-2)
+        if c.rowcount == 0:
+            conn.rollback()
+            return False, "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan! 🕒"
         conn.commit()
 
     # Automatically check if user qualifies for Premium upgrade
