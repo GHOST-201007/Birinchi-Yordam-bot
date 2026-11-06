@@ -46,11 +46,27 @@ class KeepTyping:
                 pass
 
 class ThrottlingMiddleware(BaseMiddleware):
+    # Lug'atlar cheksiz o'smasligi uchun: har CLEANUP_EVERY ta yozuvdan keyin
+    # STALE_AFTER soniyadan eski yozuvlar o'chiriladi (P2-9)
+    CLEANUP_EVERY = 1000
+    STALE_AFTER = 60.0
+
     def __init__(self, cooldown: float = 1.0):
         self.cooldown = cooldown
         self.last_requests = {}
         self.last_warnings = {}
+        self._writes_since_cleanup = 0
         super().__init__()
+
+    def _maybe_cleanup(self, now: float) -> None:
+        self._writes_since_cleanup += 1
+        if self._writes_since_cleanup < self.CLEANUP_EVERY:
+            return
+        self._writes_since_cleanup = 0
+        cutoff = now - self.STALE_AFTER
+        for store in (self.last_requests, self.last_warnings):
+            for uid in [uid for uid, ts in store.items() if ts < cutoff]:
+                del store[uid]
 
     async def __call__(
         self,
@@ -91,6 +107,7 @@ class ThrottlingMiddleware(BaseMiddleware):
                 return # Stop processing
                 
             self.last_requests[user_id] = now
+            self._maybe_cleanup(now)
         return await handler(event, data)
 
 class BanMiddleware(BaseMiddleware):
