@@ -5,7 +5,7 @@ import logging
 import re
 import html
 import json
-from datetime import datetime, time, timedelta
+from datetime import datetime, time as dtime, timedelta  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
