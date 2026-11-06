@@ -29,10 +29,25 @@
     --border-radius-sm: 8px;
     --border-radius-md: 16px;
     --border-radius-lg: 24px;
+    /* Yetishmayotgan o'zgaruvchilar (scratch/overrides.css dan tiklandi).
+       Ularsiz 103 tugmasi foni, oraliqlar va burchaklar ishlamay qolgan edi. */
+    --color-error: #ff3b30;
+    --space-1: 6px;
+    --space-2: 12px;
+    --space-3: 18px;
+    --space-4: 24px;
+    --space-10: 100px;
+    --radius-sm: 12px;
+    --radius-md: 20px;
+    --radius-lg: 28px;
+    --shadow-md: 0 8px 16px rgba(15, 118, 110, 0.05);
+    --shadow-lg: 0 16px 32px rgba(15, 118, 110, 0.08);
 }
 
 /* Dark mode overrides – keep contrast */
 body.dark-mode {
+    --shadow-md: 0 8px 16px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.4);
     --bg-color: #1c1c1e;
     --text-color: #f2f2f7;
     --hint-color: #8e8e93;
