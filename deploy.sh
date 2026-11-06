@@ -39,15 +39,23 @@ echo "==> 3. Systemd servis fayli tekshirilmoqda..."
 if ! cmp -s birinchiyordam.service "/etc/systemd/system/$SERVICE.service"; then
   cp birinchiyordam.service "/etc/systemd/system/$SERVICE.service"
   systemctl daemon-reload
-  systemctl enable "$SERVICE" >/dev/null 2>&1 || true
   echo "    Servis fayli yangilandi."
 else
   echo "    O'zgarmagan."
 fi
+# Server qayta yoqilganda bot o'zi ishga tushishi uchun
+systemctl enable "$SERVICE" >/dev/null 2>&1 || true
+
+# Qo'lda ishga tushirilgan eski nusxalar bo'lsa to'xtatamiz (aks holda Telegram "Conflict" xatosi beradi)
+systemctl stop "$SERVICE" 2>/dev/null || true
+pkill -f "$APP_DIR/.*(run_dev|run_prod|bot|app_server)\.py" 2>/dev/null || true
+pkill -f "(run_dev|run_prod|bot|app_server)\.py" 2>/dev/null || true
+pkill -f "cloudflared tunnel --url http://127.0.0.1:8000" 2>/dev/null || true
+sleep 2
 
 echo "==> 4. Bot qayta ishga tushirilmoqda..."
 systemctl restart "$SERVICE"
-sleep 8
+sleep 20
 
 if systemctl is-active --quiet "$SERVICE"; then
   echo "✅ Bot ishlayapti! Versiya: $(git log -1 --format='%h — %s')"
