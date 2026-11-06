@@ -78,11 +78,16 @@ class PooledConnectionWrapper:
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
+POOL_MIN_CONN = 2
+POOL_MAX_CONN = 10
+
+
 def get_connection():
     """PostgreSQL bazaga ulanish. Pooling orqali ishlaydi."""
     global db_pool
     if db_pool is None:
-        db_pool = ThreadedConnectionPool(minconn=1, maxconn=50, dsn=DATABASE_URL)
+        # Server 512 MB RAM, Neon bepul tarif ulanish limitlari — kichik pool (P2-1)
+        db_pool = ThreadedConnectionPool(minconn=POOL_MIN_CONN, maxconn=POOL_MAX_CONN, dsn=DATABASE_URL)
     
     conn = db_pool.getconn()
     conn.autocommit = False
