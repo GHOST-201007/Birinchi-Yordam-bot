@@ -965,6 +965,8 @@ def get_start_keyboard():
 
 def get_conditions_keyboard():
     builder = InlineKeyboardBuilder()
+    # Eng muhim holat — birinchi qatorda, alohida (P1-4)
+    builder.button(text="🫀 YO'R (reanimatsiya)", callback_data="aid_reanimatsiya")
     builder.button(text="🔥 Kuyish",              callback_data="aid_kuyish")
     builder.button(text="🩸 Qon ketishi",         callback_data="aid_qon_ketishi")
     builder.button(text="🦴 Suyak sinishi",       callback_data="aid_sinish")
@@ -978,7 +980,7 @@ def get_conditions_keyboard():
     builder.button(text="🤧 Kuchli allergiya",    callback_data="aid_allergiya")
     builder.button(text="🧠 Insult belgilari",    callback_data="aid_insult")
     builder.button(text="⬅️ Bosh menyuga qaytish", callback_data="back_to_main")
-    builder.adjust(2, 2, 2, 2, 2, 2, 1)
+    builder.adjust(1, 2, 2, 2, 2, 2, 2, 1)
     return builder.as_markup()
 
 def get_back_to_main_keyboard():
