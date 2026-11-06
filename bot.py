@@ -413,11 +413,24 @@ STARS_PROVIDER_TOKEN = ""  # Telegram Stars uchun provider_token doim bo'sh bo'l
 def get_stars_tariffs() -> dict:
     """Stars tariflari: payload -> (premium_type, days, title, stars_price).
     Narxlar avvalgidek env'dan chaqiruv paytida o'qiladi (PRO_TRIAL_STARS, PRO_MONTHLY_STARS, ULTRA_MONTHLY_STARS)."""
+    plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
     return {
         "PRO_7_DAYS": ("pro", 7, "⭐ Premium Pro (7 kun)", int(os.getenv("PRO_TRIAL_STARS", "50"))),
-        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)", int(os.getenv("PRO_MONTHLY_STARS", "150"))),
+        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)", plus_price),
         "ULTRA_30_DAYS": ("ultra", 30, "👑 Premium Ultra (30 kun)", int(os.getenv("ULTRA_MONTHLY_STARS", "300"))),
+        # Omad barabani SUPER PRIZ: Plus 30 kun 50% chegirma bilan (bir martalik, has_discount=1 bo'lsa)
+        DISCOUNT_PAYLOAD: ("plus", 30, "🎁 Premium Plus (30 kun, 50% chegirma)", plus_discount_price(plus_price)),
     }
+
+
+DISCOUNT_PAYLOAD = "PLUS_30_DAYS_DISCOUNT"
+
+
+def plus_discount_price(plus_price: int | None = None) -> int:
+    """Plus 30 kun narxining 50% i (yuqoriga yaxlitlanadi, kamida 1 Stars)."""
+    if plus_price is None:
+        plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+    return max(1, (plus_price + 1) // 2)
 
 
 # Eski payload: hech qayerda yaratilmaydi, lekin ilgari yuborilgan invoice'lar uchun saqlanadi.
@@ -464,7 +477,10 @@ def check_premium_purchase_eligibility(user_info: dict, action: str) -> tuple[bo
     current_type = user_info.get("premium_type", "free") if user_info else "free"
     is_premium = user_info.get("is_premium", 0) if user_info else 0
     tier_rank = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
-    buying_tier = {"buy_pro_7": "pro", "buy_plus_30": "plus", "buy_ultra_30": "ultra", "pay_stars": "pro"}.get(action, "pro")
+    buying_tier = {
+        "buy_pro_7": "pro", "buy_plus_30": "plus", "buy_plus_30_discount": "plus",
+        "buy_ultra_30": "ultra", "pay_stars": "pro",
+    }.get(action, "pro")
     current_rank = tier_rank.get(current_type, 0) if is_premium else 0
     buying_rank = tier_rank.get(buying_tier, 1)
 
@@ -2519,14 +2535,22 @@ async def _show_premium_page(message_or_cb):
             f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
             f"✅ Barcha imkoniyatlardan unumli foydalaning!"
         )
+        # SUPER PRIZ chegirmasi bor va Plus ga o'tish mumkin bo'lsa — tugmani ko'rsatamiz
+        markup = None
+        if prem_type not in ("plus", "ultra") and await asyncio.to_thread(database.has_discount, user_id):
+            text += f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium Plus — {plus_discount_price()} Stars"
+            builder = InlineKeyboardBuilder()
+            builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
+                           callback_data="buy_plus_30_discount")
+            markup = builder.as_markup()
         if is_callback:
             try:
-                await message_or_cb.message.edit_text(text, parse_mode="HTML")
+                await message_or_cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
             except Exception:
-                await message_or_cb.message.answer(text, parse_mode="HTML")
+                await message_or_cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
             await message_or_cb.answer()
         else:
-            await message_or_cb.answer(text, parse_mode="HTML")
+            await message_or_cb.answer(text, parse_mode="HTML", reply_markup=markup)
         return
 
     score = await asyncio.to_thread(database.get_score, user_id)
@@ -2556,6 +2580,14 @@ async def _show_premium_page(message_or_cb):
 
     web_app_url = await get_web_app_url(user_id, page="wheel")
     builder = InlineKeyboardBuilder()
+
+    if await asyncio.to_thread(database.has_discount, user_id):
+        text = (
+            f"🎁 <b>Sizda SUPER PRIZ chegirmasi bor!</b> 30 kun Premium Plus — "
+            f"<s>{get_stars_tariffs()['PLUS_30_DAYS'][3]}</s> <b>{plus_discount_price()} Stars</b> (bir martalik)\n\n" + text
+        )
+        builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
+                       callback_data="buy_plus_30_discount")
 
     if score >= 100:
         builder.button(text="🎁 100 ball → 3 kun Premium Pro", callback_data="redeem_points_premium")
@@ -2604,7 +2636,7 @@ async def process_redeem_points_premium(callback: types.CallbackQuery):
         logging.info(f"User {user_id} failed redeem: score={score}")
         await callback.answer(f"⚠️ Ballaringiz yetarli emas (Hozirda {score} ball bor).", show_alert=True)
 
-@dp.callback_query(F.data.in_(["buy_pro_7", "buy_plus_30", "buy_ultra_30", "pay_stars"]))
+@dp.callback_query(F.data.in_(["buy_pro_7", "buy_plus_30", "buy_plus_30_discount", "buy_ultra_30", "pay_stars"]))
 async def process_pay_stars_tariff(callback: types.CallbackQuery):
     """Telegram Stars tariflari invoice yuborish"""
     try:
@@ -2630,6 +2662,14 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
             payload = "PLUS_30_DAYS"
             stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+        elif action == "buy_plus_30_discount":
+            if not await asyncio.to_thread(database.has_discount, user_id):
+                await callback.answer("ℹ️ Sizda faol chegirma yo'q.", show_alert=True)
+                return
+            title = "🎁 Premium Plus — 30 kun (50% chegirma)"
+            desc = "Omad barabani SUPER PRIZ: 30 kunlik Premium Plus obuna yarim narxda."
+            payload = DISCOUNT_PAYLOAD
+            stars = plus_discount_price()
         elif action == "buy_ultra_30":
             title = "👑 Premium Ultra — 30 kun"
             desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
@@ -2687,6 +2727,15 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
                 error_message="To'lov ma'lumotlarida xatolik aniqlandi. Iltimos, /premium orqali qaytadan urinib ko'ring."
             )
             return
+
+        if pre_checkout_query.invoice_payload == DISCOUNT_PAYLOAD:
+            if not await asyncio.to_thread(database.has_discount, user_id):
+                logging.warning(f"Pre-checkout rad etildi (chegirma yo'q yoki ishlatilgan): user={user_id}")
+                await pre_checkout_query.answer(
+                    ok=False,
+                    error_message="Chegirma allaqachon ishlatilgan. /premium orqali oddiy tarifni tanlang."
+                )
+                return
 
         await pre_checkout_query.answer(ok=True)
     except Exception as e:
@@ -2800,7 +2849,8 @@ async def process_successful_payment(message: types.Message):
         try:
             granted, until = await asyncio.to_thread(
                 database.process_paid_premium,
-                charge_id, user_id, payload, payment.total_amount, prem_type, days
+                charge_id, user_id, payload, payment.total_amount, prem_type, days,
+                payload == DISCOUNT_PAYLOAD,  # chegirma shu tranzaksiyada sarflanadi
             )
         except Exception as e:
             logging.error(f"process_paid_premium DB error for user {user_id}, charge_id {charge_id}: {e}", exc_info=True)
@@ -3089,7 +3139,8 @@ async def cmd_reconcile_payment(message: types.Message):
 
         granted, until = await asyncio.to_thread(
             database.process_paid_premium,
-            charge_id, target_uid, payload, stars, prem_type, days
+            charge_id, target_uid, payload, stars, prem_type, days,
+            payload == DISCOUNT_PAYLOAD,
         )
         if not granted:
             remove_pending_failed_payment(charge_id)

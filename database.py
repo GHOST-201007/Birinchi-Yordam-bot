@@ -695,7 +695,7 @@ def record_payment_transaction(charge_id: str, user_id: int, product_id: str, st
 
 
 def process_paid_premium(charge_id: str, user_id: int, product_id: str, stars_amount: int,
-                         premium_type: str, days: int):
+                         premium_type: str, days: int, consume_discount: bool = False):
     """
     To'lov yozuvi va Premium berishni BITTA tranzaksiyada bajaradi (idempotent).
     Returns (True, until)  — yangi to'lov, Premium berildi va commit qilindi.
@@ -751,6 +751,9 @@ def process_paid_premium(charge_id: str, user_id: int, product_id: str, stars_am
         )
         if c.rowcount != 1:
             raise RuntimeError(f"Premium UPDATE kutilmagan rowcount={c.rowcount} user_id={user_id}")
+        if consume_discount:
+            # SUPER PRIZ chegirmasi premium bilan bir tranzaksiyada sarflanadi (P1-5)
+            c.execute("UPDATE users SET has_discount = 0 WHERE user_id = %s", (user_id,))
         conn.commit()
         return True, until
     except Exception:
@@ -1423,7 +1426,9 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
         points = pending_prize
 
         if points == 0:
-            # Super Prize: discount
+            # Super Prize: Plus 30 kun uchun 50% chegirma (narx bot.plus_discount_price bilan bir xil hisoblanadi)
+            plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+            discount_price = max(1, (plus_price + 1) // 2)
             c.execute(
                 "UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
                 "WHERE user_id = %s AND pending_spin_prize IS NOT NULL",
@@ -1431,8 +1436,9 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
             )
             msg = (
                 "🎉 <b>Tabriklaymiz! Omad barabanidan SUPER PRIZ yutib oldingiz!</b> 🏆\n\n"
-                "🎁 Siz 1 oylik Premium obunani 30 Stars o'rniga <b>atigi 20 Stars (Telegram yulduzi)</b> evaziga xarid qilish imkoniyatiga ega bo'ldingiz!\n\n"
-                "Chegirmali Premium obunani faollashtirish uchun quyidagi buyruqni bosing:\n"
+                f"🎁 Siz 30 kunlik <b>Premium Plus</b> obunani {plus_price} Stars o'rniga "
+                f"<b>atigi {discount_price} Stars</b> (50% chegirma) evaziga xarid qilish imkoniyatiga ega bo'ldingiz!\n\n"
+                "Chegirma bir martalik. Faollashtirish uchun:\n"
                 "➡️ /premium (yoki quyidagi tugmani bosing)"
             )
         else:

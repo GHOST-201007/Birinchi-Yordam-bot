@@ -2420,7 +2420,7 @@ function initWheelOfFortune() {
             if (winningPoints === 0) {
                 icon = "🏆";
                 title = "SUPER PRIZ!";
-                desc = "Siz <b>Super Priz</b> — 3 kunlik Premium Pro chegirmasini yutib oldingiz!";
+                desc = "Siz <b>Super Priz</b> — 30 kunlik Premium Plus uchun <b>50% chegirma</b> yutib oldingiz!";
                 btnText = "Prizni Tasdiqlash 🎁";
             } else {
                 icon = "🎉";
