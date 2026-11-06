@@ -73,21 +73,36 @@ pip install -r requirements.txt
 ```
 
 ### 3. Database (ma'lumotlar bazasi)
-Database SQLite. `init_db()` funksiyasi bot ishga tushganida `ALTER TABLE ADD COLUMN`
+Database — **PostgreSQL (Neon)**, ulanish `.env` dagi `DATABASE_URL` orqali.
+`init_db()` funksiyasi bot ishga tushganida `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 orqali yangi ustunlarni xavfsiz qo'shadi. Hech qanday qo'shimcha amal talab qilinmaydi.
 
-> DIQQAT: `users.db` faylini o'chirmang. Barcha foydalanuvchi ma'lumotlari shu yerda.
+> Lokal `users.db` / `pending_reconcile.db` fayllari git'da yo'q va ularni o'chirmang.
+> `pending_reconcile.db` — DB xatosi tufayli saqlanmagan to'lovlar dalili (`/reconcile` uchun).
 
 ### 4. .env fayli tekshiruvi
 `.env` faylida quyidagilar to'g'ri ekanligini tekshiring:
 ```
 BOT_TOKEN=...
 GEMINI_API_KEY=...
+DATABASE_URL=postgresql://...   # Neon
 ADMIN_ID=...
 ADMIN_USERNAME=...
-MINI_APP_URL=...  # run_dev.py avtomatik yangilaydi
-PREMIUM_STARS_PRICE=50
+MINI_APP_URL=...                # serverda doimiy domen; lokalda run_dev.py yangilaydi
+PRO_TRIAL_STARS=50              # Pro 7 kun
+PRO_MONTHLY_STARS=150           # Plus 30 kun (SUPER PRIZ chegirmasi = yarmi)
+ULTRA_MONTHLY_STARS=300         # Ultra 30 kun
+PREMIUM_STARS_PRICE=50          # xabarlardagi "... Stars dan boshlab" matni uchun
 ```
+
+### Bir martalik qo'lda bajariladigan buyruqlar (serverda)
+| Qachon | Buyruq |
+|---|---|
+| P0-1 tuzatishi deploy qilingandan keyin (bir marta) | `venv/bin/python scripts/purge_ai_chat_cache.py` |
+
+---
+
+## Lokal ishga tushirish (faqat kompyuterda, serverda EMAS)
 
 ### 5. Eski jarayonlarni to'xtatish
 Agar bot allaqachon ishlayotgan bo'lsa:

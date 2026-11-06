@@ -1,3 +1,8 @@
+# =============================================================================
+# FAQAT LOKAL ISHGA TUSHIRISH (kompyuterda, cloudflare tunnel bilan).
+# Serverda ISHLATMANG: u .env dagi MINI_APP_URL ni vaqtinchalik tunnel manziliga
+# almashtirib qo'yadi. Serverda systemd servislari ishlaydi (docs/DEPLOY.md).
+# =============================================================================
 import os
 import sys
 import time
