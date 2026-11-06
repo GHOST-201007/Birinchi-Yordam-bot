@@ -1325,13 +1325,19 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
             reg_time_val, ref_by = row
             if ref_by is None:
                 # Check if registered very recently (e.g. within 2 minutes)
+                # Bazadagi zonasiz vaqt Toshkent zonasiga keltiriladi (aks holda
+                # zonali get_uz_now() dan ayirish TypeError beradi — P0-3)
                 try:
-                    reg_time = reg_time_val if isinstance(reg_time_val, datetime.datetime) else datetime.datetime.fromisoformat(str(reg_time_val))
-                    if (get_uz_now() - reg_time).total_seconds() < 120:
-                        c.execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, new_user_id))
-                        is_new = True
-                except Exception:
-                    pass
+                    reg_time = _to_uz_datetime(reg_time_val)
+                except (TypeError, ValueError):
+                    logging.exception(
+                        "handle_referral: registered_at o'qilmadi (user=%s, value=%r)",
+                        new_user_id, reg_time_val,
+                    )
+                    reg_time = None
+                if reg_time is not None and (get_uz_now() - reg_time).total_seconds() < 120:
+                    c.execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, new_user_id))
+                    is_new = True
 
         if not is_new:
             return False, 0, False

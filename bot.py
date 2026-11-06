@@ -1187,8 +1187,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
         if referrer_id_str.isdigit():
             referrer_id = int(referrer_id_str)
             # This handles referred_by connection
-            referral_success = await asyncio.to_thread(database.handle_referral, user.id, referrer_id)
-            
+            # handle_referral (success, points, bonus) tuple qaytaradi — tuple har doim
+            # "rost", shuning uchun faqat birinchi elementni tekshiramiz
+            referral_success, _, _ = await asyncio.to_thread(database.handle_referral, user.id, referrer_id)
+
             # Notify the referrer only if referral was successful
             if referral_success:
                 try:
