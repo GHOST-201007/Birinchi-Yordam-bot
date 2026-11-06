@@ -42,12 +42,18 @@ bash /root/Birinchi-Yordam-bot/deploy.sh
 ## Foydali buyruqlar (serverda)
 | Vazifa | Buyruq |
 |---|---|
-| Bot holati | `systemctl status birinchiyordam` |
-| Jonli loglar | `journalctl -u birinchiyordam -f` |
-| Restart | `systemctl restart birinchiyordam` |
+| Bot holati | `systemctl status birinchi-yordam-bot` |
+| Mini App holati | `systemctl status birinchi-yordam-app` |
+| Jonli loglar | `journalctl -u birinchi-yordam-bot -f` |
+| Restart | `systemctl restart birinchi-yordam-bot birinchi-yordam-app` |
 | Serverdagi versiya | `cd /root/Birinchi-Yordam-bot && git log -1 --oneline` |
 
 > `.env` va `*.db` fayllar git'da yo'q — deploy ularga tegmaydi.
+
+### Serverdagi tuzilma
+- Bot: `birinchi-yordam-bot.service` (venv/bin/python bot.py)
+- Mini App: `birinchi-yordam-app.service` (app_server.py, nginx orqali `https://birinchiyordam.duckdns.org`)
+- `run_dev.py` (cloudflare tunnel) serverda ISHLATILMAYDI — u `.env` dagi `MINI_APP_URL` ni buzadi.
 
 ---
 
