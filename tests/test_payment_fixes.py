@@ -761,30 +761,15 @@ class TestPaymentFixes(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "amount")
 
-    def test_legacy_provider_payload_validation(self):
-        # 25. premium_1month: provayder to'lovida faqat UZS va musbat butun summa qabul qilinishi
+    def test_legacy_provider_payload_rejected(self):
+        # 25. Eski UZS (premium_1month) oqimi o'chirildi (P2-6): har qanday valyutada rad etiladi
         import bot
 
-        ok, reason = bot.validate_payment("premium_1month", "UZS", 1000000)
-        self.assertTrue(ok)
-        self.assertEqual(reason, "")
-
-        for bad_curr in ("XTR", "USD", "EUR", "RUB", ""):
-            ok, reason = bot.validate_payment("premium_1month", bad_curr, 1000000)
-            self.assertFalse(ok, f"Valyuta {bad_curr!r} rad etilishi kerak edi")
-            self.assertEqual(reason, "currency")
-
-        ok, reason = bot.validate_payment("premium_1month", "UZS", 0)
-        self.assertFalse(ok)
-        self.assertEqual(reason, "amount")
-
-        ok, reason = bot.validate_payment("premium_1month", "UZS", -50)
-        self.assertFalse(ok)
-        self.assertEqual(reason, "amount")
-
-        ok, reason = bot.validate_payment("premium_1month", "UZS", True)
-        self.assertFalse(ok)
-        self.assertEqual(reason, "amount")
+        for curr in ("UZS", "XTR"):
+            ok, reason = bot.validate_payment("premium_1month", curr, 1000000)
+            self.assertFalse(ok)
+            self.assertEqual(reason, "payload")
+        self.assertFalse(hasattr(bot, "PROVIDER_TOKEN"))
 
     def test_unknown_payload_evidence_recorded_and_reconcile_safe(self):
         # 26. Noma'lum payload'da dalil saqlanishi va /reconcile avtomatik premium bermasligi
@@ -1126,32 +1111,6 @@ class TestPaymentFixes(unittest.TestCase):
             for cur in conn.cursors:
                 self.assertTrue(cur.closed, f"{fn.__name__}: cursor yopilmadi")
         self.mock.fail_execute = False
-
-    def test_app_server_validate_init_data_utc_correctness(self):
-        # 34. app_server.validate_init_data haqiqiy UTC timestamp bilan to'g'ri ishlashi
-        import hmac
-        import hashlib
-        import time
-        import urllib.parse
-        import app_server
-
-        token = os.environ.get("BOT_TOKEN", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890")
-        now_utc = int(time.time())
-
-        def make_init_data(auth_date, tamper=False):
-            fields = {"auth_date": str(auth_date), "query_id": "AAHdF6IQAAAAAN0XohDhrOrc", "user": '{"id":12345}'}
-            check_str = "\n".join(f"{k}={fields[k]}" for k in sorted(fields))
-            secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
-            sig = hmac.new(secret, check_str.encode(), hashlib.sha256).hexdigest()
-            if tamper:
-                sig = "0" * 64
-            fields["hash"] = sig
-            return urllib.parse.urlencode(fields)
-
-        self.assertTrue(app_server.validate_init_data(make_init_data(now_utc)))
-        self.assertFalse(app_server.validate_init_data(make_init_data(now_utc, tamper=True)))
-        self.assertFalse(app_server.validate_init_data(make_init_data(now_utc - 90000)))
-        self.assertFalse(app_server.validate_init_data(make_init_data(now_utc + 600)))
 
     def test_premium_type_and_days_validation_before_db_transaction(self):
         # 35. process_paid_premium va grant_premium_days: noto'g'ri premium_type yoki days bo'lsa

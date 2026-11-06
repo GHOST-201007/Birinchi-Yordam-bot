@@ -402,7 +402,6 @@ ADMIN_ID = _parse_admin_id(os.getenv("ADMIN_ID", "0"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "YOUR_ADMIN_USERNAME")
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 CARD_NAME = os.getenv("CARD_NAME", "")
-PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")  # Feature 6: To'lov uchun (eski)
 MINI_APP_URL        = os.getenv("MINI_APP_URL", "")
 PREMIUM_STARS_PRICE = int(os.getenv("PREMIUM_STARS_PRICE", "50"))  # Stars narxi (default: 50 ⭐)
 
@@ -437,11 +436,7 @@ def plus_discount_price(plus_price: int | None = None) -> int:
 # Git tarixidan (all_git_history_utf8.txt):
 # 1) stars_premium_1month: currency="XTR", narxi dinamik (chegirma bilan 20 XTR yoki PREMIUM_STARS_PRICE env, default 50 XTR)
 #    bo'lgani uchun yagona statik narxni taxmin qilmasdan XTR valyuta va musbat butun summa tekshiriladi.
-# 2) premium_1month: eski UZS provayder oqimi (bot.py va git tarixida UZS sifatida tasdiqlangan).
 LEGACY_STARS_PAYLOADS = {"stars_premium_1month": ("pro", 30, "⭐ Premium Pro (30 kun)")}
-LEGACY_PROVIDER_PAYLOADS = {"premium_1month"}  # eski UZS/provider oqimi
-LEGACY_PROVIDER_CURRENCY = "UZS"
-
 
 def validate_payment(payload: str, currency: str, total_amount: int):
     """To'lov parametrlarini tekshiradi. Returns (ok: bool, reason: str)."""
@@ -454,12 +449,6 @@ def validate_payment(payload: str, currency: str, total_amount: int):
         return True, ""
     if payload in LEGACY_STARS_PAYLOADS:
         if currency != STARS_CURRENCY:
-            return False, "currency"
-        if isinstance(total_amount, bool) or not isinstance(total_amount, int) or total_amount <= 0:
-            return False, "amount"
-        return True, ""
-    if payload in LEGACY_PROVIDER_PAYLOADS:
-        if currency != LEGACY_PROVIDER_CURRENCY:
             return False, "currency"
         if isinstance(total_amount, bool) or not isinstance(total_amount, int) or total_amount <= 0:
             return False, "amount"
@@ -2932,86 +2921,6 @@ async def process_successful_payment(message: types.Message):
         except Exception as e:
             logging.error(f"Adminga Stars to'lov xabari yuborishda xato: {e}")
 
-    # Eski UZS to'lovi (agar PROVIDER_TOKEN bo'lsa)
-    elif payment.invoice_payload == "premium_1month":
-        synthetic_payload = "premium_1month"
-        legacy_charge_id = payment.provider_payment_charge_id or payment.telegram_payment_charge_id
-        if not legacy_charge_id:
-            logging.error(f"Legacy to'lovida haqiqiy charge_id topilmadi: user={user_id}")
-            await message.answer("⚠️ To'lov tranzaksiya identifikatori topilmadi.")
-            return
-        try:
-            granted, until = await asyncio.to_thread(
-                database.process_paid_premium,
-                legacy_charge_id, user_id, synthetic_payload, payment.total_amount, "pro", 30
-            )
-        except Exception as e:
-            logging.error(f"Legacy premium activation error for user {user_id}: {e}", exc_info=True)
-            saved = False
-            try:
-                saved = bool(record_failed_payment(legacy_charge_id, user_id, synthetic_payload, payment.total_amount))
-            except Exception as rec_err:
-                logging.critical(f"Failed to record evidence for legacy DB error charge_id={legacy_charge_id}: {rec_err}", exc_info=True)
-                saved = False
-            if saved:
-                await message.answer("⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.", parse_mode="HTML")
-            else:
-                await message.answer(
-                    f"⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.\n"
-                    f"Iltimos, to'lov identifikatoringizni administratorga yuboring: {legacy_charge_id}"
-                )
-            try:
-                safe_legacy_id = html.escape(str(legacy_charge_id)[:100])
-                status_note = "✅ Dalil saqlandi" if saved else "❌ DIQQAT: Dalilni saqlashda xatolik!"
-                reconcile_hint = (
-                    f"🔧 Tiklash uchun: <code>/reconcile {safe_legacy_id}</code>"
-                    if saved else
-                    "⚠️ Dalil SQLite bazasiga yozilmadi — foydalanuvchiga Premium qo'lda berilsin!"
-                )
-                await message.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=(
-                        f"🚨 <b>Legacy to'lov DB xatosi!</b>\n\n"
-                        f"👤 Foydalanuvchi: {username}\n"
-                        f"🆔 ID: <code>{user_id}</code>\n"
-                        f"💰 Summa: {payment.total_amount / 100:,.0f} UZS\n"
-                        f"🆔 Charge ID: <code>{safe_legacy_id}</code>\n"
-                        f"📌 Dalil holati: {status_note}\n"
-                        f"{reconcile_hint}"
-                    ),
-                    parse_mode="HTML"
-                )
-            except Exception as admin_err:
-                logging.error(f"Adminga legacy DB xatosi xabarini yuborishda xato: {admin_err}")
-            return
-
-        if not granted:
-            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
-            return
-
-        amount = payment.total_amount / 100
-        await message.answer(
-            "🎉 <b>To'lov muvaffaqiyatli amalga oshirildi!</b>\n\n"
-            "💎 <b>Premium obunangiz faollashtirildi!</b>\n"
-            "📅 Muddati: 1 oy\n\n"
-            "Endi AI yordamchisidan cheksiz foydalaning! 🚀",
-            parse_mode="HTML",
-            reply_markup=get_start_keyboard()
-        )
-        try:
-            await message.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    f"💳 <b>Avtomatik to'lov qabul qilindi!</b>\n\n"
-                    f"👤 Foydalanuvchi: {username}\n"
-                    f"🆔 ID: <code>{user_id}</code>\n"
-                    f"💰 Summa: {amount:,.0f} UZS\n"
-                    f"✅ Premium avtomatik faollashtirildi!"
-                ),
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logging.error(f"Adminga to'lov xabari yuborishda xato: {e}")
     else:
         # Noma'lum payload kelganda: foydalanuvchi to'lovi yo'qolmasligi uchun dalilni saqlash va adminga xabar berish
         logging.critical(
@@ -3126,8 +3035,6 @@ async def cmd_reconcile_payment(message: types.Message):
             product_title = mapping[2]
             if len(mapping) > 3:
                 stars = mapping[3]
-        elif payload == "premium_1month":
-            prem_type, days, product_title = "pro", 30, "1 oylik Premium"
         else:
             await message.answer(
                 f"❌ <b>Tiklab bo'lmadi: Noma'lum mahsulot payload'i ({html.escape(str(payload))})!</b>\n\n"
