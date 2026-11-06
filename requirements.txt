@@ -1,5 +1,6 @@
-aiogram>=3.0.0
-python-dotenv
-google-genai
-psycopg2-binary
-APScheduler
+aiogram==3.31.0
+aiohttp==3.14.3
+APScheduler==3.11.3
+google-genai==2.27.0
+psycopg2-binary==2.9.13
+python-dotenv==1.2.4
