@@ -1,4 +1,57 @@
-﻿# Birinchi Yordam Bot — Deployment Checklist
+# DigitalOcean serverini yangilash (ASOSIY USUL)
+
+## Avtomatik: `git push` → server o'zi yangilanadi
+Kompyuterda o'zgarish qilgach:
+```
+git add .
+git commit -m "nima o'zgardi"
+git push
+```
+GitHub Actions serverga SSH orqali ulanadi va `deploy.sh` ni ishga tushiradi
+(kod olinadi → kutubxonalar → bot restart → holat tekshiriladi).
+Natijani GitHub repodagi **Actions** bo'limida ko'rasiz (yashil ✅ / qizil ❌).
+
+### Bir martalik sozlash
+1. **Serverda SSH kalit yaratish** (DigitalOcean konsoli yoki `ssh root@SERVER_IP`):
+   ```
+   ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
+   cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
+   cat ~/.ssh/github_deploy        # shu chiqqan matnni to'liq nusxalang
+   ```
+2. **GitHub → repo → Settings → Secrets and variables → Actions → New repository secret**:
+   | Nomi | Qiymati |
+   |---|---|
+   | `DO_HOST` | Droplet IP manzili (DigitalOcean panelida) |
+   | `DO_USER` | `root` |
+   | `DO_SSH_KEY` | 1-qadamdagi `github_deploy` fayl matni (BEGIN...END qatorlari bilan) |
+3. Agar repo **private** bo'lsa, serverda `git fetch` ishlashi uchun deploy key qo'shing:
+   ```
+   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+   cat ~/.ssh/id_ed25519.pub
+   ```
+   Chiqqanini GitHub → repo → Settings → Deploy keys → Add key ga qo'ying va
+   serverda: `cd /root/Birinchi-Yordam-bot && git remote set-url origin git@github.com:GHOST-201007/Birinchi-Yordam-bot.git`
+4. Serverda birinchi marta qo'lda: `cd /root/Birinchi-Yordam-bot && git pull && bash deploy.sh`
+
+## Qo'lda (zaxira usul)
+```
+ssh root@SERVER_IP
+bash /root/Birinchi-Yordam-bot/deploy.sh
+```
+
+## Foydali buyruqlar (serverda)
+| Vazifa | Buyruq |
+|---|---|
+| Bot holati | `systemctl status birinchiyordam` |
+| Jonli loglar | `journalctl -u birinchiyordam -f` |
+| Restart | `systemctl restart birinchiyordam` |
+| Serverdagi versiya | `cd /root/Birinchi-Yordam-bot && git log -1 --oneline` |
+
+> `.env` va `*.db` fayllar git'da yo'q — deploy ularga tegmaydi.
+
+---
+
+# Birinchi Yordam Bot — Deployment Checklist
 
 ## Har yangilashda bajariladigan qadamlar
 
