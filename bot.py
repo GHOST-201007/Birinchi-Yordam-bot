@@ -4424,39 +4424,34 @@ async def fallback_text(message: types.Message, state: FSMContext):
     logging.info("message_type=text")
     user_id = message.from_user.id
     
-    # Engagement javoblarini tekshirish
+    # Engagement javobi: matn FAQAT bot yuborgan engagement xabariga reply bo'lsa
+    # javob deb qabul qilinadi. Aks holda (masalan "bolam zaharlandi") — AI ga (P0-2).
     from services import engagement
-    import database
-    
-    now = database.get_uz_now()
-    event_date = now.strftime("%Y-%m-%d")
-    
-    conn = None
-    c = None
-    try:
-        conn = database.get_connection()
-        c = conn.cursor()
-        c.execute('''
-            SELECT id, event_type, question, sent_at
-            FROM engagement_logs
-            WHERE user_id = %s AND event_date = %s AND answered_at IS NULL
-            ORDER BY sent_at DESC LIMIT 1
-        ''', (user_id, event_date))
-        unanswered = c.fetchone()
-    except Exception as e:
-        logging.error(f"Error checking engagement log: {e}")
-        unanswered = None
-    finally:
-        database._safe_close(c, conn)
-        
+
+    unanswered = None
+    reply_to = message.reply_to_message
+    if reply_to is not None and reply_to.from_user is not None and reply_to.from_user.is_bot:
+        try:
+            unanswered = await asyncio.to_thread(
+                engagement.find_unanswered_by_reply, user_id, reply_to.message_id
+            )
+        except Exception as e:
+            logging.error(f"Error checking engagement log: {e}")
+            unanswered = None
+
     if unanswered:
-        event_type = unanswered[1]
-        engagement.update_engagement_answer(user_id, event_type, event_date, message.text)
-        
+        event_type, event_date = unanswered
+        await asyncio.to_thread(
+            engagement.update_engagement_answer, user_id, event_type, event_date, message.text
+        )
+
         if event_type == 'premium_checkin':
             reply = await engagement.generate_premium_reply(message.text, get_gemini_response)
-            engagement.update_engagement_answer(user_id, event_type, event_date, message.text, bot_reply=reply)
-            await message.reply(reply, parse_mode="HTML")
+            await asyncio.to_thread(
+                engagement.update_engagement_answer,
+                user_id, event_type, event_date, message.text, reply,
+            )
+            await message.reply(markdown_to_html(reply), parse_mode="HTML")
             return
         elif event_type == '10:10':
             await message.reply("Fikringiz uchun rahmat! 😊 O'zingizni asrang.", parse_mode="HTML")

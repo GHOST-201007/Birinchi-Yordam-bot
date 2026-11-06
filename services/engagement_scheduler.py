@@ -36,10 +36,14 @@ def start_scheduler(bot, get_gemini_response):
                 
                 if is_new:
                     try:
-                        await bot.send_message(
+                        sent_msg = await bot.send_message(
                             chat_id=user_id,
                             text=f"{engagement.pick_morning_greeting()}\n\n{q_item['question']}",
                             parse_mode="HTML"
+                        )
+                        await asyncio.to_thread(
+                            engagement.set_engagement_message_id,
+                            user_id, '08:00', event_date, sent_msg.message_id,
                         )
                         sent += 1
                         await asyncio.sleep(0.05) # Rate limit protection
@@ -94,11 +98,15 @@ def start_scheduler(bot, get_gemini_response):
                 
                 if is_new:
                     try:
-                        await bot.send_message(
+                        sent_msg = await bot.send_message(
                             chat_id=user_id,
                             text=msg_text,
                             parse_mode="HTML",
                             reply_markup=reply_markup,
+                        )
+                        await asyncio.to_thread(
+                            engagement.set_engagement_message_id,
+                            user_id, '10:10', event_date, sent_msg.message_id,
                         )
                         await asyncio.sleep(0.05)
                     except Exception:
@@ -146,12 +154,16 @@ def start_scheduler(bot, get_gemini_response):
                         if pending_question is None:
                             continue
 
-                        await bot.send_message(
+                        sent_msg = await bot.send_message(
                             chat_id=user_id,
                             text=f"💎 <b>Premium Check-in</b>\n\n{pending_question}",
                             parse_mode="HTML",
                         )
                         engagement.mark_premium_checkin_sent(user_id, event_date)
+                        await asyncio.to_thread(
+                            engagement.set_engagement_message_id,
+                            user_id, 'premium_checkin', event_date, sent_msg.message_id,
+                        )
                         await asyncio.sleep(0.05)
                     except Exception:
                         logging.exception(

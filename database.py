@@ -209,6 +209,9 @@ def init_db():
                 UNIQUE (user_id, event_type, event_date)
             )
         ''')
+        # Migratsiya: engagement xabarining Telegram message_id si (P0-2 —
+        # javob faqat shu xabarga reply bo'lsa qabul qilinadi)
+        c.execute("ALTER TABLE engagement_logs ADD COLUMN IF NOT EXISTS message_id BIGINT")
 
         conn.commit()
 

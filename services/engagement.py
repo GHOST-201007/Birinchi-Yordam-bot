@@ -149,6 +149,46 @@ def update_engagement_answer(user_id, event_type, event_date, answer_text, bot_r
     finally:
         database._safe_close(c, conn)
 
+def set_engagement_message_id(user_id, event_type, event_date, message_id):
+    """Yuborilgan engagement xabarining Telegram message_id sini saqlash."""
+    conn = None
+    c = None
+    try:
+        conn = database.get_connection()
+        c = conn.cursor()
+        c.execute('''
+            UPDATE engagement_logs
+            SET message_id = %s
+            WHERE user_id = %s AND event_type = %s AND event_date = %s
+        ''', (message_id, user_id, event_type, event_date))
+        conn.commit()
+    except Exception:
+        database._safe_rollback(conn)
+        logging.exception("Error saving engagement message_id")
+    finally:
+        database._safe_close(c, conn)
+
+
+def find_unanswered_by_reply(user_id, message_id):
+    """User reply qilgan bot xabari javob berilmagan engagement xabarimi?
+    Topilsa (event_type, event_date), aks holda None qaytaradi."""
+    conn = None
+    c = None
+    try:
+        conn = database.get_connection()
+        c = conn.cursor()
+        c.execute('''
+            SELECT event_type, event_date
+            FROM engagement_logs
+            WHERE user_id = %s AND message_id = %s AND answered_at IS NULL
+            LIMIT 1
+        ''', (user_id, message_id))
+        row = c.fetchone()
+        return (row[0], row[1]) if row else None
+    finally:
+        database._safe_close(c, conn)
+
+
 def get_today_engagement(user_id, event_type, event_date):
     """Bugungi muayyan event logging ini olish"""
     conn = None
@@ -208,8 +248,10 @@ async def generate_premium_reply(user_answer, ai_generate_func):
         f"Unga qisqa (1-3 gap), muloyim va qo'llab-quvvatlovchi javob yoz. "
         f"Agar u charchagan bo'lsa dalda ber, xursand bo'lsa tabriklab qo'y. Shifokor yoki psixolog rolini o'ynama."
     )
+    fallback = "Rahmat, ulashganingiz uchun. O'zingizga qarab yuring, siz biz uchun qadrlisiz! ❤️"
     try:
-        return await ai_generate_func(prompt)
+        # AI ishlamasa get_gemini_response None qaytaradi — bo'sh xabar yuborilmasin
+        return await ai_generate_func(prompt) or fallback
     except Exception as e:
         logging.exception("Error generating premium reply")
-        return "Rahmat, ulashganingiz uchun. O'zingizga qarab yuring, siz biz uchun qadrlisiz! ❤️"
+        return fallback
