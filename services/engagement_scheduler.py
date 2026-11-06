@@ -11,9 +11,11 @@ def start_scheduler(bot, get_gemini_response):
 
     async def run_0800_engagement():
         logging.info("[ENGAGEMENT] 08:00 job started")
-        conn = database.get_connection()
-        c = conn.cursor()
+        conn = None
+        c = None
         try:
+            conn = database.get_connection()
+            c = conn.cursor()
             # Barcha obuna bo'lgan yoki oddiy userlarni olish (masalan, ban bo'lmaganlar)
             c.execute("SELECT user_id FROM users WHERE is_banned = 0")
             users = c.fetchall()
@@ -46,13 +48,15 @@ def start_scheduler(bot, get_gemini_response):
                         logging.warning(f"[ENGAGEMENT] 08:00 User {user_id} error: {e}")
             logging.info(f"[ENGAGEMENT] 08:00 sent: {sent}, failed: {failed}")
         finally:
-            conn.close()
+            database._safe_close(c, conn)
 
     async def run_1010_engagement():
         logging.info("[ENGAGEMENT] 10:10 job started")
-        conn = database.get_connection()
-        c = conn.cursor()
+        conn = None
+        c = None
         try:
+            conn = database.get_connection()
+            c = conn.cursor()
             c.execute("SELECT user_id FROM users WHERE is_banned = 0")
             users = c.fetchall()
             event_date = database.get_uz_now().strftime("%Y-%m-%d")
@@ -100,25 +104,39 @@ def start_scheduler(bot, get_gemini_response):
                     except Exception:
                         pass
         finally:
-            conn.close()
+            database._safe_close(c, conn)
 
     async def run_premium_checkin():
         async with premium_checkin_lock:
             logging.info("[ENGAGEMENT] Premium check-in started")
-            conn = database.get_connection()
-            c = conn.cursor()
+            conn = None
+            c = None
             try:
+                conn = database.get_connection()
+                c = conn.cursor()
                 c.execute(
-                    "SELECT user_id FROM users WHERE is_banned = 0 AND is_premium = 1"
+                    "SELECT user_id, premium_expires_at, premium_type FROM users WHERE is_banned = 0 AND is_premium = 1"
                 )
                 users = c.fetchall()
-                event_date = database.get_uz_now().strftime("%Y-%m-%d")
+                now = database.get_uz_now()
+                event_date = now.strftime("%Y-%m-%d")
                 logging.info(
                     f"[ENGAGEMENT] Premium check-in target users: {len(users)}"
                 )
 
                 for row in users:
                     user_id = row[0]
+                    exp = row[1]
+                    ptype = row[2]
+                    if ptype == "free":
+                        continue
+                    if exp:
+                        try:
+                            if database._to_uz_datetime(exp) <= now:
+                                continue
+                        except Exception:
+                            pass
+
                     question = engagement.pick_premium_checkin_question()
 
                     try:
@@ -141,7 +159,7 @@ def start_scheduler(bot, get_gemini_response):
                             user_id,
                         )
             finally:
-                conn.close()
+                database._safe_close(c, conn)
 
     # Schedule the jobs
     scheduler.add_job(run_0800_engagement, 'cron', hour=8, minute=0)

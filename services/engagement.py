@@ -4,25 +4,25 @@ import database
 import logging
 
 QUESTION_BANK = [
-    {"category": "hydration", "question": "Suv ichish sizga energiya beradi. Bugun qancha ichishni rejalashtiryapsiz?"},
-    {"category": "sleep", "question": "Kechagi damni qoniqtirdimi? Bugun quvvatni oshirish uchun biror kichik odatingiz bormi?"},
-    {"category": "physical_activity", "question": "Bugun 10 daqiqalik jismoniy harakatni rejalashtiryapsiz. Qaysi mashqni tanlaysiz?"},
-    {"category": "stress_management", "question": "Bugun asabiylashtirgan narsa bormi? Uni 5 daqiqada qanday kamaytirardingiz?"},
-    {"category": "healthy_habits", "question": "Sog‘lig‘ingiz uchun kichik bir o‘zgarish qilishni xohlaysizmi? Bugun nimalarni sinab ko‘rmoqchisiz?"},
-    {"category": "nutrition", "question": "Tushlik yoki kechki ovqatga qanday foydali qo‘shimchalar qo‘shasiz?"},
-    {"category": "motivation", "question": "Bugun sizni ilhomlantirgan narsa nima?"},
-    {"category": "self_care", "question": "O‘zingizga bir payt ajratib, nima qilishni xohlaysiz?"},
-    {"category": "mindfulness", "question": "Bugun bir necha daqiqa nafas olishga e’tibor qaratdingizmi? Qanday his qildingiz?"}
+    {"category": "hydration", "question": "Ertalab bir stakan iliq suv ichish tanani uyg'otadi. Kun davomida yetarli suv ichishni unutmang! 💧"},
+    {"category": "sleep", "question": "Kecha yaxshi dam oldingizmi? Bugun tetik va quvvatli bo'lish uchun qanday rejangiz bor? 😴"},
+    {"category": "physical_activity", "question": "Bugun 10-15 daqiqa piyoda yurish yoki yengil badantarbiya qilishga vaqt ajratasizmi? 🏃‍♂️"},
+    {"category": "stress_management", "question": "Kun davomida xotirjamlikni saqlash muhim. Charchoq paydo bo'lsa, qisqa tanaffus qilib chuqur nafas oling. 🧘"},
+    {"category": "healthy_habits", "question": "Sog'lom turmush tarzi kichik odatlardan boshlanadi. Bugun qaysi foydali odatni sinab ko'rmoqchisiz? 🍏"},
+    {"category": "nutrition", "question": "Bugungi taomnomangizga ko'proq meva, sabzavot yoki yangi ko'katlar qo'shishni rejalashtirdingizmi? 🥗"},
+    {"category": "motivation", "question": "Bugungi yangi kuningiz samarali va xayrli o'tishini tilaymiz! Bugungi asosiy maqsadingiz nima? 🎯"},
+    {"category": "self_care", "question": "Ish va tashvishlar orasida o'zingizga ham ozgina vaqt ajratishni unutmang. Bugun o'zingizni qanday xursand qilasiz? ☕"},
+    {"category": "mindfulness", "question": "Kuningizni yengil tabassum va yaxshi niyat bilan boshlang. O'zingizni qanday his qilyapsiz? ✨"}
 ]
 
 
 # Additional premium check‑in prompts – short, friendly and varied
 PREMIUM_CHECKIN_QUESTIONS = [
-    "🌆 Kuningiz yaxshi o'tdimi? Bugun qanday his qilyapsiz?",
-    "💎 Sizning bugungi kayfiyatingiz qanday? Qanday yangiliklar bo‘ldi?",
-    "✨ Sizni bugun nima ilhomlantirdi? Qisqacha ayting!",
-    "🌟 Sizni qoniqtirgan biror narsa bo‘ldimi? Qisqa fikr bildiring.",
-    "🔹 Bugun o'zingizga qanday g'amxo'rlik qildingiz?",
+    "🌆 Kuningiz qanday o'tdi? Bugun o'zingizni qanday his qilyapsiz?",
+    "💎 Bugungi kayfiyatingiz va umumiy holatingiz qanday? Qandaydir bezovtalik yoki charchoq bormi?",
+    "✨ Bugungi kuningiz samarali bo'ldimi? O'zingizga vaqt ajrata oldingizmi?",
+    "🌟 Oqshomingiz xayrli o'tsin! Ertangi kun uchun qanday rejalaringiz bor?",
+    "🔹 Bugun salomatligingiz va salomatlik rejalaringiz uchun nimalar qila oldingiz?",
 ]
 
 def pick_premium_checkin_question():
@@ -47,9 +47,11 @@ def pick_morning_greeting():
 
 def log_engagement_event(user_id, event_type, event_date, question, category=None):
     """Event yuborilganda log ga yozish"""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         now = database.get_uz_now()
         c.execute('''
             INSERT INTO engagement_logs 
@@ -60,18 +62,20 @@ def log_engagement_event(user_id, event_type, event_date, question, category=Non
         conn.commit()
         return c.rowcount > 0
     except Exception as e:
-        conn.rollback()
+        database._safe_rollback(conn)
         import logging
         logging.error(f"Error logging engagement: {e}")
         return False
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 def prepare_premium_checkin(user_id, event_date, question, category="premium"):
     """Bugungi Premium Check-in qaydini tayyorlaydi; yuborilmagan bo'lsa savolni qaytaradi."""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         c.execute("""
             INSERT INTO engagement_logs
                 (user_id, event_type, event_date, question, category, sent_at)
@@ -94,17 +98,19 @@ def prepare_premium_checkin(user_id, event_date, question, category="premium"):
 
         return row[1]
     except Exception:
-        conn.rollback()
+        database._safe_rollback(conn)
         raise
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 
 def mark_premium_checkin_sent(user_id, event_date):
     """Faqat Telegram xabari muvaffaqiyatli yuborilgandan keyin chaqiriladi."""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         c.execute("""
             UPDATE engagement_logs
             SET sent_at = %s
@@ -116,17 +122,19 @@ def mark_premium_checkin_sent(user_id, event_date):
         conn.commit()
         return c.rowcount > 0
     except Exception:
-        conn.rollback()
+        database._safe_rollback(conn)
         raise
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 
 def update_engagement_answer(user_id, event_type, event_date, answer_text, bot_reply=None):
     """User javob berganida saqlash"""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         now = database.get_uz_now()
         c.execute('''
             UPDATE engagement_logs
@@ -135,17 +143,19 @@ def update_engagement_answer(user_id, event_type, event_date, answer_text, bot_r
         ''', (now, answer_text, bot_reply, user_id, event_type, event_date))
         conn.commit()
     except Exception as e:
-        conn.rollback()
+        database._safe_rollback(conn)
         import logging
         logging.error(f"Error updating engagement answer: {e}")
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 def get_today_engagement(user_id, event_type, event_date):
     """Bugungi muayyan event logging ini olish"""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         c.execute('''
             SELECT id, question, answered_at, answer_text, bot_reply
             FROM engagement_logs
@@ -153,13 +163,15 @@ def get_today_engagement(user_id, event_type, event_date):
         ''', (user_id, event_type, event_date))
         return c.fetchone()
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 def pick_morning_question(user_id):
     """User uchun 08:00 savolini tanlash (duplicate oldini oladi)"""
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         c.execute('''
             SELECT question FROM engagement_logs 
             WHERE user_id = %s AND event_type = '08:00'
@@ -174,7 +186,7 @@ def pick_morning_question(user_id):
         # interests bo'yicha weighting qilinishi mumkin, hozircha random
         return random.choice(available)
     finally:
-        conn.close()
+        database._safe_close(c, conn)
 
 async def generate_1010_followup(user_answer, ai_generate_func):
     """10:10 uchun AI orqali follow-up generatsiya qilish"""

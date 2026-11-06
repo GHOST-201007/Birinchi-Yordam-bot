@@ -38,7 +38,7 @@ def validate_init_data(init_data: str) -> bool:
             auth_ts = int(auth_date_str)
         except ValueError:
             return False
-        now_ts = int(datetime.datetime.utcnow().timestamp())
+        now_ts = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
         # Reject if auth_date is in the future beyond a small clock‑skew (60 s)
         if auth_ts > now_ts + 60:
             return False
@@ -50,7 +50,7 @@ def validate_init_data(init_data: str) -> bool:
         return False
 
 APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
-PORT = 8080
+PORT = int(os.environ.get("PORT", 8000))
 
 def get_file_version(filepath):
     try:

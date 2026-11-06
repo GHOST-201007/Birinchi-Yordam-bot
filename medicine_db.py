@@ -70,6 +70,23 @@ def _placeholder():
     return "%s" if DB_TYPE == "postgres" else "?"
 
 
+def _safe_rollback(conn):
+    if conn is not None:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _safe_close(cursor=None, conn=None):
+    try:
+        if cursor is not None:
+            cursor.close()
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 # ═══════════════════════════════════════════════════════════════════
 # KIRIL ↔ LOTIN TRANSLITERATSIYA
 # ═══════════════════════════════════════════════════════════════════
@@ -169,86 +186,92 @@ def normalize_query(text: str) -> str:
 
 def init_medicine_db():
     """Dorilar bazasini yaratish (medicines va ai_response_cache jadvallari)"""
-    conn = _get_conn()
-    c = conn.cursor()
-    ph = _placeholder()
+    conn = None
+    c = None
+    try:
+        conn = _get_conn()
+        c = conn.cursor()
 
-    if DB_TYPE == "postgres":
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS medicines (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                normalized_name TEXT NOT NULL,
-                active_ingredient TEXT,
-                aliases TEXT,
-                description TEXT,
-                usage_info TEXT,
-                side_effects TEXT,
-                warnings TEXT,
-                dosage TEXT,
-                related_medicines TEXT,
-                source TEXT DEFAULT 'manual',
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        ''')
+        if DB_TYPE == "postgres":
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS medicines (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    normalized_name TEXT NOT NULL,
+                    active_ingredient TEXT,
+                    aliases TEXT,
+                    description TEXT,
+                    usage_info TEXT,
+                    side_effects TEXT,
+                    warnings TEXT,
+                    dosage TEXT,
+                    related_medicines TEXT,
+                    source TEXT DEFAULT 'manual',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
 
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS ai_response_cache (
-                id SERIAL PRIMARY KEY,
-                query_normalized TEXT UNIQUE NOT NULL,
-                query_original TEXT,
-                response_text TEXT NOT NULL,
-                response_type TEXT DEFAULT 'general',
-                hit_count INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS ai_response_cache (
+                    id SERIAL PRIMARY KEY,
+                    query_normalized TEXT UNIQUE NOT NULL,
+                    query_original TEXT,
+                    response_text TEXT NOT NULL,
+                    response_type TEXT DEFAULT 'general',
+                    hit_count INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
 
-        # Indekslar
-        c.execute("CREATE INDEX IF NOT EXISTS idx_med_normalized ON medicines (normalized_name)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_med_active ON medicines (active_ingredient)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_cache_query ON ai_response_cache (query_normalized)")
-    else:
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS medicines (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                normalized_name TEXT NOT NULL,
-                active_ingredient TEXT,
-                aliases TEXT,
-                description TEXT,
-                usage_info TEXT,
-                side_effects TEXT,
-                warnings TEXT,
-                dosage TEXT,
-                related_medicines TEXT,
-                source TEXT DEFAULT 'manual',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            # Indekslar
+            c.execute("CREATE INDEX IF NOT EXISTS idx_med_normalized ON medicines (normalized_name)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_med_active ON medicines (active_ingredient)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cache_query ON ai_response_cache (query_normalized)")
+        else:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS medicines (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    normalized_name TEXT NOT NULL,
+                    active_ingredient TEXT,
+                    aliases TEXT,
+                    description TEXT,
+                    usage_info TEXT,
+                    side_effects TEXT,
+                    warnings TEXT,
+                    dosage TEXT,
+                    related_medicines TEXT,
+                    source TEXT DEFAULT 'manual',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS ai_response_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                query_normalized TEXT UNIQUE NOT NULL,
-                query_original TEXT,
-                response_text TEXT NOT NULL,
-                response_type TEXT DEFAULT 'general',
-                hit_count INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS ai_response_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query_normalized TEXT UNIQUE NOT NULL,
+                    query_original TEXT,
+                    response_text TEXT NOT NULL,
+                    response_type TEXT DEFAULT 'general',
+                    hit_count INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        c.execute("CREATE INDEX IF NOT EXISTS idx_med_normalized ON medicines (normalized_name)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_med_active ON medicines (active_ingredient)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_cache_query ON ai_response_cache (query_normalized)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_med_normalized ON medicines (normalized_name)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_med_active ON medicines (active_ingredient)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cache_query ON ai_response_cache (query_normalized)")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception:
+        _safe_rollback(conn)
+        raise
+    finally:
+        _safe_close(c, conn)
     logging.info("[MEDICINE_DB] Jadvallar yaratildi/tekshirildi.")
 
     # Boshlang'ich dorilar ro'yxatini qo'shish
@@ -530,34 +553,40 @@ _SEED_MEDICINES = [
 
 def _seed_medicines():
     """Boshlang'ich dorilar ma'lumotlarini bazaga qo'shish (agar bo'sh bo'lsa)"""
-    conn = _get_conn()
-    c = conn.cursor()
-    ph = _placeholder()
+    conn = None
+    c = None
+    try:
+        conn = _get_conn()
+        c = conn.cursor()
+        ph = _placeholder()
 
-    c.execute("SELECT COUNT(*) FROM medicines")
-    count = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM medicines")
+        count = c.fetchone()[0]
 
-    if count > 0:
-        conn.close()
-        return
+        if count > 0:
+            return
 
-    logging.info("[MEDICINE_DB] Boshlang'ich dorilar bazaga qo'shilmoqda...")
+        logging.info("[MEDICINE_DB] Boshlang'ich dorilar bazaga qo'shilmoqda...")
 
-    for med in _SEED_MEDICINES:
-        c.execute(
-            f"INSERT INTO medicines (name, normalized_name, active_ingredient, aliases, description, usage_info, side_effects, warnings, dosage, related_medicines, source) "
-            f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
-            (
-                med["name"], med["normalized_name"], med["active_ingredient"],
-                med["aliases"], med["description"], med.get("usage_info", ""),
-                med.get("side_effects", ""), med.get("warnings", ""),
-                med.get("dosage", ""), med.get("related_medicines", ""), "seed"
+        for med in _SEED_MEDICINES:
+            c.execute(
+                f"INSERT INTO medicines (name, normalized_name, active_ingredient, aliases, description, usage_info, side_effects, warnings, dosage, related_medicines, source) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+                (
+                    med["name"], med["normalized_name"], med["active_ingredient"],
+                    med["aliases"], med["description"], med.get("usage_info", ""),
+                    med.get("side_effects", ""), med.get("warnings", ""),
+                    med.get("dosage", ""), med.get("related_medicines", ""), "seed"
+                )
             )
-        )
 
-    conn.commit()
-    conn.close()
-    logging.info(f"[MEDICINE_DB] {len(_SEED_MEDICINES)} ta dori qo'shildi.")
+        conn.commit()
+        logging.info(f"[MEDICINE_DB] {len(_SEED_MEDICINES)} ta dori qo'shildi.")
+    except Exception:
+        _safe_rollback(conn)
+        raise
+    finally:
+        _safe_close(c, conn)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -567,24 +596,33 @@ def _seed_medicines():
 def _search_exact(conn, query: str):
     """1-bosqich: Aniq nom bo'yicha qidirish"""
     c = conn.cursor()
-    ph = _placeholder()
-    c.execute(f"SELECT * FROM medicines WHERE LOWER(name) = {ph}", (query.lower(),))
-    return c.fetchone()
+    try:
+        ph = _placeholder()
+        c.execute(f"SELECT * FROM medicines WHERE LOWER(name) = {ph}", (query.lower(),))
+        return c.fetchone()
+    finally:
+        _safe_close(c)
 
 
 def _search_normalized(conn, normalized: str):
     """2-bosqich: Normalizatsiya qilingan nom bo'yicha"""
     c = conn.cursor()
-    ph = _placeholder()
-    c.execute(f"SELECT * FROM medicines WHERE normalized_name = {ph}", (normalized,))
-    return c.fetchone()
+    try:
+        ph = _placeholder()
+        c.execute(f"SELECT * FROM medicines WHERE normalized_name = {ph}", (normalized,))
+        return c.fetchone()
+    finally:
+        _safe_close(c)
 
 
 def _search_alias(conn, query: str):
     """3-bosqich: Sinonimlar/aliaslar bo'yicha qidirish"""
     c = conn.cursor()
-    c.execute("SELECT * FROM medicines WHERE aliases IS NOT NULL")
-    rows = c.fetchall()
+    try:
+        c.execute("SELECT * FROM medicines WHERE aliases IS NOT NULL")
+        rows = c.fetchall()
+    finally:
+        _safe_close(c)
     query_lower = query.lower()
     for row in rows:
         aliases = row[4]  # aliases ustuni
@@ -598,17 +636,23 @@ def _search_alias(conn, query: str):
 def _search_active_ingredient(conn, query: str):
     """4-bosqich: Faol modda bo'yicha qidirish"""
     c = conn.cursor()
-    ph = _placeholder()
-    like_query = f"%{query.lower()}%"
-    c.execute(f"SELECT * FROM medicines WHERE LOWER(active_ingredient) LIKE {ph}", (like_query,))
-    return c.fetchone()
+    try:
+        ph = _placeholder()
+        like_query = f"%{query.lower()}%"
+        c.execute(f"SELECT * FROM medicines WHERE LOWER(active_ingredient) LIKE {ph}", (like_query,))
+        return c.fetchone()
+    finally:
+        _safe_close(c)
 
 
 def _search_fuzzy(conn, query: str, threshold: float = 0.55):
     """6-bosqich: O'xshashlik bo'yicha qidirish (fuzzy match)"""
     c = conn.cursor()
-    c.execute("SELECT * FROM medicines")
-    rows = c.fetchall()
+    try:
+        c.execute("SELECT * FROM medicines")
+        rows = c.fetchall()
+    finally:
+        _safe_close(c)
 
     best_match = None
     best_score = 0
@@ -644,27 +688,35 @@ def _search_fuzzy(conn, query: str, threshold: float = 0.55):
 def _search_ai_cache(conn, normalized: str):
     """AI javoblar cache'idan qidirish"""
     c = conn.cursor()
-    ph = _placeholder()
-    c.execute(f"SELECT response_text, hit_count FROM ai_response_cache WHERE query_normalized = {ph}", (normalized,))
-    row = c.fetchone()
-    if row:
-        # hit_count oshirish
-        c.execute(f"UPDATE ai_response_cache SET hit_count = hit_count + 1, updated_at = {ph} WHERE query_normalized = {ph}",
-                  (datetime.datetime.now().isoformat(), normalized))
-        conn.commit()
-        return row[0]
-    return None
+    try:
+        ph = _placeholder()
+        c.execute(f"SELECT response_text, hit_count FROM ai_response_cache WHERE query_normalized = {ph}", (normalized,))
+        row = c.fetchone()
+        if row:
+            # hit_count oshirish
+            c.execute(f"UPDATE ai_response_cache SET hit_count = hit_count + 1, updated_at = {ph} WHERE query_normalized = {ph}",
+                      (datetime.datetime.now().isoformat(), normalized))
+            conn.commit()
+            return row[0]
+        return None
+    except Exception:
+        _safe_rollback(conn)
+        raise
+    finally:
+        _safe_close(c)
 
 
 def save_ai_response(query_original: str, response_text: str, response_type: str = "general"):
     """AI javobini cache bazasiga saqlash (keyingi so'rovlar uchun)"""
     normalized = normalize_query(query_original)
-    conn = _get_conn()
-    c = conn.cursor()
+    conn = None
+    c = None
     ph = _placeholder()
     now = datetime.datetime.now().isoformat()
 
     try:
+        conn = _get_conn()
+        c = conn.cursor()
         if DB_TYPE == "postgres":
             c.execute(
                 f"INSERT INTO ai_response_cache (query_normalized, query_original, response_text, response_type, created_at, updated_at) "
@@ -681,9 +733,10 @@ def save_ai_response(query_original: str, response_text: str, response_type: str
         conn.commit()
         logging.info(f"[AI_CACHE] Saqlandi: '{normalized}'")
     except Exception as e:
+        _safe_rollback(conn)
         logging.error(f"[AI_CACHE] Saqlashda xato: {e}")
     finally:
-        conn.close()
+        _safe_close(c, conn)
 
     # In-memory cache'ga ham saqlash
     _cache_set(normalized, {
@@ -748,10 +801,11 @@ def find_medicine(query: str) -> dict:
         logging.info(f"[CACHE] HIT: '{normalized}'")
         return cached
 
-    conn = _get_conn()
+    conn = None
     result = None
 
     try:
+        conn = _get_conn()
         # 2. Exact match
         row = _search_exact(conn, query.strip())
         if row:
@@ -805,7 +859,7 @@ def find_medicine(query: str) -> dict:
                 return result
 
     finally:
-        conn.close()
+        _safe_close(None, conn)
 
     # 8. TOPILMADI
     logging.info(f"[SEARCH] MISS: '{query}' → AI FALLBACK")
@@ -839,15 +893,16 @@ def is_medicine_query(text: str) -> bool:
     if len(words) <= 3:
         # Birinchi so'z katta harfdan boshlansa — dori nomi bo'lishi mumkin
         normalized = normalize_query(text)
-        conn = _get_conn()
+        conn = None
         try:
+            conn = _get_conn()
             # Tez tekshiruv — bazadan bor-yo'qligini
             for q in [normalized, text_lower]:
                 row = _search_exact(conn, q) or _search_normalized(conn, q) or _search_alias(conn, q)
                 if row:
                     return True
         finally:
-            conn.close()
+            _safe_close(None, conn)
 
     # Kalit so'zlar bilan tekshirish
     for kw in medicine_keywords:

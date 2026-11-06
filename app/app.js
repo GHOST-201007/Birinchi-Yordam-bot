@@ -2096,6 +2096,7 @@ function initWheelOfFortune() {
             const timeLeft = endTime - Date.now();
             if (timeLeft <= 0) {
                 clearInterval(countdownInterval);
+                remainingTimeMs = 0;
                 spinBtn.disabled = false;
                 if (centerText) centerText.textContent = "AYLANTIR";
                 resultMsg.classList.add('hidden');
@@ -2350,9 +2351,22 @@ function initWheelOfFortune() {
         // Use server-side pre-generated prize
         // XAVFSIZLIK: prize URL da bo'lmasa spin bloklanadi
         if (serverPrize === null) {
-            isSpinning = false; spinBtn.disabled = false;
-            resultMsg.innerHTML = '<div class="result-icon">'+String.fromCharCode(0x1F552)+'</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Baraban uchun bot orqali kiring.</p>';
-            resultMsg.classList.remove('hidden'); return;
+            isSpinning = false;
+            spinBtn.disabled = false;
+            if (centerText) centerText.textContent = "AYLANTIR";
+            resultMsg.innerHTML = '<div class="result-icon">🎁</div><p class="result-title">Bot orqali kiring</p><p class="result-desc">Omad g‘ildiragini aylantirish uchun botdagi maxsus havola orqali kiring.</p><button class="result-confirm-btn" id="btn-open-bot-wheel" style="margin-top:12px;">🎡 Bot orqali ochish</button>';
+            resultMsg.classList.remove('hidden');
+            const btnBotWheel = document.getElementById('btn-open-bot-wheel');
+            if (btnBotWheel) {
+                btnBotWheel.onclick = () => {
+                    if (tg && tg.openTelegramLink) {
+                        const botUsername = "Birinchiyordam1Bot";
+                        tg.openTelegramLink(`https://t.me/${botUsername}?start=wheel`);
+                        tg.close();
+                    }
+                };
+            }
+            return;
         }
         const winningPoints = serverPrize;
 
@@ -2364,6 +2378,8 @@ function initWheelOfFortune() {
         // XAVFSIZLIK: server prize frontend da mavjud bo'lmasa blokla
         if (!eligible.length) {
             isSpinning = false;
+            spinBtn.disabled = false;
+            if (centerText) centerText.textContent = "AYLANTIR";
             resultMsg.innerHTML = `<div class="result-icon">⚠️</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
             resultMsg.classList.remove('hidden');
             return;
@@ -2435,10 +2451,11 @@ function initWheelOfFortune() {
         }, 5300);
     };
 
-    // Auto-open wheel if specified in URL params
-    const page = urlParams.get('page');
+    // Auto-open wheel if specified in URL params or start_param
+    const page = urlParams.get('page') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param);
     if (page === 'wheel') {
         checkWheelStateAndOpen();
+        pushWheelNav();
     }
 }
 

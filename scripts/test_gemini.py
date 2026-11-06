@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-load_dotenv()
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 api_key = os.getenv("GEMINI_API_KEY")
 
 async def test_models():

@@ -15,6 +15,7 @@ from aiogram.types import (
 )
 from typing import Callable, Dict, Any, Awaitable
 import time
+import uuid
 
 class KeepTyping:
     def __init__(self, bot: Bot, chat_id: int, action: str = "typing", interval: float = 4.0):
@@ -236,6 +237,143 @@ def markdown_to_html(text: str) -> str:
         text = text.replace(f"___CODE_BLOCK_{i}___", f"<pre>{code}</pre>")
     return text
 
+
+TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+
+def chunk_text(text: str, max_len: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
+    """Uzun matnni Telegram limiti (4096 belgi) bo'yicha xavfsiz bo'laklarga ajratadi."""
+    if max_len <= 0:
+        raise ValueError("max_len musbat bo'lishi kerak")
+    if not text:
+        return []
+    if len(text) <= max_len:
+        return [text]
+
+    chunks = []
+    remaining = text
+    while len(remaining) > max_len:
+        window = remaining[:max_len]
+        split_idx = window.rfind("\n\n")
+        sep_len = 2
+        if split_idx <= 0:
+            split_idx = window.rfind("\n")
+            sep_len = 1
+        if split_idx <= 0:
+            split_idx = window.rfind(" ")
+            sep_len = 1
+        if split_idx <= 0:
+            split_idx = max_len
+            sep_len = 0
+
+        chunks.append(remaining[:split_idx])
+        remaining = remaining[split_idx + sep_len:]
+
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def _is_not_modified_error(exc: Exception) -> bool:
+    """Telegram 'message is not modified': matn allaqachon ko'rinib turibdi (yetkazilgan hisoblanadi)."""
+    return "message is not modified" in str(exc).lower()
+
+
+def _is_ambiguous_send_error(exc: Exception) -> bool:
+    """Telegram xabarni qabul qilgan-qilmaganini bilib bo'lmaydigan xatolar (timeout/tarmoq/5xx).
+    Bunday holatda qayta yuborilmaydi (dublikat xavfi)."""
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return True
+    try:
+        from aiogram.exceptions import TelegramNetworkError, TelegramServerError
+        if isinstance(exc, (TelegramNetworkError, TelegramServerError)):
+            return True
+    except Exception:
+        pass
+    low = str(exc).lower()
+    return "timed out" in low or "timeout" in low
+
+
+async def _send_piece(send_fn, html_text, plain_text) -> str:
+    """Bitta xabar bo'lagini yuboradi: avval HTML (agar berilgan bo'lsa), aniq rad etilsa plain-text.
+    Qaytaradi: 'ok' | 'ambiguous'. Ikkala urinish ham aniq rad etilsa, oxirgi istisnoni ko'taradi."""
+    if html_text is not None:
+        try:
+            await send_fn(html_text, parse_mode="HTML")
+            return "ok"
+        except Exception as e:
+            if _is_not_modified_error(e):
+                return "ok"
+            if _is_ambiguous_send_error(e):
+                logging.warning(f"Yuborish natijasi noaniq (HTML), qayta yuborilmaydi: {e}")
+                return "ambiguous"
+            logging.warning(f"HTML yuborish rad etildi, plain-text fallback: {e}")
+    try:
+        await send_fn(plain_text, parse_mode=None)
+        return "ok"
+    except Exception as e:
+        if _is_not_modified_error(e):
+            return "ok"
+        if _is_ambiguous_send_error(e):
+            logging.warning(f"Yuborish natijasi noaniq (plain), qayta yuborilmaydi: {e}")
+            return "ambiguous"
+        raise
+
+
+def _build_ai_pieces(ai_text: str, html_prefix: str, plain_prefix: str):
+    """AI matnini (html, plain) juftliklariga ajratadi; har bir yuboriladigan matn <= 4096.
+    html=None bo'lsa, bo'lak faqat plain-text sifatida yuboriladi."""
+    limit = TELEGRAM_MAX_MESSAGE_LENGTH
+    full_html = html_prefix + markdown_to_html(ai_text)
+    full_plain = plain_prefix + ai_text
+    if len(full_html) <= limit:
+        return [(full_html, full_plain if len(full_plain) <= limit else None)]
+    # Matn HTML ga o'tgach (escape: & < > kengayadi) limitdan oshadi -> HTML uzunligi tekshirilgan holda bo'laklaymiz
+    for size in (4000, 2000, 1000, 500):
+        raw_chunks = chunk_text(ai_text, max_len=size)
+        pieces = []
+        for idx, raw in enumerate(raw_chunks):
+            h = (html_prefix if idx == 0 else "") + markdown_to_html(raw)
+            p = (plain_prefix if idx == 0 else "") + raw
+            pieces.append((h, p))
+        if all(len(h) <= limit for h, _ in pieces):
+            return pieces
+    pieces = []
+    for idx, raw in enumerate(chunk_text(ai_text, max_len=limit - len(plain_prefix))):
+        pieces.append((None, (plain_prefix if idx == 0 else "") + raw))
+    return pieces
+
+
+async def _deliver_ai_response(message, status_msg, ai_text: str, html_prefix: str, plain_prefix: str) -> str:
+    """Tayyor AI javobini Telegram'ga yetkazadi (1-bo'lak status_msg.edit_text, qolganlari message.answer).
+    Qaytaradi:
+      'delivered' - hammasi yuborildi (yoki 'message is not modified' - allaqachon ko'rinib turibdi);
+      'ambiguous' - birinchi yuborish natijasi noaniq (timeout); qayta yuborilmaydi;
+      'partial'   - kamida bitta bo'lak yuborilgan, keyingisi muvaffaqiyatsiz; foydalanuvchiga ogohlantirish;
+      'failed'    - hech narsa yetkazilmagan (aniq rad etilgan).
+    Kvota siyosati: faqat 'failed' holatida chaqiruvchi limitni qaytaradi; 'delivered', 'ambiguous' va
+    'partial' holatlarida foydalanuvchi javobni (qisman) olgan bo'lishi mumkin, shuning uchun refund qilinmaydi."""
+    pieces = _build_ai_pieces(ai_text, html_prefix, plain_prefix)
+    sent = 0
+    for idx, (h, p) in enumerate(pieces):
+        send_fn = status_msg.edit_text if idx == 0 else message.answer
+        try:
+            result = await _send_piece(send_fn, h, p)
+        except Exception as e:
+            logging.warning(f"Telegram yuborish xatosi (bo'lak #{idx}): {e}")
+            result = "failed"
+        if result == "ok":
+            sent += 1
+            continue
+        if idx == 0:
+            return "ambiguous" if result == "ambiguous" else "failed"
+        try:
+            await message.answer("⚠️ Javobning davomi yuborilmadi. Savolingizni qisqaroq qilib qayta yuborib ko'ring.")
+        except Exception as notice_err:
+            logging.warning(f"Qisman yuborish ogohlantirishi yuborilmadi: {notice_err}")
+        return "partial"
+    return "delivered"
+
 # ═══════════════════════════════════════════════════════════════════
 # ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════════════════
@@ -247,13 +385,256 @@ TOKEN          = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 logging.info(f"GEMINI_API_KEY configured: {'YES' if GEMINI_API_KEY else 'NO'}")
 logging.info(f"GEMINI_API_KEY placeholder: {'YES' if GEMINI_API_KEY == 'YOUR_GEMINI_API_KEY_HERE' else 'NO'}")
-ADMIN_ID       = os.getenv("ADMIN_ID", "YOUR_ADMIN_ID")
+# Safely parse ADMIN_ID – abort on non‑numeric values, warn on zero/negative IDs
+def _parse_admin_id(value: str) -> int:
+    try:
+        admin_id = int(value)
+        logging.info(f"ADMIN_ID set to {admin_id}")
+    except ValueError:
+        import sys
+        logging.error("ADMIN_ID must be a numeric integer; aborting startup.")
+        sys.exit(1)
+    if admin_id <= 0:
+        logging.warning(f"ADMIN_ID set to {admin_id}; admin‑only commands will be disabled.")
+    return admin_id
+
+ADMIN_ID = _parse_admin_id(os.getenv("ADMIN_ID", "0"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "YOUR_ADMIN_USERNAME")
-CARD_NUMBER         = os.getenv("CARD_NUMBER", "")
-CARD_NAME           = os.getenv("CARD_NAME", "")
-PROVIDER_TOKEN      = os.getenv("PROVIDER_TOKEN", "")  # Feature 6: To'lov uchun (eski)
+CARD_NUMBER = os.getenv("CARD_NUMBER", "")
+CARD_NAME = os.getenv("CARD_NAME", "")
+PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")  # Feature 6: To'lov uchun (eski)
 MINI_APP_URL        = os.getenv("MINI_APP_URL", "")
 PREMIUM_STARS_PRICE = int(os.getenv("PREMIUM_STARS_PRICE", "50"))  # Stars narxi (default: 50 ⭐)
+
+STARS_CURRENCY = "XTR"
+STARS_PROVIDER_TOKEN = ""  # Telegram Stars uchun provider_token doim bo'sh bo'lishi shart
+
+
+def get_stars_tariffs() -> dict:
+    """Stars tariflari: payload -> (premium_type, days, title, stars_price).
+    Narxlar avvalgidek env'dan chaqiruv paytida o'qiladi (PRO_TRIAL_STARS, PRO_MONTHLY_STARS, ULTRA_MONTHLY_STARS)."""
+    return {
+        "PRO_7_DAYS": ("pro", 7, "⭐ Premium Pro (7 kun)", int(os.getenv("PRO_TRIAL_STARS", "50"))),
+        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)", int(os.getenv("PRO_MONTHLY_STARS", "150"))),
+        "ULTRA_30_DAYS": ("ultra", 30, "👑 Premium Ultra (30 kun)", int(os.getenv("ULTRA_MONTHLY_STARS", "300"))),
+    }
+
+
+# Eski payload: hech qayerda yaratilmaydi, lekin ilgari yuborilgan invoice'lar uchun saqlanadi.
+# Git tarixidan (all_git_history_utf8.txt):
+# 1) stars_premium_1month: currency="XTR", narxi dinamik (chegirma bilan 20 XTR yoki PREMIUM_STARS_PRICE env, default 50 XTR)
+#    bo'lgani uchun yagona statik narxni taxmin qilmasdan XTR valyuta va musbat butun summa tekshiriladi.
+# 2) premium_1month: eski UZS provayder oqimi (bot.py va git tarixida UZS sifatida tasdiqlangan).
+LEGACY_STARS_PAYLOADS = {"stars_premium_1month": ("pro", 30, "⭐ Premium Pro (30 kun)")}
+LEGACY_PROVIDER_PAYLOADS = {"premium_1month"}  # eski UZS/provider oqimi
+LEGACY_PROVIDER_CURRENCY = "UZS"
+
+
+def validate_payment(payload: str, currency: str, total_amount: int):
+    """To'lov parametrlarini tekshiradi. Returns (ok: bool, reason: str)."""
+    tariffs = get_stars_tariffs()
+    if payload in tariffs:
+        if currency != STARS_CURRENCY:
+            return False, "currency"
+        if isinstance(total_amount, bool) or not isinstance(total_amount, int) or total_amount != tariffs[payload][3]:
+            return False, "amount"
+        return True, ""
+    if payload in LEGACY_STARS_PAYLOADS:
+        if currency != STARS_CURRENCY:
+            return False, "currency"
+        if isinstance(total_amount, bool) or not isinstance(total_amount, int) or total_amount <= 0:
+            return False, "amount"
+        return True, ""
+    if payload in LEGACY_PROVIDER_PAYLOADS:
+        if currency != LEGACY_PROVIDER_CURRENCY:
+            return False, "currency"
+        if isinstance(total_amount, bool) or not isinstance(total_amount, int) or total_amount <= 0:
+            return False, "amount"
+        return True, ""
+    return False, "payload"
+
+
+def check_premium_purchase_eligibility(user_info: dict, action: str) -> tuple[bool, str | None]:
+    """
+    Foydalanuvchining tarif xarid qilish huquqini tekshiradi (/start va inline tugmalar uchun bir xil).
+    Mavjud mahsulot siyosati bo'yicha: agar foydalanuvchida faol premium bo'lsa va
+    joriy tarifi sotib olinayotgan tarifdan yuqoriroq yoki teng bo'lsa (current_rank >= buying_rank),
+    xarid to'xtatiladi. Faqat yuqoriroq tarifga upgrade qilishga ruxsat etiladi.
+    """
+    current_type = user_info.get("premium_type", "free") if user_info else "free"
+    is_premium = user_info.get("is_premium", 0) if user_info else 0
+    tier_rank = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+    buying_tier = {"buy_pro_7": "pro", "buy_plus_30": "plus", "buy_ultra_30": "ultra", "pay_stars": "pro"}.get(action, "pro")
+    current_rank = tier_rank.get(current_type, 0) if is_premium else 0
+    buying_rank = tier_rank.get(buying_tier, 1)
+
+    if is_premium and current_rank >= buying_rank:
+        tier_names = {"pro": "Premium Pro", "plus": "Premium Plus", "ultra": "Premium Ultra"}
+        return False, tier_names.get(current_type, "Premium")
+    return True, None
+
+
+# Parallel/takroriy AI va engagement so'rovlarini to'xtatuvchi in-flight to'plamlar
+_active_ai_users = set()
+_in_progress_engagements = set()
+
+# DB xatosi tufayli saqlanmay qolgan, ammo Telegram tomonidan tasdiqlangan haqiqiy to'lovlar
+_pending_failed_payments: dict = {}
+_PENDING_RECONCILE_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pending_reconcile.db")
+
+
+def _init_reconcile_db(raise_on_error: bool = False) -> bool:
+    conn = None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(_PENDING_RECONCILE_DB, timeout=10.0)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pending_reconciliations (
+                charge_id TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                payload TEXT NOT NULL,
+                stars INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Pending reconcile DB yaratishda xato: {e}")
+        if raise_on_error:
+            raise
+        return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def record_failed_payment(charge_id: str, user_id: int, payload: str, stars: int) -> bool:
+    """Faqat Telegram tomonidan yuborilgan haqiqiy to'lov DB ga yozilmay qolganda chaqiriladi.
+    Returns True FAQAT persistent SQLite yozuvi muvaffaqiyatli yakunlanganda; aks holda False."""
+    now_str = datetime.now().isoformat()
+    conn = None
+    try:
+        import sqlite3
+        _init_reconcile_db(raise_on_error=True)
+        conn = sqlite3.connect(_PENDING_RECONCILE_DB, timeout=10.0)
+        conn.execute("""
+            INSERT OR REPLACE INTO pending_reconciliations
+            (charge_id, user_id, payload, stars, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (charge_id, user_id, payload, stars, now_str))
+        conn.commit()
+        _pending_failed_payments[charge_id] = {
+            "user_id": user_id,
+            "payload": payload,
+            "stars": stars,
+            "created_at": now_str
+        }
+        return True
+    except Exception as e:
+        _pending_failed_payments.pop(charge_id, None)
+        logging.critical(f"Pending reconcile DB ga yozishda xato (charge_id={charge_id}): {e}", exc_info=True)
+        return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def get_pending_failed_payment(charge_id: str) -> dict | None:
+    if charge_id in _pending_failed_payments:
+        return _pending_failed_payments[charge_id]
+    conn = None
+    cur = None
+    try:
+        import sqlite3
+        _init_reconcile_db()
+        conn = sqlite3.connect(_PENDING_RECONCILE_DB, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, payload, stars, created_at FROM pending_reconciliations WHERE charge_id = ?", (charge_id,))
+        row = cur.fetchone()
+        if row:
+            res = {"user_id": row[0], "payload": row[1], "stars": row[2], "created_at": row[3]}
+            _pending_failed_payments[charge_id] = res
+            return res
+    except Exception as e:
+        logging.warning(f"Pending reconcile DB dan o'qishda xato: {e}")
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return None
+
+
+def remove_pending_failed_payment(charge_id: str):
+    _pending_failed_payments.pop(charge_id, None)
+    conn = None
+    try:
+        import sqlite3
+        _init_reconcile_db()
+        conn = sqlite3.connect(_PENDING_RECONCILE_DB, timeout=10.0)
+        conn.execute("DELETE FROM pending_reconciliations WHERE charge_id = ?", (charge_id,))
+        conn.commit()
+    except Exception as e:
+        logging.warning(f"Pending reconcile DB dan o'chirishda xato: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def get_all_pending_failed_payments() -> list:
+    items = []
+    conn = None
+    cur = None
+    try:
+        import sqlite3
+        _init_reconcile_db()
+        conn = sqlite3.connect(_PENDING_RECONCILE_DB, timeout=10.0)
+        cur = conn.cursor()
+        cur.execute("SELECT charge_id, user_id, payload, stars, created_at FROM pending_reconciliations ORDER BY created_at DESC")
+        for row in cur.fetchall():
+            items.append({
+                "charge_id": row[0],
+                "user_id": row[1],
+                "payload": row[2],
+                "stars": row[3],
+                "created_at": row[4]
+            })
+    except Exception as e:
+        logging.warning(f"Pending reconcile DB ro'yxatini olishda xato: {e}")
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    if not items and _pending_failed_payments:
+        for cid, data in _pending_failed_payments.items():
+            items.append({"charge_id": cid, **data})
+    return items
+
+
+
 
 # ═══════════════════════════════════════════════════════════════
 # ILOVA VERSIYASI
@@ -461,14 +842,38 @@ async def stream_gemini_to_message(
                                 pass
 
                 if full_text:
+                    html_full = markdown_to_html(full_text)
+                    if len(html_full) <= 4096:
+                        try:
+                            await sent_msg.edit_text(
+                                html_full,
+                                parse_mode="HTML",
+                                reply_markup=reply_markup
+                            )
+                            return full_text
+                        except Exception as edit_err:
+                            if _is_not_modified_error(edit_err):
+                                return full_text
+                    # HTML parse xatosi yoki >4096 belgilik javob uchun plain-text fallback
+                    plain_chunks = _split_message(full_text, 4096) or [full_text[:4096]]
                     try:
                         await sent_msg.edit_text(
-                            markdown_to_html(full_text),
-                            parse_mode="HTML",
-                            reply_markup=reply_markup
+                            plain_chunks[0],
+                            parse_mode=None,
+                            reply_markup=reply_markup if len(plain_chunks) == 1 else None
                         )
                     except Exception:
                         pass
+                    for extra_idx, extra_chunk in enumerate(plain_chunks[1:], start=1):
+                        try:
+                            is_last = (extra_idx == len(plain_chunks) - 1)
+                            await message.answer(
+                                extra_chunk,
+                                parse_mode=None,
+                                reply_markup=reply_markup if is_last else None
+                            )
+                        except Exception:
+                            break
                     return full_text
                 else:
                     logging.warning(f"{model} bo'sh javob qaytardi, keyingisiga o'tilmoqda...")
@@ -627,7 +1032,7 @@ async def premium_upsell(event):
         "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
         "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
         "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
-        f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> yoki karta orqali.\n\n"
+        f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> dan boshlab yoki karta orqali.\n\n"
         "Quyidagi tugmani bosing:"
     )
     if isinstance(event, types.Message):
@@ -683,65 +1088,76 @@ async def cmd_start(message: types.Message, state: FSMContext):
         premium_start = time.time()
         logging.info(f"Premium check start: {premium_start - start_ts:.3f}s")
         action = args[1]
-        user_info = await asyncio.to_thread(database.get_user_info, user.id)
-        current_type = user_info.get("premium_type", "free") if user_info else "free"
-        is_premium = user_info.get("is_premium", 0) if user_info else 0
+        try:
+            user_info = await asyncio.to_thread(database.get_user_info, user.id)
+            eligible, current_tier_name = check_premium_purchase_eligibility(user_info, action)
 
-        # Tier darajasi
-        tier_rank = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
-        buying_tier = {"buy_pro_7": "pro", "buy_plus_30": "plus", "buy_ultra_30": "ultra"}.get(action, "pro")
-        current_rank = tier_rank.get(current_type, 0) if is_premium else 0
-        buying_rank = tier_rank.get(buying_tier, 1)
+            if not eligible:
+                await message.answer(
+                    f"ℹ️ <b>Siz allaqachon {current_tier_name} foydalanuvchisiz!</b>\n\n"
+                    f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng. "
+                    f"Pastroq tarifga o'tish mumkin emas.",
+                    parse_mode="HTML",
+                    reply_markup=get_start_keyboard()
+                )
+                return
+            if action == "buy_pro_7":
+                title = "⭐ Premium Pro — 7 kun"
+                desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
+                payload = "PRO_7_DAYS"
+                stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
+            elif action == "buy_plus_30":
+                title = "💎 Premium Plus — 30 kun"
+                desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
+                payload = "PLUS_30_DAYS"
+                stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
+            elif action == "buy_ultra_30":
+                title = "👑 Premium Ultra — 30 kun"
+                desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
+                payload = "ULTRA_30_DAYS"
+                stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
+            else:
+                return
 
-        if is_premium and current_rank >= buying_rank:
-            tier_names = {"pro": "Premium Pro", "plus": "Premium Plus", "ultra": "Premium Ultra"}
+            if stars <= 0:
+                raise ValueError("Stars price must be greater than zero")
+
             await message.answer(
-                f"ℹ️ <b>Siz allaqachon {tier_names.get(current_type, 'Premium')} foydalanuvchisiz!</b>\n\n"
-                f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng. "
-                f"Pastroq tarifga o'tish mumkin emas.",
+                f"💎 <b>{title}</b>\n\n{desc}\n\n"
+                f"💰 Narxi: <b>{stars} Telegram Stars</b>\n\n"
+                f"To'lov uchun quyidagi invoice ga bosing:",
                 parse_mode="HTML",
                 reply_markup=get_start_keyboard()
             )
-            # await update_user_menu_button(user.id, message.bot)  # removed
-            return
-        if action == "buy_pro_7":
-            title = "⭐ Premium Pro — 7 kun"
-            desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
-            payload = "PRO_7_DAYS"
-            stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
-        elif action == "buy_plus_30":
-            title = "💎 Premium Plus — 30 kun"
-            desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
-            payload = "PLUS_30_DAYS"
-            stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
-        elif action == "buy_ultra_30":
-            title = "👑 Premium Ultra — 30 kun"
-            desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
-            payload = "ULTRA_30_DAYS"
-            stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
-
-        await message.answer(
-            f"💎 <b>{title}</b>\n\n{desc}\n\n"
-            f"💰 Narxi: <b>{stars} Telegram Stars</b>\n\n"
-            f"To'lov uchun quyidagi invoice ga bosing:",
-            parse_mode="HTML",
-            reply_markup=get_start_keyboard()
-        )
-        try:
             await message.answer_invoice(
                 title=title,
                 description=desc,
                 payload=payload,
-                currency="XTR",
+                currency=STARS_CURRENCY,
                 prices=[LabeledPrice(label=title, amount=stars)],
-                provider_token="",
+                provider_token=STARS_PROVIDER_TOKEN,
             )
         except Exception as e:
-            logging.error(f"Deep link invoice xato: {e}")
+            logging.error(f"Deep link invoice xato: {e}", exc_info=True)
             await message.answer("⚠️ Invoice yuborishda xatolik. Iltimos /premium buyrug'ini ishlating.", parse_mode="HTML")
         # await update_user_menu_button(user.id, message.bot)  # removed
         return
-        
+
+    # Web App yoki menyudan to'g'ridan-to'g'ri Omad Barabani ochilganda
+    if len(args) > 1 and args[1] in ("wheel", "baraban"):
+        web_app_url = await get_web_app_url(user.id, page="wheel")
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🎡 Omad barabanini ochish", web_app=types.WebAppInfo(url=web_app_url))
+        builder.adjust(1)
+        await message.answer(
+            "🎡 <b>Omad Barabani!</b>\n\n"
+            "Har kuni 1 marta barabanni bepul aylantirib ball yoki Premium yuting!\n"
+            "Aylantirish uchun quyidagi tugmani bosing:",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
+        return
+
     # Check for spin bonus parameter from Wheel of Fortune Web App
     if len(args) > 1 and args[1].startswith("spin_"):
         try:
@@ -1306,7 +1722,7 @@ async def process_disease_callback(callback: types.CallbackQuery):
     await callback.message.bot.send_chat_action(chat_id=callback.message.chat.id, action="typing")
 
     # Premium foydalanuvchilar uchun batafsil tugmasi ko'rinadi
-    is_premium_user, _ = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_premium_user, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     builder = InlineKeyboardBuilder()
     if is_premium_user:
         builder.button(text="🔍 Batafsil ma'lumot (AI)", callback_data=f"det_{page}_{index}")
@@ -1344,13 +1760,8 @@ async def process_disease_callback(callback: types.CallbackQuery):
 async def process_disease_detail_callback(callback: types.CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
-    # "Batafsil ma'lumot" — FAQAT PREMIUM foydalanuvchilar uchun
-    is_premium_user, premium_expires_at = await asyncio.to_thread(database.get_premium_info, user_id)
-    import datetime as _dt
-    if is_premium_user and premium_expires_at:
-        expires = _dt.datetime.fromisoformat(premium_expires_at)
-        if _dt.datetime.now() > expires:
-            is_premium_user = 0
+    # "Batafsil ma'lumot" — FAQAT PREMIUM foydalanuvchilar uchun (get_premium_info muddatni tekshiradi)
+    is_premium_user, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     if not is_premium_user:
         text = (
             "🔒 <b>Bu bo'lim faqat Premium foydalanuvchilar uchun!</b>\n\n"
@@ -1363,7 +1774,7 @@ async def process_disease_detail_callback(callback: types.CallbackQuery):
             "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
             "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
             "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
-            f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> — oylik Premium.\n\n"
+            f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik Pro) dan boshlab.\n\n"
             "Quyidagi tugmani bosing:"
         )
         builder = InlineKeyboardBuilder()
@@ -1580,7 +1991,7 @@ async def reminder_menu(message: types.Message):
     builder.button(text="➕ Yangi eslatma qo'shish", callback_data="add_reminder")
 
     # Limit hisoblash
-    is_prem, _ = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_prem, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     current_count = await asyncio.to_thread(database.count_user_active_reminders, user_id)
     limit = 7 if is_prem else 3
 
@@ -1615,7 +2026,7 @@ async def reminder_menu(message: types.Message):
 @dp.callback_query(F.data == "add_reminder")
 async def add_reminder_start(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    is_prem, _ = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_prem, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     current_count = await asyncio.to_thread(database.count_user_active_reminders, user_id)
     limit = 7 if is_prem else 3
 
@@ -1745,7 +2156,7 @@ async def delete_reminder_handler(callback: types.CallbackQuery):
 
 async def reminder_menu_refresh(message: types.Message, user_id: int):
     reminders = await asyncio.to_thread(database.get_user_reminders, user_id)
-    is_prem, _ = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_prem, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     current_count = len(reminders)
     limit = 7 if is_prem else 3
 
@@ -1795,18 +2206,7 @@ async def handle_voice(message: types.Message):
     if message.caption and message.caption.strip().startswith('/'):
         return
 
-    consumed_free = False
-    consumed_daily = False
-    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
-        consumed_free = True
-    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
-        consumed_daily = True
-    else:
-        await premium_upsell(message)
-        return
-
-    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-
+    # AI sozlanmagan bo'lsa limit umuman band qilinmaydi (avval limit sarflanib, qaytarilmay qolardi)
     if not gemini_client:
         await message.answer(
             "⚠️ Ovozli xabarlarni qayta ishlash uchun AI sozlanmagan.\n"
@@ -1815,9 +2215,40 @@ async def handle_voice(message: types.Message):
         )
         return
 
-    # Ovozli xabarni yuklab olish
-    status_msg = await message.answer("🎙️ <b>Ovozli xabar qayta ishlanmoqda...</b>", parse_mode="HTML")
+    consumed_free = False
+    consumed_daily = False
     try:
+        if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+            consumed_free = True
+        elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+            consumed_daily = True
+        else:
+            await premium_upsell(message)
+            return
+    except Exception:
+        logging.exception("Ovoz: limitni band qilishda DB xatosi (user=%s)", user_id)
+        try:
+            await message.answer("⚠️ Vaqtinchalik texnik xatolik. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        except Exception:
+            logging.warning("DB xatosi haqida foydalanuvchiga xabar yuborib bo'lmadi", exc_info=True)
+        return
+
+    async def refund_once():
+        # Faqat sarflangan limit va faqat bir marta qaytariladi (qayta chaqirilsa ham ikki marta emas)
+        nonlocal consumed_free, consumed_daily
+        if consumed_free:
+            consumed_free = False
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            consumed_daily = False
+            await asyncio.to_thread(database.refund_daily_request, user_id)
+
+    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+
+    # Ovozli xabarni yuklab olish
+    status_msg = None
+    try:
+        status_msg = await message.answer("🎙️ <b>Ovozli xabar qayta ishlanmoqda...</b>", parse_mode="HTML")
         voice = message.voice
         file = await message.bot.get_file(voice.file_id)
         file_path = file.file_path
@@ -1842,6 +2273,7 @@ async def handle_voice(message: types.Message):
             )
         ]
 
+        ai_text = None
         last_err = None
         async with KeepTyping(message.bot, message.chat.id, action="typing"):
             for model in GEMINI_MULTIMODAL_MODELS:
@@ -1854,13 +2286,9 @@ async def handle_voice(message: types.Message):
                             temperature=0.7,
                         )
                     )
-                    if response.text:
-                        await status_msg.edit_text(
-                            f"🎙️ <b>Ovozli xabaringiz qabul qilindi!</b>\n\n"
-                            + markdown_to_html(response.text),
-                            parse_mode="HTML"
-                        )
-                        return
+                    if response and response.text:
+                        ai_text = response.text
+                        break
                 except Exception as e:
                     err = str(e)
                     logging.warning(f"Voice: {model} xato: {err[:200]}")
@@ -1869,30 +2297,55 @@ async def handle_voice(message: types.Message):
                         continue
                     break
 
-        # Fallback: API ovozni qayta ishlay olmasa
-        logging.error(f"Voice: barcha modellar ishlamadi. Oxirgi xato: {last_err}")
-        if consumed_free:
-            await asyncio.to_thread(database.refund_free_ai, user_id)
-        if consumed_daily:
-            await asyncio.to_thread(database.refund_daily_request, user_id)
-        await status_msg.edit_text(
-            "⚠️ Ovozli xabarni matnlashtirish vaqtincha ishlamayapti.\n\n"
-            "Iltimos, savolingizni <b>matn ko'rinishida</b> yuboring. 📝",
-            parse_mode="HTML"
-        )
+        if not ai_text or not ai_text.strip():
+            # Fallback: API ovozni qayta ishlay olmasa
+            logging.error(f"Voice: barcha modellar ishlamadi. Oxirgi xato: {last_err}")
+            await refund_once()
+            await status_msg.edit_text(
+                "⚠️ Ovozli xabarni matnlashtirish vaqtincha ishlamayapti.\n\n"
+                "Iltimos, savolingizni <b>matn ko'rinishida</b> yuboring. 📝",
+                parse_mode="HTML"
+            )
+            return
 
+        state_str = await _deliver_ai_response(
+            message, status_msg, ai_text,
+            header_html="🎙️ <b>Ovozli xabaringiz qabul qilindi!</b>\n\n",
+            header_plain="🎙️ Ovozli xabaringiz qabul qilindi!\n\n",
+        )
+        if state_str == "failed":
+            await refund_once()
+            try:
+                await status_msg.edit_text(
+                    "⚠️ Ovozli xabarni qayta ishlashda xatolik yuz berdi.\n"
+                    "Iltimos, matnli savol yuboring.",
+                    parse_mode="HTML"
+                )
+            except Exception as ex:
+                logging.error(f"Ovoz xato xabarini yuborib bo'lmadi: {ex}")
+        elif state_str == "partial":
+            try:
+                await message.answer(
+                    "⚠️ Javobning davomi texnik xato tufayli yuborilmadi. Savolni qisqaroq qilib qayta yuboring."
+                )
+            except Exception:
+                logging.warning("Qisman javob ogohlantirishini yuborib bo'lmadi", exc_info=True)
+        # state_str in ("delivered", "partial", "ambiguous") -> limit qaytarilmaydi
 
     except Exception as e:
         logging.error(f"Voice handler xatosi: {e}")
-        if consumed_free:
-            await asyncio.to_thread(database.refund_free_ai, user_id)
-        if consumed_daily:
-            await asyncio.to_thread(database.refund_daily_request, user_id)
-        await status_msg.edit_text(
+        await refund_once()
+        err_text = (
             "⚠️ Ovozli xabarni qayta ishlashda xatolik yuz berdi.\n"
-            "Iltimos, matnli savol yuboring.",
-            parse_mode="HTML"
+            "Iltimos, matnli savol yuboring."
         )
+        try:
+            if status_msg:
+                await status_msg.edit_text(err_text, parse_mode="HTML")
+            else:
+                await message.answer(err_text, parse_mode="HTML")
+        except Exception as ex:
+            logging.error(f"Ovoz xato xabarini yuborib bo'lmadi: {ex}")
 
 # ═══════════════════════════════════════════════════════════════════
 # FEATURE 5: ⚖️ SOG'LIQ KALKULYATORI (BMI + Suv balansi)
@@ -2157,6 +2610,15 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         action = callback.data
 
+        user_info = await asyncio.to_thread(database.get_user_info, user_id)
+        eligible, current_tier_name = check_premium_purchase_eligibility(user_info, action)
+        if not eligible:
+            await callback.answer(
+                f"ℹ️ Siz allaqachon {current_tier_name} foydalanuvchisiz! Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng.",
+                show_alert=True
+            )
+            return
+
         if action in ("buy_pro_7", "pay_stars"):
             title = "⭐ Premium Pro — 7 kun"
             desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
@@ -2172,10 +2634,10 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
             payload = "ULTRA_30_DAYS"
             stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
+        else:
+            await callback.answer("⚠️ Noto'g'ri tarif tanlandi.", show_alert=True)
+            return
 
-        # Validate configuration
-        if not PROVIDER_TOKEN:
-            raise ValueError("Telegram provider token not configured")
         # Validate stars amount
         if stars <= 0:
             raise ValueError("Stars price must be greater than zero")
@@ -2185,47 +2647,211 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             title=title,
             description=desc,
             payload=payload,
-            currency="XTR",
+            currency=STARS_CURRENCY,
             prices=prices,
-            provider_token=PROVIDER_TOKEN,
+            provider_token=STARS_PROVIDER_TOKEN,
         )
         await callback.answer()
     except Exception as e:
-        logging.error(f"Stars invoice generation error: {e}")
+        logging.error(f"Stars invoice generation error: {e}", exc_info=True)
         await callback.answer("⚠️ Invoice yaratishda xatolik yuz berdi. Administrator bilan bog'laning.", show_alert=True)
 
 @dp.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
     """To'lovni tasdiqlash (10 soniya ichida javob berish shart)"""
-    await pre_checkout_query.answer(ok=True)
+    try:
+        user_id = pre_checkout_query.from_user.id
+        is_banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
+        if is_banned:
+            logging.warning(f"Pre-checkout rad etildi (bloklangan user): user={user_id}")
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="Hisobingiz bloklanganligi sababli to'lov qabul qilinmaydi."
+            )
+            return
+
+        ok, reason = validate_payment(
+            pre_checkout_query.invoice_payload,
+            pre_checkout_query.currency,
+            pre_checkout_query.total_amount
+        )
+        if not ok:
+            logging.warning(
+                f"Pre-checkout rad etildi: user={user_id}, "
+                f"payload={pre_checkout_query.invoice_payload}, currency={pre_checkout_query.currency}, "
+                f"amount={pre_checkout_query.total_amount}, reason={reason}"
+            )
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="To'lov ma'lumotlarida xatolik aniqlandi. Iltimos, /premium orqali qaytadan urinib ko'ring."
+            )
+            return
+
+        await pre_checkout_query.answer(ok=True)
+    except Exception as e:
+        logging.error(f"Pre-checkout ishlovida kutilmagan xatolik: {e}", exc_info=True)
+        try:
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="To'lovni tasdiqlashda vaqtinchalik xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring."
+            )
+        except Exception:
+            pass
 
 @dp.message(F.successful_payment)
 async def process_successful_payment(message: types.Message):
-    """Muvaffaqiyatli to'lov — Stars to'lovi va duplicate protection"""
+    """Muvaffaqiyatli to'lov — Stars to'lovi va duplicate protection (bitta atomar DB tranzaksiya)"""
     user_id = message.from_user.id
     payment = message.successful_payment
     payload = payment.invoice_payload
-    charge_id = payment.telegram_payment_charge_id or f"stars_{user_id}_{payment.total_amount}_{datetime.now().timestamp()}"
 
-    product_map = {
-        "PRO_7_DAYS": ("pro", 7, "⭐ Premium Pro (7 kun)"),
-        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)"),
-        "ULTRA_30_DAYS": ("ultra", 30, "👑 Premium Ultra (30 kun)"),
-        "stars_premium_1month": ("pro", 30, "⭐ Premium Pro (30 kun)"),
-    }
+    # XAVFSIZLIK: Telegram Stars to'lovlarida haqiqiy telegram_payment_charge_id bo'lishi shart.
+    # Soxta yoki message_id asosidagi soxta charge_id ga ruxsat berilmaydi.
+    if payment.currency == STARS_CURRENCY:
+        charge_id = payment.telegram_payment_charge_id
+    else:
+        charge_id = payment.provider_payment_charge_id or payment.telegram_payment_charge_id
+
+    if not charge_id:
+        logging.error(f"To'lovda haqiqiy charge_id topilmadi: user={user_id}, currency={payment.currency}")
+        await message.answer("⚠️ To'lov tranzaksiya identifikatori topilmadi. Administrator bilan bog'laning.")
+        return
+
+    username = f"@{message.from_user.username}" if message.from_user.username else f"ID:{user_id}"
+
+    ok, reason = validate_payment(payload, payment.currency, payment.total_amount)
+    if not ok:
+        if reason == "payload":
+            logging.critical(
+                f"UNKNOWN PAYLOAD on successful payment: user={user_id}, payload={payload}, "
+                f"currency={payment.currency}, amount={payment.total_amount}, charge_id={charge_id}"
+            )
+            saved = False
+            try:
+                saved = bool(record_failed_payment(charge_id, user_id, str(payload), payment.total_amount))
+            except Exception as rec_err:
+                logging.critical(f"Failed to record evidence for unknown payload charge_id={charge_id}: {rec_err}", exc_info=True)
+                saved = False
+
+            await message.answer(
+                "⚠️ To'lov qabul qilindi, lekin paket turini aniqlashda xatolik yuz berdi.\n"
+                "Mablag'ingiz yo'qolmaydi! Administratorga xabar berildi va Premium tez orada qo'lda faollashtiriladi.",
+                reply_markup=get_start_keyboard()
+            )
+            try:
+                safe_payload = html.escape(str(payload)[:100])
+                safe_charge_id = html.escape(str(charge_id)[:100])
+                status_note = "✅ Dalil saqlandi" if saved else "❌ DIQQAT: Dalilni saqlashda xatolik!"
+                await message.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"🚨 <b>DIQQAT: Noma'lum to'lov payload'i!</b>\n\n"
+                        f"👤 Foydalanuvchi: {username}\n"
+                        f"🆔 User ID: <code>{user_id}</code>\n"
+                        f"📦 Payload: <code>{safe_payload}</code>\n"
+                        f"💰 Summa: {payment.total_amount} {payment.currency}\n"
+                        f"🆔 Charge ID: <code>{safe_charge_id}</code>\n"
+                        f"📌 Dalil holati: {status_note}\n\n"
+                        f"Iltimos, tekshirib foydalanuvchiga Premium qo'lda berilsin!"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as admin_err:
+                logging.error(f"Adminga noma'lum to'lov xabari yuborishda xato: {admin_err}")
+            return
+
+        logging.error(
+            f"Successful payment validation failed: user={user_id}, payload={payload}, "
+            f"currency={payment.currency}, amount={payment.total_amount}, reason={reason}"
+        )
+        await message.answer("⚠️ To'lov parametrlarida nomuvofiqlik aniqlandi. Administrator bilan bog'laning.")
+        try:
+            safe_payload = html.escape(str(payload)[:100])
+            safe_charge_id = html.escape(str(charge_id)[:100])
+            await message.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"⚠️ <b>To'lov validatsiyasi muvaffaqiyatsiz bo'ldi!</b>\n\n"
+                    f"👤 Foydalanuvchi: {username}\n"
+                    f"🆔 User ID: <code>{user_id}</code>\n"
+                    f"📦 Payload: <code>{safe_payload}</code>\n"
+                    f"💰 Summa: {payment.total_amount} {payment.currency}\n"
+                    f"🆔 Charge ID: <code>{safe_charge_id}</code>\n"
+                    f"❌ Sabab: {html.escape(reason)}"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as admin_err:
+            logging.error(f"Adminga validatsiya xatosi xabarini yuborishda xato: {admin_err}")
+        return
+
+    tariffs = get_stars_tariffs()
+    product_map = {k: (v[0], v[1], v[2]) for k, v in tariffs.items()}
+    product_map.update(LEGACY_STARS_PAYLOADS)
 
     if payload in product_map:
+        if payload in LEGACY_STARS_PAYLOADS:
+            logging.warning(
+                f"Legacy Stars payment processed: user={user_id}, payload={payload}, "
+                f"stars={payment.total_amount}, charge_id={charge_id}"
+            )
         prem_type, days, product_title = product_map[payload]
-        recorded = await asyncio.to_thread(
-            database.record_payment_transaction,
-            charge_id, user_id, payload, payment.total_amount, prem_type, days
-        )
+        try:
+            granted, until = await asyncio.to_thread(
+                database.process_paid_premium,
+                charge_id, user_id, payload, payment.total_amount, prem_type, days
+            )
+        except Exception as e:
+            logging.error(f"process_paid_premium DB error for user {user_id}, charge_id {charge_id}: {e}", exc_info=True)
+            # Haqiqiy Telegram to'lov dalilini reestrga saqlash
+            saved = False
+            try:
+                saved = bool(record_failed_payment(charge_id, user_id, payload, payment.total_amount))
+            except Exception as rec_err:
+                logging.critical(f"Failed to record evidence for Stars DB error charge_id={charge_id}: {rec_err}", exc_info=True)
+                saved = False
+            if saved:
+                await message.answer(
+                    "⚠️ To'lov qabul qilindi, ammo tizimda vaqtinchalik xatolik yuz berdi.\n"
+                    "To'lovingiz saqlab qolindi. Iltimos, administrator bilan bog'laning yoki birozdan so'ng /start bosing.",
+                    reply_markup=get_start_keyboard()
+                )
+            else:
+                await message.answer(
+                    f"⚠️ To'lov qabul qilindi, ammo tizimda vaqtinchalik xatolik yuz berdi.\n"
+                    f"Iltimos, to'lov identifikatoringizni administratorga yuboring: {charge_id}",
+                    reply_markup=get_start_keyboard()
+                )
+            try:
+                safe_charge_id = html.escape(str(charge_id)[:100])
+                status_note = "✅ Dalil saqlandi" if saved else "❌ DIQQAT: Dalilni saqlashda xatolik!"
+                reconcile_hint = (
+                    f"🔧 Tiklash uchun: <code>/reconcile {safe_charge_id}</code>"
+                    if saved else
+                    "⚠️ Dalil SQLite bazasiga yozilmadi — foydalanuvchiga Premium qo'lda berilsin!"
+                )
+                await message.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"🚨 <b>To'lov DB xatosi (Premium berilmadi)!</b>\n\n"
+                        f"👤 Foydalanuvchi: {username}\n"
+                        f"🆔 User ID: <code>{user_id}</code>\n"
+                        f"📦 Mahsulot: {product_title}\n"
+                        f"💰 Summa: {payment.total_amount} {payment.currency}\n"
+                        f"🆔 Charge ID: <code>{safe_charge_id}</code>\n"
+                        f"📌 Dalil holati: {status_note}\n"
+                        f"{reconcile_hint}"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as admin_err:
+                logging.error(f"Adminga DB to'lov xatosi xabarini yuborishda xato: {admin_err}")
+            return
 
-        if not recorded:
+        if not granted:
             await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
             return
 
-        until = await asyncio.to_thread(database.grant_premium_days, user_id, days, prem_type)
         exp_str = until.strftime("%d.%m.%Y")
 
         await message.answer(
@@ -2239,7 +2865,6 @@ async def process_successful_payment(message: types.Message):
         )
 
         # Adminga bildirishnoma
-        username = f"@{message.from_user.username}" if message.from_user.username else f"ID:{user_id}"
         try:
             await message.bot.send_message(
                 chat_id=ADMIN_ID,
@@ -2258,26 +2883,61 @@ async def process_successful_payment(message: types.Message):
 
     # Eski UZS to'lovi (agar PROVIDER_TOKEN bo'lsa)
     elif payment.invoice_payload == "premium_1month":
-        # Record legacy payment as a synthetic transaction for duplicate protection
         synthetic_payload = "premium_1month"
-        recorded = await asyncio.to_thread(
-            database.record_payment_transaction,
-            f"legacy_{user_id}_{payment.total_amount}",
-            user_id,
-            synthetic_payload,
-            payment.total_amount,
-            "pro",
-            30
-        )
-        if not recorded:
-            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
+        legacy_charge_id = payment.provider_payment_charge_id or payment.telegram_payment_charge_id
+        if not legacy_charge_id:
+            logging.error(f"Legacy to'lovida haqiqiy charge_id topilmadi: user={user_id}")
+            await message.answer("⚠️ To'lov tranzaksiya identifikatori topilmadi.")
             return
         try:
-            await asyncio.to_thread(database.set_premium, user_id, 1, months=1)
+            granted, until = await asyncio.to_thread(
+                database.process_paid_premium,
+                legacy_charge_id, user_id, synthetic_payload, payment.total_amount, "pro", 30
+            )
         except Exception as e:
-            logging.error(f"Legacy premium activation error for user {user_id}: {e}")
-            await message.answer("⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.", parse_mode="HTML")
+            logging.error(f"Legacy premium activation error for user {user_id}: {e}", exc_info=True)
+            saved = False
+            try:
+                saved = bool(record_failed_payment(legacy_charge_id, user_id, synthetic_payload, payment.total_amount))
+            except Exception as rec_err:
+                logging.critical(f"Failed to record evidence for legacy DB error charge_id={legacy_charge_id}: {rec_err}", exc_info=True)
+                saved = False
+            if saved:
+                await message.answer("⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.", parse_mode="HTML")
+            else:
+                await message.answer(
+                    f"⚠️ To'lov qabul qilindi, lekin Premium faollashtirishda muammo yuz berdi.\n"
+                    f"Iltimos, to'lov identifikatoringizni administratorga yuboring: {legacy_charge_id}"
+                )
+            try:
+                safe_legacy_id = html.escape(str(legacy_charge_id)[:100])
+                status_note = "✅ Dalil saqlandi" if saved else "❌ DIQQAT: Dalilni saqlashda xatolik!"
+                reconcile_hint = (
+                    f"🔧 Tiklash uchun: <code>/reconcile {safe_legacy_id}</code>"
+                    if saved else
+                    "⚠️ Dalil SQLite bazasiga yozilmadi — foydalanuvchiga Premium qo'lda berilsin!"
+                )
+                await message.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"🚨 <b>Legacy to'lov DB xatosi!</b>\n\n"
+                        f"👤 Foydalanuvchi: {username}\n"
+                        f"🆔 ID: <code>{user_id}</code>\n"
+                        f"💰 Summa: {payment.total_amount / 100:,.0f} UZS\n"
+                        f"🆔 Charge ID: <code>{safe_legacy_id}</code>\n"
+                        f"📌 Dalil holati: {status_note}\n"
+                        f"{reconcile_hint}"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as admin_err:
+                logging.error(f"Adminga legacy DB xatosi xabarini yuborishda xato: {admin_err}")
             return
+
+        if not granted:
+            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
+            return
+
         amount = payment.total_amount / 100
         await message.answer(
             "🎉 <b>To'lov muvaffaqiyatli amalga oshirildi!</b>\n\n"
@@ -2287,7 +2947,6 @@ async def process_successful_payment(message: types.Message):
             parse_mode="HTML",
             reply_markup=get_start_keyboard()
         )
-        username = f"@{message.from_user.username}" if message.from_user.username else f"ID:{user_id}"
         try:
             await message.bot.send_message(
                 chat_id=ADMIN_ID,
@@ -2302,9 +2961,172 @@ async def process_successful_payment(message: types.Message):
             )
         except Exception as e:
             logging.error(f"Adminga to'lov xabari yuborishda xato: {e}")
-            await message.answer("⚠️ To'lov qabul qilindi, lekin admin xabarnomasida texnik muammo yuz berdi.", parse_mode="HTML")
+    else:
+        # Noma'lum payload kelganda: foydalanuvchi to'lovi yo'qolmasligi uchun dalilni saqlash va adminga xabar berish
+        logging.critical(
+            f"UNKNOWN PAYLOAD on successful payment: user={user_id}, payload={payload}, "
+            f"currency={payment.currency}, amount={payment.total_amount}, charge_id={charge_id}"
+        )
+        saved = False
+        try:
+            saved = bool(record_failed_payment(charge_id, user_id, str(payload), payment.total_amount))
+        except Exception as rec_err:
+            logging.critical(f"Failed to record evidence for unknown payload charge_id={charge_id}: {rec_err}", exc_info=True)
+            saved = False
+
+        await message.answer(
+            "⚠️ To'lov qabul qilindi, lekin paket turini aniqlashda xatolik yuz berdi.\n"
+            "Mablag'ingiz yo'qolmaydi! Administratorga xabar berildi va Premium tez orada qo'lda faollashtiriladi.",
+            reply_markup=get_start_keyboard()
+        )
+        try:
+            safe_payload = html.escape(str(payload)[:100])
+            safe_charge_id = html.escape(str(charge_id)[:100])
+            status_note = "✅ Dalil saqlandi" if saved else "❌ DIQQAT: Dalilni saqlashda xatolik!"
+            await message.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"🚨 <b>DIQQAT: Noma'lum to'lov payload'i!</b>\n\n"
+                    f"👤 Foydalanuvchi: {username}\n"
+                    f"🆔 User ID: <code>{user_id}</code>\n"
+                    f"📦 Payload: <code>{safe_payload}</code>\n"
+                    f"💰 Summa: {payment.total_amount} {payment.currency}\n"
+                    f"🆔 Charge ID: <code>{safe_charge_id}</code>\n"
+                    f"📌 Dalil holati: {status_note}\n\n"
+                    f"Iltimos, tekshirib foydalanuvchiga Premium qo'lda berilsin!"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as admin_err:
+            logging.error(f"Adminga noma'lum to'lov xabari yuborishda xato: {admin_err}")
+
+
+@dp.message(Command("reconcile"))
+async def cmd_reconcile_payment(message: types.Message):
+    """Admin uchun to'lovni xavfsiz tiklash (reconciliation) komandasi.
+    Faqat Telegram tomonidan yuborilgan va muvaffaqiyatsiz bo'lgan to'lov dalili mavjud bo'lsagina ishlaydi.
+    Format: /reconcile <charge_id> yoki ro'yxat uchun: /reconcile
+    """
+    # XAVFSIZLIK: Faqat haqiqiy raqamli ADMIN_ID ga ruxsat beriladi
+    if not ADMIN_ID or not str(ADMIN_ID).isdigit() or int(message.from_user.id) != int(ADMIN_ID):
+        return
+
+    parts = message.text.split()
+    # 1. Argument berilmagan bo'lsa: kutilayotgan tasdiqlangan to'lovlar ro'yxatini ko'rsatish
+    if len(parts) == 1:
+        pending = get_all_pending_failed_payments()
+        if not pending:
+            await message.answer("✅ Hozirda tiklanishi kutilayotgan tasdiqlangan to'lov dalillari mavjud emas.")
+            return
+        msg = "📋 <b>Tiklanishi kutilayotgan tasdiqlangan to'lovlar:</b>\n\n"
+        for p in pending:
+            msg += (
+                f"• Charge ID: <code>{html.escape(str(p['charge_id']))}</code>\n"
+                f"  User: <code>{p['user_id']}</code> | Paket: <code>{html.escape(str(p['payload']))}</code> | ⭐ {p.get('stars', 0)}\n"
+                f"  Vaqt: {str(p.get('created_at', ''))[:19]}\n"
+                f"  Tiklash: <code>/reconcile {html.escape(str(p['charge_id']))}</code>\n\n"
+            )
+        await message.answer(msg, parse_mode="HTML")
+        return
+
+    # 2. Argumentlar: /reconcile <charge_id> YOKI /reconcile <user_id> <payload> <charge_id>
+    if len(parts) == 2:
+        charge_id = parts[1].strip()
+    elif len(parts) >= 4:
+        charge_id = parts[3].strip()
+    else:
+        await message.answer(
+            "⚠️ Format: <code>/reconcile &lt;charge_id&gt;</code>\n"
+            "Yoki ro'yxatni ko'rish uchun: <code>/reconcile</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Format tekshiruvi
+    if len(charge_id) < 5 or not re.match(r'^[A-Za-z0-9_\-:]+$', charge_id):
+        await message.answer("❌ Noto'g'ri charge_id formati! Haqiqiy Telegram charge_id kiritilishi shart.")
+        return
+
+    # XAVFSIZLIK: Telegram tomonidan yuborilgan to'lov dalilini tekshirish
+    evidence = get_pending_failed_payment(charge_id)
+    if not evidence:
+        await message.answer(
+            f"❌ <b>Rad etildi: To'lov dalili topilmadi!</b>\n\n"
+            f"Ushbu charge_id (<code>{html.escape(charge_id)}</code>) bo'yicha Telegram tomonidan tasdiqlangan to'lov mavjud emas.\n"
+            f"Xavfsizlik qoidalariga muvofiq, dalilsiz soxta ID bilan Premium berish qat'iyan taqiqlangan.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Barcha parametrlar Telegram bergan asl dalildan olinadi (soxtalashtirish imkonsiz)
+    target_uid = evidence["user_id"]
+    payload = evidence["payload"]
+    stars = evidence.get("stars", 0)
+
+    try:
+        tariffs = get_stars_tariffs()
+        product_map = {k: (v[0], v[1], v[2], v[3]) for k, v in tariffs.items()}
+        product_map.update(LEGACY_STARS_PAYLOADS)
+
+        if payload in product_map:
+            mapping = product_map[payload]
+            prem_type = mapping[0]
+            days = mapping[1]
+            product_title = mapping[2]
+            if len(mapping) > 3:
+                stars = mapping[3]
+        elif payload == "premium_1month":
+            prem_type, days, product_title = "pro", 30, "1 oylik Premium"
+        else:
+            await message.answer(
+                f"❌ <b>Tiklab bo'lmadi: Noma'lum mahsulot payload'i ({html.escape(str(payload))})!</b>\n\n"
+                f"Ushbu to'lov uchun avtomatik Premium berish taqiqlangan. "
+                f"Iltimos, tekshirib foydalanuvchiga Premiumni /set_premium orqali qo'lda bering.",
+                parse_mode="HTML"
+            )
+            return
+
+        granted, until = await asyncio.to_thread(
+            database.process_paid_premium,
+            charge_id, target_uid, payload, stars, prem_type, days
+        )
+        if not granted:
+            remove_pending_failed_payment(charge_id)
+            await message.answer(f"⚠️ Ushbu charge_id (<code>{html.escape(charge_id)}</code>) allaqachon bazaga yozilgan va hisoblangan!", parse_mode="HTML")
+            return
+
+        # Muvaffaqiyatli saqlandi — dalilni reestrdan o'chiramiz
+        remove_pending_failed_payment(charge_id)
+
+        exp_str = until.strftime("%d.%m.%Y")
+        await message.answer(
+            f"✅ <b>To'lov muvaffaqiyatli tiklandi va hisoblandi!</b>\n\n"
+            f"👤 User: <code>{target_uid}</code>\n"
+            f"📦 Mahsulot: {product_title}\n"
+            f"📅 Yangi muddat: <b>{exp_str}</b> gacha\n"
+            f"🆔 Charge ID: <code>{html.escape(charge_id)}</code>",
+            parse_mode="HTML"
+        )
+        try:
+            await message.bot.send_message(
+                chat_id=target_uid,
+                text=(
+                    f"🎉 <b>To'lovingiz tasdiqlandi va Premium faollashtirildi!</b>\n\n"
+                    f"📦 Mahsulot: <b>{product_title}</b>\n"
+                    f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
+                    f"Keltirilgan noqulaylik uchun uzr so'raymiz."
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as u_err:
+            logging.warning(f"Reconcile foydalanuvchiga xabar yuborishda xato: {u_err}")
+    except Exception as e:
+        logging.error(f"Reconcile error: {e}", exc_info=True)
+        await message.answer(f"❌ Xatolik yuz berdi: {html.escape(str(e))}", parse_mode="HTML")
+
 
 # ─── Manual to'lov (karta cheki yuborish) ─────────────────────────
+
 
 @dp.callback_query(F.data == "send_receipt")
 async def process_send_receipt(callback: types.CallbackQuery, state: FSMContext):
@@ -2332,10 +3154,16 @@ async def handle_receipt_photo(message: types.Message, state: FSMContext):
     await asyncio.to_thread(database.set_waiting_receipt, user_id, 0)
     username = f"@{message.from_user.username}" if message.from_user.username else "Noma'lum"
     photo_id = message.photo[-1].file_id
+    # Generate a unique token for this receipt
+    token = uuid.uuid4().hex
+    receipt_created = await asyncio.to_thread(database.create_manual_receipt, user_id, token)
     admin_keyboard = InlineKeyboardBuilder()
-    admin_keyboard.button(text="✅ Tasdiqlash (Premium berish)", callback_data=f"adm_app_{user_id}")
-    admin_keyboard.button(text="❌ Rad etish",                    callback_data=f"adm_rej_{user_id}")
-    admin_keyboard.adjust(1, 1)
+    if receipt_created:
+        admin_keyboard.button(text="✅ Tasdiqlash (Premium berish)", callback_data=f"adm_app_{user_id}_{token}")
+        admin_keyboard.button(text="❌ Rad etish",                    callback_data=f"adm_rej_{user_id}_{token}")
+        admin_keyboard.adjust(1, 1)
+    else:
+        logging.warning(f"Failed to create manual receipt for user {user_id}, token {token}")
     try:
         await message.bot.send_photo(
             chat_id=ADMIN_ID,
@@ -2367,69 +3195,78 @@ async def handle_receipt_photo(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Adminga chek yuborishda xatolik: {e}")
         await message.answer("⚠️ Texnik xatolik. Iltimos, to'g'ridan-to'g'ri adminga yozing.")
-# @dp.callback_query(F.data.startswith("adm_app_"))
-async def _duplicate_process_admin_approve(callback: types.CallbackQuery):
-    # Extract user ID from callback data
-    try:
-        target_id = int(callback.data.split("adm_app_")[1])
-    except Exception:
-        await callback.answer("⚠️ Noto‘g‘ri admin tasdiqlash ma‘lumoti.", show_alert=True)
-        return
-    # Grant premium (30 kun) – same as legacy
-    try:
-        await asyncio.to_thread(database.set_premium, target_id, 1, months=1)
-    except Exception as e:
-        logging.error(f"Admin approval premium activation error for user {target_id}: {e}")
-        await callback.answer("⚠️ Premium aktivlaish uchun AI sozlanmagan.\n"
+
+@dp.message(F.photo)
+async def handle_image(message: types.Message, state: FSMContext):
+    """Tibbiy rasmni Gemini multimodal modellari orqali tahlil qilish."""
+    user_id = message.from_user.id
+
+    if not gemini_client:
+        await message.answer(
+            "⚠️ Rasmlarni tahlil qilish uchun AI sozlanmagan.\n"
             "Iltimos, matnli savol yuboring.",
             reply_markup=get_start_keyboard()
         )
         return
 
-    status_msg = await message.answer("🔍 <b>Rasm tahlil qilinmoqda...</b>", parse_mode="HTML")
+    consumed_free = False
+    consumed_daily = False
     try:
+        if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+            consumed_free = True
+        elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+            consumed_daily = True
+        else:
+            await premium_upsell(message)
+            return
+    except Exception:
+        logging.exception("Rasm: limitni band qilishda DB xatosi (user=%s)", user_id)
+        try:
+            await message.answer("⚠️ Vaqtinchalik texnik xatolik. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        except Exception:
+            logging.warning("DB xatosi haqida foydalanuvchiga xabar yuborib bo'lmadi", exc_info=True)
+        return
+
+    async def refund_once():
+        # Faqat sarflangan limitni va faqat bir marta qaytaramiz
+        nonlocal consumed_free, consumed_daily
+        if consumed_free:
+            consumed_free = False
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            consumed_daily = False
+            await asyncio.to_thread(database.refund_daily_request, user_id)
+
+    status_msg = None
+    try:
+        status_msg = await message.answer("🔍 <b>Rasm tahlil qilinmoqda...</b>", parse_mode="HTML")
+
         # Eng yuqori sifatli rasmni yuklab olamiz
         photo = message.photo[-1]
         file = await message.bot.get_file(photo.file_id)
-        file_path = file.file_path
-
-        # Fayl baytlarini yuklab olamiz
-        import io
-        file_bytes = await message.bot.download_file(file_path)
+        file_bytes = await message.bot.download_file(file.file_path)
         photo_data = file_bytes.read()
 
-        # Base64 formatga o'tkazamiz
-        import base64
-        photo_b64 = base64.b64encode(photo_data).decode("utf-8")
-
-        # Caption (tavsif) yozilgan bo'lsa uni qo'shib yuboramiz
         user_caption = message.caption or "Ushbu rasmdagi tibbiy holat bo'yicha tushuntirish va birinchi yordam choralarini bering."
 
-        # Tibbiy profil ma'lumotlari
         profile = await asyncio.to_thread(database.get_medical_profile, user_id)
         profile_context = _build_profile_context(profile)
 
+        # google-genai SDK: rasm baytlari Part.from_bytes() orqali uzatiladi
         prompt_parts = [
-            {
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": photo_b64
-                }
-            },
-            {
-                "text": (
-                    f"Rasmda tasvirlangan tibbiy holat, jarohat, toshma yoki boshqa tibbiyot/salomatlik bilan "
-                    f"bog'liq vaziyatni tahlil qiling. Quyidagi savol yoki topshiriq asosida javob bering:\n"
-                    f"\"{user_caption}\"\n\n"
-                    f"Siz Birinchi Yordam AI botsiz. Javob o'zbek tilida, professional, samimiy va tushunarli bo'lsin. "
-                    f"Kasalni davolashga urinmang, birinchi yordam choralarini ko'rsating va zarur bo'lsa "
-                    f"tez yordam (103) yoki shifokorga murojaat qilishni qat'iy eslating.\n"
-                    + profile_context
-                )
-            }
+            genai_types.Part.from_bytes(data=photo_data, mime_type="image/jpeg"),
+            (
+                "Rasmda tasvirlangan tibbiy holat, jarohat, toshma yoki boshqa tibbiyot/salomatlik bilan "
+                "bog'liq vaziyatni tahlil qiling. Quyidagi savol yoki topshiriq asosida javob bering:\n"
+                f"\"{user_caption}\"\n\n"
+                "Siz Birinchi Yordam AI botsiz. Javob o'zbek tilida, professional, samimiy va tushunarli bo'lsin. "
+                "Kasalni davolashga urinmang, birinchi yordam choralarini ko'rsating va zarur bo'lsa "
+                "tez yordam (103) yoki shifokorga murojaat qilishni qat'iy eslating.\n"
+                + profile_context
+            )
         ]
 
-        # Gemini modellari orqali sinab ko'ramiz (multimodal)
+        ai_text = None
         last_err = None
         async with KeepTyping(message.bot, message.chat.id, action="typing"):
             for model in GEMINI_MULTIMODAL_MODELS:
@@ -2442,13 +3279,10 @@ async def _duplicate_process_admin_approve(callback: types.CallbackQuery):
                             temperature=0.7,
                         )
                     )
-                    if response.text:
-                        await status_msg.edit_text(
-                            f"📸 <b>Rasm tahlili natijasi:</b>\n\n"
-                            + markdown_to_html(response.text),
-                            parse_mode="HTML"
-                        )
-                        return
+                    if response and response.text:
+                        ai_text = response.text
+                        break
+
                 except Exception as e:
                     err = str(e)
                     logging.warning(f"Rasm: {model} xato: {err[:150]}")
@@ -2458,48 +3292,85 @@ async def _duplicate_process_admin_approve(callback: types.CallbackQuery):
                         continue
                     break
 
-        if consumed_free:
-            await asyncio.to_thread(database.refund_free_ai, user_id)
-        if consumed_daily:
-            await asyncio.to_thread(database.refund_daily_request, user_id)
+        if ai_text:
+            delivery = await _deliver_ai_response(
+                message, status_msg, ai_text,
+                "📸 <b>Rasm tahlili natijasi:</b>\n\n",
+                "📸 Rasm tahlili natijasi:\n\n",
+            )
+            if delivery == "failed":
+                # Hech narsa yetkazilmadi: limit bir marta qaytariladi va foydalanuvchiga xabar beriladi
+                try:
+                    await refund_once()
+                except Exception as refund_err:
+                    logging.exception("Refund failed after Telegram delivery failure: %s", refund_err)
+                err_text = (
+                    "⚠️ Rasmni tahlil qilish imkoni bo'lmadi.\n"
+                    "Iltimos, muammoni matn shaklida yozib yuboring. 📝"
+                )
+                try:
+                    await status_msg.edit_text(err_text, parse_mode="HTML")
+                except Exception as ex2:
+                    logging.error(f"Failed to send fallback response: {ex2}")
+                    try:
+                        await message.answer(err_text, parse_mode="HTML")
+                    except Exception as ex3:
+                        logging.error(f"Failed to send fallback via answer: {ex3}")
+            return
+
+        logging.error(f"Rasm: barcha modellar ishlamadi. Oxirgi xato: {last_err}")
+        try:
+            await refund_once()
+        except Exception as refund_err:
+            logging.exception("Refund failed during error handling: %s", refund_err)
         await status_msg.edit_text(
             "⚠️ Rasmni tahlil qilish imkoni bo'lmadi.\n"
-            "Iltimos, muammoni matn shaklida yozib yuboring. 📝",
+            "qayta ishlashda xatolik.",
             parse_mode="HTML"
         )
 
     except Exception as e:
         logging.error(f"Rasm tahlili handlerida xatolik: {e}")
-        if consumed_free:
-            await asyncio.to_thread(database.refund_free_ai, user_id)
-        if consumed_daily:
-            await asyncio.to_thread(database.refund_daily_request, user_id)
-        await status_msg.edit_text(
+        try:
+            await refund_once()
+        except Exception as refund_err:
+            logging.exception("Refund failed during outer exception handling: %s", refund_err)
+        error_text = (
             "⚠️ Rasmni qayta ishlashda xatolik yuz berdi.\n"
-            "Iltimos, matnli savol yuboring.",
-            parse_mode="HTML"
+            "Iltimos, matnli savol yuboring."
         )
+        try:
+            if status_msg:
+                await status_msg.edit_text(error_text, parse_mode="HTML")
+            else:
+                await message.answer(error_text, parse_mode="HTML")
+        except Exception as ex:
+            logging.error(f"Rasm xato xabarini yuborib bo'lmadi: {ex}")
 
 @dp.callback_query(F.data.startswith("adm_app_"))
 async def process_admin_approve(callback: types.CallbackQuery):
     if str(callback.from_user.id) != str(ADMIN_ID):
         await callback.answer("Siz admin emassiz!", show_alert=True)
         return
-    user_id = int(callback.data.replace("adm_app_", ""))
-    # Activate premium in DB – handle potential errors
-    try:
-        await asyncio.to_thread(database.set_premium, user_id, 1)
-    except Exception as db_err:
-        logging.error(f"Admin approval DB error for user {user_id}: {db_err}")
-        # Update admin message to indicate failure
+    # Parse user_id and token from callback data
+    parts = callback.data.split('_')
+    if len(parts) < 4:
+        await callback.answer("Noto'g'ri callback format.", show_alert=True)
+        return
+    user_id = int(parts[2])
+    token = parts[3]
+    # Attempt atomic approval
+    success = await asyncio.to_thread(database.approve_receipt_and_grant, user_id, token)
+    if not success:
+        # Either receipt already processed, mismatch, or DB error
         await callback.message.edit_caption(
-            caption=callback.message.caption + "\n\n❌ <b>Premium aktivatsiya xatosi.</b>",
+            caption=callback.message.caption + "\n\n❌ <b>Receipt allaqachon tasdiqlangan yoki noto'g'ri.</b>",
             reply_markup=None,
             parse_mode="HTML"
         )
-        await callback.answer("❌ Premium aktivatsiya qilinmadi. Admin xabari yuborildi.", show_alert=True)
+        await callback.answer("⚠️ Premium berilmadi.", show_alert=True)
         return
-    # DB activation succeeded – update admin message
+    # Approval succeeded – update admin message and inform user
     await callback.message.edit_caption(
         caption=callback.message.caption + "\n\n✅ <b>Tasdiqlandi! Premium berildi.</b>",
         reply_markup=None,
@@ -2524,24 +3395,29 @@ async def process_admin_reject(callback: types.CallbackQuery):
     if str(callback.from_user.id) != str(ADMIN_ID):
         await callback.answer("Siz admin emassiz!", show_alert=True)
         return
-    user_id = int(callback.data.replace("adm_rej_", ""))
+    # Parse user_id and token from callback data
+    parts = callback.data.split('_')
+    if len(parts) < 4:
+        await callback.answer("Noto'g'ri callback format.", show_alert=True)
+        return
+    user_id = int(parts[2])
+    token = parts[3]
+    # Attempt atomic reject
+    success = await asyncio.to_thread(database.reject_receipt, user_id, token)
+    if not success:
+        await callback.message.edit_caption(
+            caption=callback.message.caption + "\n\n❌ <b>Receipt allaqachon ishlangan yoki noto'g'ri.</b>",
+            reply_markup=None,
+            parse_mode="HTML"
+        )
+        await callback.answer("⚠️ Rad etish muvaffaqiyatsiz.", show_alert=True)
+        return
     await callback.message.edit_caption(
         caption=callback.message.caption + "\n\n❌ <b>To'lov rad etildi.</b>",
         reply_markup=None,
         parse_mode="HTML"
     )
-    try:
-        await callback.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "❌ <b>To'lovingiz tasdiqlanmadi.</b>\n\n"
-                "Chek yoki to'lovda muammo aniqlandi. Ma'lumotlarni tekshirib, qaytadan urinib ko'ring."
-            ),
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logging.error(f"Foydalanuvchiga rad xabari yuborib bo'lmadi: {e}")
-    await callback.answer("To'lov rad etildi!")
+    await callback.answer("Receipt rad etildi.")
 
 # ═══════════════════════════════════════════════════════════════════
 # FEATURE 7: 🔔 KUNLIK SOG'LIQ MASLAHATLARI
@@ -2723,13 +3599,26 @@ async def medicine_missed_handler(callback: types.CallbackQuery):
 @dp.message(F.web_app_data)
 async def web_app_data_handler(message: types.Message):
     """Mini App'dan kelgan ma'lumotlarni qayta ishlash"""
+    consumed_free = False
+    consumed_daily = False
+    user_id = message.from_user.id if message.from_user else None
+
+    async def refund_once():
+        nonlocal consumed_free, consumed_daily
+        if not user_id:
+            return
+        if consumed_free:
+            consumed_free = False
+            await asyncio.to_thread(database.refund_free_ai, user_id)
+        if consumed_daily:
+            consumed_daily = False
+            await asyncio.to_thread(database.refund_daily_request, user_id)
+
     try:
         data = json.loads(message.web_app_data.data)
         if data.get("action") == "ai_consult":
             user_id = message.from_user.id
             
-            consumed_free = False
-            consumed_daily = False
             if await asyncio.to_thread(database.try_consume_free_ai, user_id):
                 consumed_free = True
             elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
@@ -2738,25 +3627,29 @@ async def web_app_data_handler(message: types.Message):
                 await premium_upsell(message)
                 return
                 
-            body_part_title = data.get("title", "noma'lum a'zo")
+            raw_title = str(data.get("title", "noma'lum a'zo"))
+            safe_title = html.escape(raw_title[:100])
             
             placeholder = await message.answer(
-                f"🤖 <b>AI Konsultatsiya ({body_part_title}):</b>\n\n"
+                f"🤖 <b>AI Konsultatsiya ({safe_title}):</b>\n\n"
                 f"Tahlil qilinmoqda, iltimos kuting... ⏳",
                 parse_mode="HTML"
             )
             
             prompt = (
-                f"Foydalanuvchi inson tanasidagi '{body_part_title}' sohasida og'riq yoki bezovtalik borligini bildirdi. "
+                f"Foydalanuvchi inson tanasidagi '{safe_title}' sohasida og'riq yoki bezovtalik borligini bildirdi. "
                 f"Ushbu tana a'zosi bo'yicha eng ko'p uchraydigan kasalliklar, ularning kelib chiqish sabablari va "
                 f"uy sharoitida birinchi yordam hamda shifokorga qachon murojaat qilish kerakligi haqida atroflicha, "
                 f"chiroyli va tushunarli o'zbek tilida maslahat ber."
             )
             
-            await stream_gemini_to_message(prompt=prompt, message=placeholder)
+            result = await stream_gemini_to_message(prompt=prompt, message=placeholder)
+            if result is None:
+                await refund_once()
 
     except Exception as e:
         logging.error(f"web_app_data xatolik: {e}")
+        await refund_once()
         await message.answer("⚠️ Ma'lumotlarni qayta ishlashda xatolik yuz berdi.")
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3316,61 +4209,82 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
         return  # AI CHAQIRILMADI — token tejaldi! ✅
 
     # ═══ DATABASE'da topilmadi — AI ga o'tamiz ═══
-    # 1 ta bepul savol tizimi yoki kunlik limit tekshiruvi
+    if user_id in _active_ai_users:
+        await message.reply("⏳ Oldingi savolingizga javob tayyorlanmoqda, iltimos kuting...")
+        return
+    _active_ai_users.add(user_id)
     consumed_free = False
     consumed_daily = False
-    if await asyncio.to_thread(database.try_consume_free_ai, user_id):
-        consumed_free = True
-    elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
-        consumed_daily = True
-    else:
-        # Bepul limit tugagan — premium talab qilamiz
-        builder = InlineKeyboardBuilder()
-        builder.button(text="💎 Premium", callback_data="buy_premium")
-        builder.adjust(1)
-        await message.answer(
-            "🔒 <b>Bepul AI savollar limiti tugadi!</b>\n\n"
-            "AI bilan cheksiz suhbat qurish uchun <b>Premium</b> xarid qiling!\n\n"
-            "🚀 <b>Premium afzalliklari:</b>\n"
-            "• ♾️ Cheksiz AI so'rovlari\n"
-            "• 🎙️ Ovozli konsultatsiya\n"
-            "• 📚 Kasalliklar batafsil tahlili\n"
-            "• 🩺 Shaxsiy tibbiy maslahat\n\n"
-            "🎁 <b>Bepul Premium olish yo'li:</b>\n"
-            "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
-            "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
-            "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
-            f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> — 1 oylik.",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
-        return
 
-    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    placeholder = await message.answer("⏳ <b>Javob tayyorlanmoqda...</b>", parse_mode="HTML")
-
-    # Tibbiy profilni qo'shish
-    profile = await asyncio.to_thread(database.get_medical_profile, user_id)
-    profile_context = _build_profile_context(profile)
-    full_prompt = message.text + profile_context
-
-    logging.info(f"[AI_FALLBACK] user={user_id} query='{message.text}'")
-    result = await stream_gemini_to_message(
-        prompt=full_prompt,
-        message=placeholder,
-        placeholder_text="⏳ <b>Javob tayyorlanmoqda...</b>"
-    )
-    if result is None:
+    async def refund_once():
+        nonlocal consumed_free, consumed_daily
         if consumed_free:
+            consumed_free = False
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
+            consumed_daily = False
             await asyncio.to_thread(database.refund_daily_request, user_id)
-    elif result:
-        # AI javobini cache'ga saqlash (keyingi so'rovlar uchun)
+
+    try:
+        # 1 ta bepul savol tizimi yoki kunlik limit tekshiruvi
+        if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+            consumed_free = True
+        elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+            consumed_daily = True
+        else:
+            # Bepul limit tugagan — premium talab qilamiz
+            builder = InlineKeyboardBuilder()
+            builder.button(text="💎 Premium", callback_data="buy_premium")
+            builder.adjust(1)
+            await message.answer(
+                "🔒 <b>Bepul AI savollar limiti tugadi!</b>\n\n"
+                "AI bilan cheksiz suhbat qurish uchun <b>Premium</b> xarid qiling!\n\n"
+                "🚀 <b>Premium afzalliklari:</b>\n"
+                "• ♾️ Cheksiz AI so'rovlari\n"
+                "• 🎙️ Ovozli konsultatsiya\n"
+                "• 📚 Kasalliklar batafsil tahlili\n"
+                "• 🩺 Shaxsiy tibbiy maslahat\n\n"
+                "🎁 <b>Bepul Premium olish yo'li:</b>\n"
+                "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
+                "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
+                "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
+                f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik Pro) dan boshlab.",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+            return
+
+        await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+        placeholder = await message.answer("⏳ <b>Javob tayyorlanmoqda...</b>", parse_mode="HTML")
+
+        # Tibbiy profilni qo'shish
+        profile = await asyncio.to_thread(database.get_medical_profile, user_id)
+        profile_context = _build_profile_context(profile)
+        full_prompt = message.text + profile_context
+
+        logging.info(f"[AI_FALLBACK] user={user_id} query='{message.text}'")
+        result = await stream_gemini_to_message(
+            prompt=full_prompt,
+            message=placeholder,
+            placeholder_text="⏳ <b>Javob tayyorlanmoqda...</b>"
+        )
+        if result is None:
+            await refund_once()
+        elif result:
+            # AI javobini cache'ga saqlash (keyingi so'rovlar uchun)
+            try:
+                await asyncio.to_thread(medicine_db.save_ai_response, message.text, result, "ai_chat")
+            except Exception as e:
+                logging.warning(f"AI javobini cache'ga saqlashda xato: {e}")
+    except Exception as e:
+        logging.error(f"handle_ai_chat xatolik: {e}", exc_info=True)
+        await refund_once()
         try:
-            await asyncio.to_thread(medicine_db.save_ai_response, message.text, result, "ai_chat")
-        except Exception as e:
-            logging.warning(f"AI javobini cache'ga saqlashda xato: {e}")
+            await message.answer("⚠️ AI xizmatida vaqtinchalik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        except Exception:
+            pass
+    finally:
+        _active_ai_users.discard(user_id)
 
 def _build_profile_context(profile) -> str:
     """Tibbiy profildan AI uchun kontekst yaratish"""
@@ -3466,7 +4380,7 @@ async def cmd_ballarim(message: types.Message):
     """Mening ballarim komandasi"""
     user_id = message.from_user.id
     score = await asyncio.to_thread(database.get_score, user_id)
-    is_prem, expires = await asyncio.to_thread(database.get_premium_info, user_id)
+    is_prem, expires, *_ = await asyncio.to_thread(database.get_premium_info, user_id)
     
     msg = f"🏆 <b>Sizning ballaringiz:</b> {score} ball\n"
     if is_prem:
@@ -3524,9 +4438,11 @@ async def fallback_text(message: types.Message, state: FSMContext):
     now = database.get_uz_now()
     event_date = now.strftime("%Y-%m-%d")
     
-    conn = database.get_connection()
-    c = conn.cursor()
+    conn = None
+    c = None
     try:
+        conn = database.get_connection()
+        c = conn.cursor()
         c.execute('''
             SELECT id, event_type, question, sent_at
             FROM engagement_logs
@@ -3538,7 +4454,7 @@ async def fallback_text(message: types.Message, state: FSMContext):
         logging.error(f"Error checking engagement log: {e}")
         unanswered = None
     finally:
-        conn.close()
+        database._safe_close(c, conn)
         
     if unanswered:
         event_type = unanswered[1]
@@ -3563,20 +4479,39 @@ async def fallback_text(message: types.Message, state: FSMContext):
 # =============================================================================
 # Engagement answer button handler ("Javobini olish")
 # =============================================================================
-    @dp.callback_query(F.data.startswith("engagement_answer"))
-    async def handle_engagement_answer(callback: types.CallbackQuery):
-        """Process the 'Javobini olish' button for engagement questions.
-        Expected callback_data format: engagement_answer:<event_type>:<event_date>
-        """
-        try:
-            _, event_type, event_date = callback.data.split(":")
-        except Exception as e:
-            logging.error(f"Invalid engagement_answer callback data '{callback.data}': {e}")
-            await callback.answer("Noto'g'ri ma'lumot.", show_alert=True)
-            return
+@dp.callback_query(F.data.startswith("engagement_answer"))
+async def handle_engagement_answer(callback: types.CallbackQuery):
+    """Process the 'Javobini olish' button for engagement questions.
+    Expected callback_data format: engagement_answer:<event_type>:<event_date>
+    """
+    try:
+        parts = callback.data.split(":")
+        # callback_data formati: engagement_answer:<event_type>:<event_date>
+        # Agar event_type '10:10' yoki '08:00' bo'lsa, parts 4 ta bo'ladi: ['engagement_answer', '10', '10', '2026-10-13']
+        # Agar event_type 'premium_checkin' bo'lsa, parts 3 ta bo'ladi: ['engagement_answer', 'premium_checkin', '2026-10-13']
+        if len(parts) == 4:
+            event_type = f"{parts[1]}:{parts[2]}"
+            event_date = parts[3]
+        elif len(parts) == 3:
+            event_type = parts[1]
+            event_date = parts[2]
+        else:
+            raise ValueError(f"Kutilmagan format: {len(parts)} ta bo'lak")
+    except Exception as e:
+        logging.error(f"Invalid engagement_answer callback data '{callback.data}': {e}")
+        await callback.answer("Noto'g'ri ma'lumot.", show_alert=True)
+        return
 
-        user_id = callback.from_user.id
+    user_id = callback.from_user.id
+    ekey = (user_id, event_type, event_date)
+    if ekey in _in_progress_engagements:
+        await callback.answer("⏳ Javob tayyorlanmoqda, iltimos kuting...", show_alert=False)
+        return
+    _in_progress_engagements.add(ekey)
+    try:
         # Retrieve the original question and any existing answer/bot_reply
+        conn = None
+        c = None
         try:
             conn = database.get_connection()
             c = conn.cursor()
@@ -3593,7 +4528,7 @@ async def fallback_text(message: types.Message, state: FSMContext):
             logging.error(f"Error fetching engagement log for answer: {e}")
             row = None
         finally:
-            conn.close()
+            database._safe_close(c, conn)
 
         question = row[0] if row else ""
         user_answer = row[1] if row else None
@@ -3633,6 +4568,9 @@ async def fallback_text(message: types.Message, state: FSMContext):
 
         await callback.message.reply(answer, parse_mode="HTML")
         await callback.answer()
+    finally:
+        _in_progress_engagements.discard(ekey)
+
 
 @dp.message()
 async def fallback_all(message: types.Message):
@@ -3716,7 +4654,24 @@ async def main():
     background_tasks.add(task3)
     task3.add_done_callback(background_tasks.discard)
 
-    await dp.start_polling(bot)
+    try:
+        await bot.delete_webhook(drop_pending_updates=False)
+        await dp.start_polling(bot)
+    except Exception as e:
+        if "conflict" in str(e).lower():
+            logging.critical(
+                "❌ TELEGRAM CONFLICT ERROR: Boshqa bot instansiyasi bir vaqtda 'getUpdates' (polling) qilmoqda! "
+                "Iltimos, VPS dagi systemd xizmatini (birinchiyordam.service) yoki boshqa ishlayotgan bot jarayonini to'xtating.",
+                exc_info=True
+            )
+        else:
+            logging.critical(f"Bot polling xatosi: {e}", exc_info=True)
+        raise
+    finally:
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     asyncio.run(main())

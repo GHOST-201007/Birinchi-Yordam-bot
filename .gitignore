@@ -4,3 +4,15 @@ __pycache__/
 *.pyc
 users.db
 *.db
+# Local backups and temporary files
+venv_OLD_BACKUP_*/
+*_BACKUP_*/
+BACKUP*/
+scratch/
+*.log
+*.tmp
+
+# Temporary audit output
+/docs/audits/pytest_result.txt
+/docs/audits/terminal_output_diff_medicine.txt
+/docs/audits/terminal_output_less_summary.txt

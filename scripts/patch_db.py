@@ -1,8 +1,11 @@
 import re
 import os
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def patch_env():
-    with open(".env", "r", encoding="utf-8") as f:
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    with open(env_path, "r", encoding="utf-8") as f:
         content = f.read()
     
     if "PRO_TRIAL_STARS" not in content:
@@ -24,12 +27,13 @@ ULTRA_AI_DAILY_LIMIT=100
 PREMIUM_REWARD_POINTS=100
 PREMIUM_REWARD_DAYS=3
 """
-        with open(".env", "w", encoding="utf-8") as f:
+        with open(env_path, "w", encoding="utf-8") as f:
             f.write(content)
         print(".env updated.")
 
 def patch_database():
-    with open("database.py", "r", encoding="utf-8") as f:
+    db_path = os.path.join(PROJECT_ROOT, "database.py")
+    with open(db_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     # Add premium_type column to init_db
@@ -65,7 +69,7 @@ def patch_database():
     c.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = %s AND daily_requests < %s", (user_id, limit))"""
     content = content.replace(old_limit, new_limit)
 
-    with open("database.py", "w", encoding="utf-8") as f:
+    with open(db_path, "w", encoding="utf-8") as f:
         f.write(content)
     print("database.py patched.")
 
