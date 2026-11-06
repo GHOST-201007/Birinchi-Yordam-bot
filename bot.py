@@ -747,13 +747,10 @@ def _is_temporary_gemini_error(e: Exception) -> bool:
                "DEADLINE_EXCEEDED", "INTERNAL", "timed out", "Timeout", "timeout")
     return any(m in err for m in markers)
 
-# Audio va rasm uchun multimodal modellar (gemini-2.5 yaxshi qo'llab-quvvatlaydi)
-GEMINI_MULTIMODAL_MODELS = [
-    "gemini-3.8-flash",
-    "gemini-2.5-flash",
-    "gemini-3.7-flash",
-    "gemini-3.5-flash",
-]
+# Audio va rasm uchun multimodal modellar.
+# Ishlaydigan model birinchi turadi: oldin 3.8 (503) -> 2.5 (404) -> 3.7 (503) ketma-ket
+# sinalib, har rasm/ovozda bir necha soniya behuda ketardi (yoki 503 da umuman to'xtardi).
+GEMINI_MULTIMODAL_MODELS = [GEMINI_PRIMARY_MODEL, GEMINI_FALLBACK_MODEL]
 
 async def _try_generate(prompt: str, model: str) -> str:
     response = await gemini_client.aio.models.generate_content(
@@ -2293,7 +2290,7 @@ async def handle_voice(message: types.Message):
                     err = str(e)
                     logging.warning(f"Voice: {model} xato: {err[:200]}")
                     last_err = err
-                    if "429" in err or "404" in err or "NOT_FOUND" in err or "RESOURCE_EXHAUSTED" in err:
+                    if _is_temporary_gemini_error(e) or "404" in err or "NOT_FOUND" in err:
                         continue
                     break
 
@@ -3287,7 +3284,7 @@ async def handle_image(message: types.Message, state: FSMContext):
                     err = str(e)
                     logging.warning(f"Rasm: {model} xato: {err[:150]}")
                     last_err = err
-                    if "429" in err or "404" in err or "RESOURCE_EXHAUSTED" in err or "NOT_FOUND" in err:
+                    if _is_temporary_gemini_error(e) or "404" in err or "NOT_FOUND" in err:
                         logging.warning(f"Rasm tahlilida {model} ishlamadi, keyingisiga o'tish...")
                         continue
                     break
