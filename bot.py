@@ -1849,8 +1849,61 @@ async def medical_profile_menu(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.button(text="✏️ Profilni to'ldirish / tahrirlash", callback_data="edit_profile")
     builder.button(text="🗑️ Profilni o'chirish",               callback_data="clear_profile")
+    builder.button(text="🧹 Barcha tibbiy ma'lumotlarimni o'chirish", callback_data="wipe_medical")
     builder.adjust(1)
     await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+
+# ─── Barcha tibbiy ma'lumotlarni to'liq o'chirish (P2-8) ─────────────────────
+WIPE_CONFIRM_TEXT = (
+    "⚠️ <b>Barcha tibbiy ma'lumotlaringiz o'chiriladi:</b>\n\n"
+    "• Tibbiy profil (qon guruhi, yosh, vazn, bo'y, kasalliklar, allergiyalar)\n"
+    "• Barcha dori eslatmalari\n"
+    "• Kunlik savollarga bergan javoblaringiz\n\n"
+    "Hisobingiz, ballaringiz va Premium obunangiz saqlanib qoladi.\n"
+    "<b>Bu amalni qaytarib bo'lmaydi.</b> Davom etasizmi?"
+)
+
+
+def _wipe_confirm_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Ha, hammasini o'chirish", callback_data="wipe_medical_yes")
+    builder.button(text="❌ Bekor qilish", callback_data="wipe_medical_no")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+@dp.message(Command("delete_my_data"))
+async def cmd_delete_my_data(message: types.Message):
+    await message.answer(WIPE_CONFIRM_TEXT, reply_markup=_wipe_confirm_keyboard(), parse_mode="HTML")
+
+
+@dp.callback_query(F.data == "wipe_medical")
+async def wipe_medical_ask(callback: types.CallbackQuery):
+    await callback.message.answer(WIPE_CONFIRM_TEXT, reply_markup=_wipe_confirm_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wipe_medical_yes")
+async def wipe_medical_confirm(callback: types.CallbackQuery):
+    try:
+        await asyncio.to_thread(database.wipe_user_medical_data, callback.from_user.id)
+    except Exception:
+        logging.exception("wipe_user_medical_data xatosi: user=%s", callback.from_user.id)
+        await callback.message.edit_text("⚠️ O'chirishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.")
+        await callback.answer()
+        return
+    await callback.message.edit_text(
+        "✅ <b>Barcha tibbiy ma'lumotlaringiz o'chirildi.</b>",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "wipe_medical_no")
+async def wipe_medical_cancel(callback: types.CallbackQuery):
+    await callback.message.edit_text("❎ Bekor qilindi. Ma'lumotlaringiz o'zgarmadi.")
+    await callback.answer()
 
 @dp.callback_query(F.data == "edit_profile")
 async def edit_profile_start(callback: types.CallbackQuery, state: FSMContext):

@@ -959,6 +959,29 @@ def save_medical_profile(user_id, blood_group=None, age=None, weight=None, heigh
         )
         conn.commit()
 
+def wipe_user_medical_data(user_id: int) -> dict:
+    """Foydalanuvchining BARCHA tibbiy ma'lumotlarini bitta tranzaksiyada o'chiradi (P2-8):
+    profil maydonlari, dori eslatmalari, engagement javoblari, qiziqishlar.
+    Hisob, ballar, premium va to'lov yozuvlari saqlanib qoladi.
+    Qaytaradi: o'chirilgan qatorlar soni {"reminders": n, "engagement_logs": n, "user_interests": n}."""
+    deleted = {}
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            """UPDATE users SET blood_group = NULL, age = NULL, weight = NULL, height = NULL,
+               chronic_diseases = NULL, allergies = NULL WHERE user_id = %s""",
+            (user_id,)
+        )
+        c.execute("DELETE FROM reminders WHERE user_id = %s", (user_id,))
+        deleted["reminders"] = c.rowcount
+        c.execute("DELETE FROM engagement_logs WHERE user_id = %s", (user_id,))
+        deleted["engagement_logs"] = c.rowcount
+        c.execute("DELETE FROM user_interests WHERE user_id = %s", (user_id,))
+        deleted["user_interests"] = c.rowcount
+        conn.commit()
+    logging.info("wipe_user_medical_data: user=%s deleted=%s", user_id, deleted)
+    return deleted
+
+
 def get_medical_profile(user_id):
     """Tibbiy profilni olish"""
     register_user(user_id)
