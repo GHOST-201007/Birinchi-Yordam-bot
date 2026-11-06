@@ -1831,12 +1831,12 @@ async def medical_profile_menu(message: types.Message):
 
     text = (
         "👤 <b>Sizning Tibbiy Profilingiz</b>\n\n"
-        f"🩸 <b>Qon guruhi:</b> {blood_group or '—'}\n"
+        f"🩸 <b>Qon guruhi:</b> {html.escape(blood_group or '—')}\n"
         f"🎂 <b>Yosh:</b> {age or '—'}\n"
         f"⚖️ <b>Vazn:</b> {f'{weight} kg' if weight else '—'}\n"
         f"📏 <b>Bo'y:</b> {f'{height} sm' if height else '—'}\n"
-        f"🏥 <b>Surunkali kasalliklar:</b> {chronic or '—'}\n"
-        f"⚠️ <b>Allergiyalar:</b> {allergies or '—'}\n\n"
+        f"🏥 <b>Surunkali kasalliklar:</b> {html.escape(chronic or '—')}\n"
+        f"⚠️ <b>Allergiyalar:</b> {html.escape(allergies or '—')}\n\n"
         "ℹ️ Bu ma'lumotlar AI konsultatsiyada hisobga olinadi va aniqroq maslahat beradi."
     )
     builder = InlineKeyboardBuilder()
@@ -2006,7 +2006,7 @@ async def reminder_menu(message: types.Message):
         for rem_id, name, times, days in reminders:
             times_display = times.replace(",", ", ")
             days_icon = "🗓 Har kuni" if days == "daily" else "📆 Kunora"
-            text += f"• <b>{name}</b> — {times_display} ({days_icon})\n"
+            text += f"• <b>{html.escape(name)}</b> — {times_display} ({days_icon})\n"
             builder.button(text=f"🗑️ {name} o'chirish", callback_data=f"del_rem_{rem_id}")
     else:
         text += slot_line
@@ -2136,7 +2136,7 @@ async def reminder_days_chosen(callback: types.CallbackQuery, state: FSMContext)
 
     await callback.message.edit_text(
         f"✅ <b>Eslatma qo'shildi!</b>\n\n"
-        f"💊 <b>Dori:</b> {medicine_name}\n"
+        f"💊 <b>Dori:</b> {html.escape(medicine_name)}\n"
         f"⏰ <b>Vaqtlar:</b> {times_str.replace(',', ', ')}\n"
         f"📅 <b>Kunlar:</b> {days_text}\n\n"
         f"Bot belgilangan vaqtlarda sizga eslatma yuboradi! 🔔",
@@ -2173,7 +2173,7 @@ async def reminder_menu_refresh(message: types.Message, user_id: int):
         text += "📋 <b>Faol eslatmalaringiz:</b>\n\n"
         for rem_id, name, times, days in reminders:
             days_icon = "🗓 Har kuni" if days == "daily" else "📆 Kunora"
-            text += f"• <b>{name}</b> — {times.replace(',', ', ')} ({days_icon})\n"
+            text += f"• <b>{html.escape(name)}</b> — {times.replace(',', ', ')} ({days_icon})\n"
             builder.button(text=f"🗑️ {name} o'chirish", callback_data=f"del_rem_{rem_id}")
     else:
         text += slot_line
@@ -2716,7 +2716,7 @@ async def process_successful_payment(message: types.Message):
         await message.answer("⚠️ To'lov tranzaksiya identifikatori topilmadi. Administrator bilan bog'laning.")
         return
 
-    username = f"@{message.from_user.username}" if message.from_user.username else f"ID:{user_id}"
+    username = f"@{html.escape(message.from_user.username)}" if message.from_user.username else f"ID:{user_id}"
 
     ok, reason = validate_payment(payload, payment.currency, payment.total_amount)
     if not ok:
@@ -3151,7 +3151,7 @@ async def handle_receipt_photo(message: types.Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
     await asyncio.to_thread(database.set_waiting_receipt, user_id, 0)
-    username = f"@{message.from_user.username}" if message.from_user.username else "Noma'lum"
+    username = f"@{html.escape(message.from_user.username)}" if message.from_user.username else "Noma'lum"
     photo_id = message.photo[-1].file_id
     # Generate a unique token for this receipt
     token = uuid.uuid4().hex
@@ -3735,8 +3735,8 @@ def _build_premium_list_text(users_info, total, premium_count):
         full_name = row[3] if len(row) > 3 else None
         username = row[4] if len(row) > 4 else None
         icon = "🌟" if is_premium else "👤"
-        name_str = full_name or "Noma'lum"
-        uname_str = f" (@{username})" if username else ""
+        name_str = html.escape(full_name or "Noma'lum")
+        uname_str = f" (@{html.escape(username)})" if username else ""
         prem_str = "Premium" if is_premium else "Oddiy"
         text += f"{icon} <b>{name_str}</b>{uname_str}\n"
         text += f"   🆔 <code>{user_id}</code>  |  {prem_str}\n\n"
@@ -3867,8 +3867,8 @@ def _build_ban_list_text(users_info, total, banned_count):
         full_name = row[3] if len(row) > 3 else None
         username = row[4] if len(row) > 4 else None
         icon = "🚫" if is_banned else "👤"
-        name_str = full_name or "Noma'lum"
-        uname_str = f" (@{username})" if username else ""
+        name_str = html.escape(full_name or "Noma'lum")
+        uname_str = f" (@{html.escape(username)})" if username else ""
         ban_str = "Bloklangan" if is_banned else "Faol"
         text += f"{icon} <b>{name_str}</b>{uname_str}\n"
         text += f"   🆔 <code>{user_id}</code>  |  {ban_str}\n\n"
