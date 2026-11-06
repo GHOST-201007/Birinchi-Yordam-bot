@@ -1,3 +1,5 @@
+# DIQQAT: PRODUCTION BAZADA (serverda) ISHGA TUSHIRMANG!
+# Bu skript faqat lokal ishlab chiqish va sinov uchun; .env / bazani o'zgartirishi mumkin.
 import asyncio
 import time
 import os
