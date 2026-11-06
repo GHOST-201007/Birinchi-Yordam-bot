@@ -685,67 +685,6 @@ def _search_fuzzy(conn, query: str, threshold: float = 0.55):
     return None
 
 
-def _search_ai_cache(conn, normalized: str):
-    """AI javoblar cache'idan qidirish"""
-    c = conn.cursor()
-    try:
-        ph = _placeholder()
-        c.execute(f"SELECT response_text, hit_count FROM ai_response_cache WHERE query_normalized = {ph}", (normalized,))
-        row = c.fetchone()
-        if row:
-            # hit_count oshirish
-            c.execute(f"UPDATE ai_response_cache SET hit_count = hit_count + 1, updated_at = {ph} WHERE query_normalized = {ph}",
-                      (datetime.datetime.now().isoformat(), normalized))
-            conn.commit()
-            return row[0]
-        return None
-    except Exception:
-        _safe_rollback(conn)
-        raise
-    finally:
-        _safe_close(c)
-
-
-def save_ai_response(query_original: str, response_text: str, response_type: str = "general"):
-    """AI javobini cache bazasiga saqlash (keyingi so'rovlar uchun)"""
-    normalized = normalize_query(query_original)
-    conn = None
-    c = None
-    ph = _placeholder()
-    now = datetime.datetime.now().isoformat()
-
-    try:
-        conn = _get_conn()
-        c = conn.cursor()
-        if DB_TYPE == "postgres":
-            c.execute(
-                f"INSERT INTO ai_response_cache (query_normalized, query_original, response_text, response_type, created_at, updated_at) "
-                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}) "
-                f"ON CONFLICT (query_normalized) DO UPDATE SET response_text = {ph}, updated_at = {ph}, hit_count = ai_response_cache.hit_count + 1",
-                (normalized, query_original, response_text, response_type, now, now, response_text, now)
-            )
-        else:
-            c.execute(
-                f"INSERT OR REPLACE INTO ai_response_cache (query_normalized, query_original, response_text, response_type, created_at, updated_at) "
-                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
-                (normalized, query_original, response_text, response_type, now, now)
-            )
-        conn.commit()
-        logging.info(f"[AI_CACHE] Saqlandi: '{normalized}'")
-    except Exception as e:
-        _safe_rollback(conn)
-        logging.error(f"[AI_CACHE] Saqlashda xato: {e}")
-    finally:
-        _safe_close(c, conn)
-
-    # In-memory cache'ga ham saqlash
-    _cache_set(normalized, {
-        "found": True,
-        "source": "ai_cache",
-        "data": response_text
-    })
-
-
 def _format_medicine_response(row) -> str:
     """Database natijasini chiroyli formatda chiqarish"""
     # row: (id, name, normalized_name, active_ingredient, aliases, description,
@@ -774,14 +713,15 @@ def find_medicine(query: str) -> dict:
     3. Normalized match
     4. Synonym/alias match
     5. Active ingredient match
-    6. AI response cache (database)
-    7. Fuzzy search
-    8. TOPILMASA → {"found": False}
+    6. Fuzzy search
+    7. TOPILMASA → {"found": False}
+
+    AI javoblar keshi ishlatilmaydi (shaxsiy profilga bog'liq javoblar — P0-1).
 
     Returns:
         {
             "found": True/False,
-            "source": "cache/database/synonym/ingredient/fuzzy/ai_cache",
+            "source": "cache/database/synonym/ingredient/fuzzy",
             "data": str  # Formatted response text
         }
     """
@@ -841,15 +781,11 @@ def find_medicine(query: str) -> dict:
                 _cache_set(normalized, result)
                 return result
 
-        # 6. AI cache (database)
-        ai_cached = _search_ai_cache(conn, normalized)
-        if ai_cached:
-            logging.info(f"[AI_CACHE] HIT: '{normalized}'")
-            result = {"found": True, "source": "ai_cache", "data": ai_cached}
-            _cache_set(normalized, result)
-            return result
+        # AI javoblar keshi (ai_response_cache) bu yerda ATAYLAB qidirilmaydi:
+        # u yerdagi javoblar boshqa foydalanuvchining tibbiy profili asosida
+        # yozilgan bo'lishi mumkin (P0-1).
 
-        # 7. Fuzzy match
+        # 6. Fuzzy match
         for q in [normalized, latin_query]:
             row = _search_fuzzy(conn, q)
             if row:

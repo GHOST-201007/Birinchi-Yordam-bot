@@ -4267,12 +4267,8 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
         )
         if result is None:
             await refund_once()
-        elif result:
-            # AI javobini cache'ga saqlash (keyingi so'rovlar uchun)
-            try:
-                await asyncio.to_thread(medicine_db.save_ai_response, message.text, result, "ai_chat")
-            except Exception as e:
-                logging.warning(f"AI javobini cache'ga saqlashda xato: {e}")
+        # DIQQAT: AI javobi keshlanmaydi — u foydalanuvchining tibbiy profiliga
+        # bog'liq, umumiy keshga yozilsa boshqa foydalanuvchiga ko'rinib qoladi (P0-1).
     except Exception as e:
         logging.error(f"handle_ai_chat xatolik: {e}", exc_info=True)
         await refund_once()
