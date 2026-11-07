@@ -27,7 +27,7 @@ INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000
 
 FAKE_TELEGRAM = """
 (() => {
-  const state = { closed: 0, links: [], alerts: [] };
+  const state = { closed: 0, links: [], alerts: [], invoices: [] };
   window.__tg = state;
   const noop = () => {};
   window.Telegram = { WebApp: {
@@ -40,6 +40,7 @@ FAKE_TELEGRAM = """
     close: () => { state.closed++; },
     openTelegramLink: (u) => { state.links.push(u); },
     showAlert: (m) => { state.alerts.push(m); },
+    openInvoice: (u, cb) => { state.invoices.push(u); window.__invoiceCb = cb; },
     HapticFeedback: { impactOccurred: noop, notificationOccurred: noop, selectionChanged: noop },
     CloudStorage: {
       getItem: (k, cb) => cb && cb(null, ''), setItem: (k, v, cb) => cb && cb(null, true),
@@ -93,7 +94,7 @@ class MiniAppE2EBase(unittest.TestCase):
         cls.server.server_close()
 
     # ---- yordamchilar -------------------------------------------------------
-    def open_app(self, routes, query="", init_data=INIT_DATA):
+    def open_app(self, routes, query="", init_data=INIT_DATA, init_script=""):
         """routes: {'state': (status, json) | 'abort' | 'hang' | callable(body) -> shulardan biri, ...}.
         Qaytaradi: (page, calls)."""
         ctx = self.browser.new_context(viewport={"width": 390, "height": 844})
@@ -126,6 +127,8 @@ class MiniAppE2EBase(unittest.TestCase):
 
         page.route("**/*", handle)
         page.add_init_script(FAKE_TELEGRAM % {"init": json.dumps(init_data)})
+        if init_script:
+            page.add_init_script(init_script)         # fake Telegram'dan KEYIN: masalan, openInvoice ni olib tashlash
         page.clock.install()
         page.goto(f"http://127.0.0.1:{self.port}/{query}", wait_until="load")
         return page, calls

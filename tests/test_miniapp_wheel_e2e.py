@@ -49,6 +49,8 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.assertEqual(self.tg(page)["closed"], 0)
         self.assertEqual(self.tg(page)["links"], [])
         page.click("#wheel-result-msg .result-confirm-btn")            # "Premium olish"
+        # /api/invoice mock'da yo'q (404) -> ZAXIRA yo'l: avvalgi deep link (invoice yo'li test_miniapp_invoice_e2e.py da)
+        page.wait_for_function("window.__tg.links.length === 1")
         tg = self.tg(page)
         self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=buy_plus_30"])
         self.assertEqual(tg["closed"], 0)

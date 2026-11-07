@@ -2559,9 +2559,7 @@ function initWheelOfFortune() {
         renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
             "Premium olish", () => {
                 if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
-                if (tg && tg.openTelegramLink) {
-                    tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=buy_plus_30`);
-                }
+                buyPremium('buy_plus_30');      // chegirma server tomonida avtomatik (has_discount)
             });
     }
 
@@ -3021,8 +3019,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Global helper: buy premium via Telegram deep link
-function buyPremium(plan) {
+// ZAXIRA yo'l: Premium'ni bot orqali (deep link) sotib olish — eski mantiq o'zgarmagan
+function openPremiumDeepLink(plan) {
     var tg = window.Telegram && window.Telegram.WebApp;
     var botUsername = BOT_USERNAME;
     var url = 'https://t.me/' + botUsername + '?start=' + plan;
@@ -3030,6 +3028,73 @@ function buyPremium(plan) {
         tg.openTelegramLink(url);
     } else {
         window.open(url, '_blank');
+    }
+}
+
+// Javob kelguncha (va invoice ochiq turganda) tugmani qayta bosib bo'lmasin
+let premiumBuying = false;
+let premiumBuyingTimer = null;
+function setPremiumBuying(on) {
+    premiumBuying = on;
+    clearTimeout(premiumBuyingTimer);
+    if (on) {
+        // Himoya: invoice yopilgani haqida callback kelmasa tugma abadiy qotib qolmasin
+        premiumBuyingTimer = setTimeout(() => { premiumBuying = false; }, 120000);
+    }
+}
+
+// tg.openInvoice natijasi. 'cancelled' — jim yopiladi. tg.close() CHAQIRILMAYDI.
+function handleInvoiceStatus(status) {
+    if (status === 'paid') {
+        // successful_payment botga biroz kechikib kelishi mumkin
+        notify("To'lov qabul qilindi! Premium bir necha soniyada faollashadi.");
+        invalidateAppState();
+    } else if (status === 'failed') {
+        notify("To'lov amalga oshmadi. Qayta urinib ko'ring.");
+    } else if (status === 'pending') {
+        notify("To'lov tekshirilmoqda...");
+    }
+}
+
+// Premium sotib olish: Mini App ichida Stars invoice (/api/invoice -> tg.openInvoice), botga chiqmasdan.
+// Narx va payload FAQAT serverdan keladi (chegirma ham serverda avtomatik).
+// ZAXIRA (initData yo'q, openInvoice yo'q, fetch xato/timeout, 5xx/403/429): avvalgi deep link (?start=buy_...).
+async function buyPremium(plan) {
+    if (premiumBuying) return;
+    if (!canUseApi() || !tg || typeof tg.openInvoice !== 'function') {
+        openPremiumDeepLink(plan);
+        return;
+    }
+    setPremiumBuying(true);
+    let url;
+    try {
+        const r = await api('invoice', { plan: plan });
+        if (!r || typeof r.ok !== 'boolean') throw new Error('bad-invoice');
+        if (!r.ok) {
+            if (r.error === 'not_eligible') {            // masalan, allaqachon yuqoriroq tarif: server xabari (oddiy matn)
+                setPremiumBuying(false);
+                notify(r.message || "Bu tarifni sotib olib bo'lmaydi.");
+                return;
+            }
+            throw new Error(r.error || 'invoice-failed');
+        }
+        if (typeof r.url !== 'string' || !r.url) throw new Error('no-url');
+        url = r.url;
+    } catch (err) {
+        console.warn("[premium] /api/invoice ishlamadi, deep link ishlatiladi:", err);
+        setPremiumBuying(false);
+        openPremiumDeepLink(plan);
+        return;
+    }
+    try {
+        tg.openInvoice(url, (status) => {
+            setPremiumBuying(false);
+            handleInvoiceStatus(status);
+        });
+    } catch (err) {
+        console.warn("[premium] tg.openInvoice ishlamadi, deep link ishlatiladi:", err);
+        setPremiumBuying(false);
+        openPremiumDeepLink(plan);
     }
 }
 
