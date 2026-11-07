@@ -5,6 +5,9 @@ import logging
 import re
 import html
 import json
+import hashlib
+import hmac
+import urllib.parse
 from datetime import datetime, time as dtime, timedelta  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
@@ -424,6 +427,62 @@ PREMIUM_STARS_PRICE = int(os.getenv("PREMIUM_STARS_PRICE", "50"))  # Stars narxi
 
 STARS_CURRENCY = "XTR"
 STARS_PROVIDER_TOKEN = ""  # Telegram Stars uchun provider_token doim bo'sh bo'lishi shart
+
+INIT_DATA_MAX_AGE = 24 * 3600   # auth_date shundan eski bo'lmasligi kerak
+INIT_DATA_FUTURE_SKEW = 60      # soat farqi uchun yo'l qo'yiladigan "kelajak" (soniya)
+
+
+def parse_init_data(init_data, bot_token: str | None = None, now: float | None = None) -> dict | None:
+    """Telegram WebApp initData ni tekshiradi (Mini App /api/ endpointlari uchun).
+
+    Muvaffaqiyatli bo'lsa tekshirilgan foydalanuvchi dict'ini ({"id": ..., "first_name": ...}),
+    aks holda None qaytaradi. Hech qachon istisno ko'tarmaydi va init_data ni loglamaydi
+    (ichida foydalanuvchi ma'lumoti va hash bor).
+
+    Tekshiruvlar:
+      * HMAC-SHA256, secret_key = HMAC("WebAppData", BOT_TOKEN), hmac.compare_digest bilan;
+      * auth_date kelajakda emas (+60 s) va 24 soatdan eski emas;
+      * user — JSON, ichida musbat butun son `id`.
+    user_id FAQAT shu funksiya qaytargan qiymatdan olinadi.
+    """
+    try:
+        token = TOKEN if bot_token is None else bot_token
+        if not token or not isinstance(init_data, str) or not init_data:
+            return None
+
+        pairs = urllib.parse.parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+        fields = {}
+        for key, value in pairs:
+            if key in fields:        # takroriy kalit — shubhali
+                return None
+            fields[key] = value
+
+        received_hash = fields.pop("hash", None)
+        if not received_hash:
+            return None
+
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+        secret_key = hmac.new(b"WebAppData", token.encode("utf-8"), hashlib.sha256).digest()
+        expected = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected.encode("ascii"), received_hash.encode("utf-8")):
+            return None
+
+        auth_ts = int(fields.get("auth_date", ""))
+        current = time.time() if now is None else now
+        if auth_ts > current + INIT_DATA_FUTURE_SKEW:
+            return None
+        if current - auth_ts > INIT_DATA_MAX_AGE:
+            return None
+
+        user = json.loads(fields.get("user", ""))
+        if not isinstance(user, dict):
+            return None
+        uid = user.get("id")
+        if isinstance(uid, bool) or not isinstance(uid, int) or uid <= 0:
+            return None
+        return user
+    except Exception:
+        return None
 
 
 def get_stars_tariffs() -> dict:
