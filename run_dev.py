@@ -2,6 +2,7 @@
 # FAQAT LOKAL ISHGA TUSHIRISH (kompyuterda, cloudflare tunnel bilan).
 # Serverda ISHLATMANG: u .env dagi MINI_APP_URL ni vaqtinchalik tunnel manziliga
 # almashtirib qo'yadi. Serverda systemd servislari ishlaydi (docs/DEPLOY.md).
+# Ishga tushirish uchun RUN_DEV_ALLOWED=1 kerak (pastdagi HIMOYA bo'limiga qarang).
 # =============================================================================
 import os
 import sys
@@ -20,6 +21,31 @@ class colors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
+
+# =============================================================================
+# HIMOYA: production BOT_TOKEN bilan tasodifan ishga tushirishning oldini oladi.
+# run_dev.py (1) .env dagi MINI_APP_URL ni vaqtinchalik trycloudflare manziliga o'zgartiradi va
+# (2) bot ishga tushganda botning UMUMIY menyu tugmasini ham shu manzilga o'zgartiradi
+# (bot.py: set_chat_menu_button chat_id siz). Production token bilan ishga tushsa, HAMMA foydalanuvchilar
+# uchun Mini App buziladi. Tokenning production ekanini fayldan ishonchli aniqlab bo'lmaydi, shuning uchun
+# RUN_DEV_ALLOWED=1 muhit o'zgaruvchisi (shell'da, har safar ongli ravishda) bo'lmasa to'xtaymiz.
+# Shu sababli bu yerda faqat jarayon muhiti tekshiriladi, .env dagi qiymat hisobga olinmaydi.
+# =============================================================================
+def check_dev_allowed(environ=None):
+    env = os.environ if environ is None else environ
+    return env.get("RUN_DEV_ALLOWED") == "1"
+
+
+if not check_dev_allowed():
+    print(f"{colors.FAIL}{colors.BOLD}⛔ run_dev.py to'xtatildi: RUN_DEV_ALLOWED=1 berilmagan.{colors.ENDC}")
+    print(f"{colors.WARNING}Bu skript .env dagi MINI_APP_URL ni trycloudflare manziliga o'zgartiradi va bot ishga tushganda")
+    print(f"botning UMUMIY menyu tugmasini ham o'zgartiradi. Agar .env dagi BOT_TOKEN production boti tokeni bo'lsa,")
+    print(f"barcha foydalanuvchilar uchun Mini App buziladi.{colors.ENDC}")
+    print("")
+    print("Faqat alohida TEST bot tokeni bilan ishlating, so'ng ruxsat bering:")
+    print("  PowerShell:  $env:RUN_DEV_ALLOWED=\"1\"; python run_dev.py")
+    print("  bash:        RUN_DEV_ALLOWED=1 python run_dev.py")
+    sys.exit(1)
 
 print(f"{colors.HEADER}{colors.BOLD}🚀 Birinchi Yordam Bot & Mini App - Avtomatik Ishga Tushirish{colors.ENDC}\n")
 

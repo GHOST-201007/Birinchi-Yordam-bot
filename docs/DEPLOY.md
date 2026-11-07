@@ -107,6 +107,8 @@ PREMIUM_STARS_PRICE=50          # xabarlardagi "... Stars dan boshlab" matni uch
 | Qachon | Buyruq |
 |---|---|
 | P0-1 tuzatishi deploy qilingandan keyin (bir marta) | `venv/bin/python scripts/purge_ai_chat_cache.py` |
+| Eski trycloudflare shaxsiy menyu tugmalarini o'chirish (bir marta). Avval sinov: | `venv/bin/python scripts/reset_menu_buttons.py --dry-run` |
+| ...so'ng haqiqiy ishga tushirish (soniyasiga <= 20 so'rov; trafik kam paytda) | `venv/bin/python scripts/reset_menu_buttons.py` |
 
 ---
 
@@ -118,8 +120,13 @@ Agar bot allaqachon ishlayotgan bo'lsa:
 - Task Manager dan qolgan python.exe jarayonlarini tekshiring.
 
 ### 6. Ishga tushirish
+`run_dev.py` botning UMUMIY menyu tugmasini ham trycloudflare manziliga o'zgartiradi, shuning uchun production
+`BOT_TOKEN` bilan ishlatilsa hamma foydalanuvchilar uchun Mini App buziladi. Himoya: `RUN_DEV_ALLOWED=1` shell
+muhitida berilmasa u hech narsa qilmasdan to'xtaydi (`.env` dagi qiymat hisobga olinmaydi). Faqat alohida TEST bot
+tokeni bilan:
 ```
-python run_dev.py
+$env:RUN_DEV_ALLOWED="1"; python run_dev.py      # PowerShell
+RUN_DEV_ALLOWED=1 python run_dev.py              # bash
 ```
 
 Bu quyidagilarni bajaradi:
