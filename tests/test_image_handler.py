@@ -112,9 +112,17 @@ class TestImageHandler(ImageHandlerTestBase):
         self.assertIn("imkoni bo'lmadi", self.edit_texts()[-1])
 
     def test_b2_non_retryable_error_stops_and_refunds_once(self):
-        self.generate.side_effect = Exception("500 internal")
+        # 400 INVALID_ARGUMENT — doimiy xato: boshqa modelga o'tilmaydi (_is_temporary_gemini_error: False)
+        self.generate.side_effect = Exception("400 INVALID_ARGUMENT")
         self.run_handler()
         self.assertEqual(self.generate.await_count, 1)
+        self.refund_free.assert_called_once_with(TEST_USER_ID)
+
+    def test_b3_internal_500_is_temporary_and_tries_next_model(self):
+        # 500/INTERNAL — vaqtinchalik xato (_is_temporary_gemini_error): keyingi model sinaladi, limit bir marta qaytariladi
+        self.generate.side_effect = Exception("500 internal")
+        self.run_handler()
+        self.assertEqual(self.generate.await_count, 2, "Har bir model sinalishi kerak")
         self.refund_free.assert_called_once_with(TEST_USER_ID)
 
     # C
