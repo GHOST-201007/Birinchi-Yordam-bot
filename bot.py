@@ -8,7 +8,8 @@ import json
 import hashlib
 import hmac
 import urllib.parse
-from datetime import datetime, time as dtime, timedelta  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
+import math
+from datetime import datetime, time as dtime, timedelta, timezone  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
@@ -4666,19 +4667,207 @@ async def fallback_all(message: types.Message):
 async def health_check(request):
     return web.Response(text="Birinchi Yordam bot is running!")
 
-async def start_web_server():
-    app = web.Application()
+# ═══════════════════════════════════════════════════════════════════
+# MINI APP API (/api/...) — initData bilan himoyalangan
+# Nginx `location /api/` ni URI o'zgartirmasdan 127.0.0.1:PORT ga uzatadi,
+# shuning uchun route'lar aynan /api/... prefiksi bilan ro'yxatdan o'tadi.
+# ═══════════════════════════════════════════════════════════════════
+WEB_BIND_HOST = "127.0.0.1"      # internetga ochiq emas; faqat nginx (localhost) orqali
+API_MAX_BODY = 4096              # so'rov tanasi hajmi (bayt)
+API_RATE_LIMIT = 20              # bitta foydalanuvchi uchun
+API_RATE_WINDOW = 60.0           # soniya
+SPIN_COOLDOWN_SECONDS = 24 * 3600
+
+
+class ApiRateLimiter:
+    """Foydalanuvchi bo'yicha sirpanuvchi oyna (in-memory). Event loop ichida chaqiriladi."""
+    CLEANUP_EVERY = 500
+
+    def __init__(self, limit: int = API_RATE_LIMIT, window: float = API_RATE_WINDOW):
+        self.limit = limit
+        self.window = window
+        self._hits: dict = {}
+        self._calls = 0
+
+    def allow(self, user_id: int, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        cutoff = now - self.window
+        self._calls += 1
+        if self._calls >= self.CLEANUP_EVERY:      # lug'at cheksiz o'smasligi uchun
+            self._calls = 0
+            for uid in [u for u, hits in self._hits.items() if not hits or hits[-1] <= cutoff]:
+                del self._hits[uid]
+        hits = [t for t in self._hits.get(user_id, ()) if t > cutoff]
+        if len(hits) >= self.limit:
+            self._hits[user_id] = hits
+            return False
+        hits.append(now)
+        self._hits[user_id] = hits
+        return True
+
+
+api_rate_limiter = ApiRateLimiter()
+
+
+def _api_json(data: dict, status: int = 200, headers: dict | None = None) -> web.Response:
+    return web.json_response(data, status=status, headers={"Cache-Control": "no-store", **(headers or {})})
+
+
+def _api_error(status: int, code: str, headers: dict | None = None) -> web.Response:
+    """Xato javobida stack trace yoki DB xabari QAYTARILMAYDI — faqat qisqa kod."""
+    return _api_json({"ok": False, "error": code}, status, headers)
+
+
+def _plain_text(message: str) -> str:
+    """Bot uchun yozilgan HTML xabarni oddiy matnga aylantiradi (frontendda XSS bo'lmasligi uchun)."""
+    return html.unescape(re.sub(r"<[^>]+>", "", message or "")).strip()
+
+
+def _read_spin_state(user_id: int):
+    """(last_spin_date, pending_spin_prize) — mavjud ustunlardan o'qiydi, hech narsa generatsiya qilmaydi."""
+    with database._managed_cursor() as (conn, c):
+        c.execute("SELECT last_spin_date, pending_spin_prize FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
+
+def _spin_cooldown_seconds(last_spin, now: datetime | None = None) -> int:
+    """Keyingi aylantirishgacha qolgan soniyalar (0 — kutish yo'q).
+    database.check_and_grant_spin_bonus / generate_or_get_spin_prize dagi qoida bilan bir xil."""
+    if not last_spin:
+        return 0
+    uz_tz = timezone(timedelta(hours=5))
+    now = now or database.get_uz_now()
+    try:
+        last_dt = datetime.fromisoformat(str(last_spin))
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=uz_tz)
+        return max(0, math.ceil(SPIN_COOLDOWN_SECONDS - (now - last_dt).total_seconds()))
+    except ValueError:
+        # Eski YYYY-MM-DD formati: shu kun ichida bloklangan, ertaga 00:00 gacha
+        if str(last_spin) == now.date().isoformat():
+            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            return max(1, math.ceil((midnight - now).total_seconds()))
+        return 0
+
+
+async def _api_authenticate(request: web.Request):
+    """So'rovni tekshiradi. (user_id, None) yoki (None, xato javobi) qaytaradi.
+    user_id FAQAT tekshirilgan initData ichidagi user.id dan olinadi, tanadagi boshqa maydonlar e'tiborga olinmaydi.
+    Tekshiruvdan o'tmasa hech qanday DB chaqiruvi qilinmaydi."""
+    if request.content_type != "application/json":
+        return None, _api_error(415, "unsupported_media_type")
+    if request.content_length is not None and request.content_length > API_MAX_BODY:
+        return None, _api_error(413, "payload_too_large")
+    try:
+        raw = await request.read()          # Application(client_max_size=API_MAX_BODY) chegarani qo'llaydi
+    except web.HTTPRequestEntityTooLarge:
+        return None, _api_error(413, "payload_too_large")
+    except Exception:
+        return None, _api_error(400, "bad_request")
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None, _api_error(400, "bad_request")
+    if not isinstance(payload, dict) or not isinstance(payload.get("init_data"), str):
+        return None, _api_error(400, "bad_request")
+
+    user = parse_init_data(payload["init_data"])
+    if user is None:
+        return None, _api_error(403, "forbidden")
+    user_id = user["id"]
+    if not api_rate_limiter.allow(user_id):
+        return None, _api_error(429, "rate_limited", {"Retry-After": str(int(API_RATE_WINDOW))})
+    return user_id, None
+
+
+async def _api_handle(request: web.Request, name: str, action) -> web.Response:
+    user_id, error = await _api_authenticate(request)
+    if error is not None:
+        return error
+    try:
+        banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
+        if banned:
+            return _api_error(403, "banned")
+        return _api_json(await action(user_id))
+    except Exception:
+        # init_data va so'rov tanasi loglanmaydi
+        logging.exception("API %s xatosi (user=%s)", name, user_id)
+        return _api_error(500, "server_error")
+
+
+async def _api_state_action(user_id: int) -> dict:
+    score = await asyncio.to_thread(database.get_score, user_id)
+    bonus = await asyncio.to_thread(database.get_daily_bonus_info, user_id)
+    prize = await asyncio.to_thread(database.generate_or_get_spin_prize, user_id)
+    cooldown = 0
+    if prize is None:
+        last_spin, _ = await asyncio.to_thread(_read_spin_state, user_id)
+        cooldown = _spin_cooldown_seconds(last_spin)
+    return {
+        "ok": True,
+        "score": score,
+        "streak": bonus["streak"],
+        "daily_claimed": bool(bonus["is_claimed_today"]),
+        "prize": prize,                 # None -> null (kutish yoki foydalanuvchi yo'q); 0 -> SUPER PRIZ
+        "cooldown_seconds": cooldown,
+    }
+
+
+async def _api_spin_claim_action(user_id: int) -> dict:
+    _, pending = await asyncio.to_thread(_read_spin_state, user_id)    # faqat o'qiydi, yangi yutuq yaratmaydi
+    ok, message = await asyncio.to_thread(database.check_and_grant_spin_bonus, user_id, 0)
+    score = await asyncio.to_thread(database.get_score, user_id)
+    return {"ok": bool(ok), "message": _plain_text(message), "score": score,
+            "is_super": bool(ok and pending == 0)}
+
+
+async def _api_bonus_claim_action(user_id: int) -> dict:
+    granted, points, streak = await asyncio.to_thread(database.check_and_grant_daily_bonus, user_id)
+    score = await asyncio.to_thread(database.get_score, user_id)
+    if granted:
+        message = f"Bugungi bonus olindi! +{points} ball. Ketma-ket kirish: {streak}-kun."
+    elif streak:
+        message = "Siz bugungi bonusni olib bo'lgansiz. Ertaga yana kiring."
+    else:
+        message = "Bonusni olib bo'lmadi."
+    return {"ok": bool(granted), "message": message, "points": points, "streak": streak, "score": score}
+
+
+async def api_state(request: web.Request) -> web.Response:
+    return await _api_handle(request, "state", _api_state_action)
+
+
+async def api_spin_claim(request: web.Request) -> web.Response:
+    return await _api_handle(request, "spin/claim", _api_spin_claim_action)
+
+
+async def api_bonus_claim(request: web.Request) -> web.Response:
+    return await _api_handle(request, "bonus/claim", _api_bonus_claim_action)
+
+
+def create_web_app() -> web.Application:
+    app = web.Application(client_max_size=API_MAX_BODY)
     app.router.add_get("/", health_check)
     app.router.add_get("/health", health_check)
+    # Faqat POST: boshqa metodlarga aiohttp o'zi 405 qaytaradi
+    app.router.add_post("/api/state", api_state)
+    app.router.add_post("/api/spin/claim", api_spin_claim)
+    app.router.add_post("/api/bonus/claim", api_bonus_claim)
+    return app
+
+
+async def start_web_server():
+    app = create_web_app()
 
     port = int(os.environ.get("PORT", 10000))
     runner = web.AppRunner(app)
     await runner.setup()
 
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    site = web.TCPSite(runner, WEB_BIND_HOST, port)
     await site.start()
 
-    print(f"🌐 Web server started on port {port}")
+    print(f"🌐 Web server started on {WEB_BIND_HOST}:{port}")
 
 async def main():
     await asyncio.to_thread(database.init_db)
