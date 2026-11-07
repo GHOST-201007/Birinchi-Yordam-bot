@@ -2964,3 +2964,11 @@ body.dark-mode .theme-toggle-btn {
     border-radius: 50%;
     object-fit: cover;
 }
+
+/* Kunlik bonus: mini app ichida olingan natija ("+3 ball, 3-kun") */
+.daily-bonus-result {
+    margin: 0 0 12px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--accent-green);
+}

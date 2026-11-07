@@ -1,135 +1,13 @@
 """
 test_miniapp_wheel_e2e.py — Mini App baraboni /api/ orqali aylantirish (4-qadam), brauzerda (Playwright).
-
-Telegram WebApp obyekti va /api/* javoblari taqlid qilinadi; tashqi tarmoq bloklanadi.
-Playwright yoki Chromium o'rnatilmagan bo'lsa testlar o'tkazib yuboriladi.
+Asos: tests/e2e_base.py
 """
-import functools
-import json
-import os
-import sys
-import threading
 import unittest
-from http.server import ThreadingHTTPServer
 
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP_DIR = os.path.join(PROJECT_DIR, "app")
-sys.path.insert(0, PROJECT_DIR)
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:  # pragma: no cover
-    sync_playwright = None
-
-import app_server  # noqa: E402
-
-INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000&hash=deadbeef"
-
-FAKE_TELEGRAM = """
-(() => {
-  const state = { closed: 0, links: [], alerts: [] };
-  window.__tg = state;
-  const noop = () => {};
-  window.Telegram = { WebApp: {
-    initData: %(init)s,
-    initDataUnsafe: { user: { id: 424242, first_name: 'Ali' } },
-    version: '8.0', platform: 'tdesktop', colorScheme: 'light', themeParams: {},
-    ready: noop, expand: noop, disableVerticalSwipes: noop, setHeaderColor: noop, setBackgroundColor: noop,
-    onEvent: noop, offEvent: noop, enableClosingConfirmation: noop, sendData: noop,
-    isVersionAtLeast: () => true,
-    close: () => { state.closed++; },
-    openTelegramLink: (u) => { state.links.push(u); },
-    showAlert: (m) => { state.alerts.push(m); },
-    HapticFeedback: { impactOccurred: noop, notificationOccurred: noop, selectionChanged: noop },
-    CloudStorage: {
-      getItem: (k, cb) => cb && cb(null, ''), setItem: (k, v, cb) => cb && cb(null, true),
-      removeItem: (k, cb) => cb && cb(null, true), getKeys: (cb) => cb && cb(null, []),
-      getItems: (ks, cb) => cb && cb(null, {})
-    },
-    BackButton: { show: noop, hide: noop, onClick: noop, offClick: noop },
-    MainButton: { show: noop, hide: noop, setText: noop, onClick: noop, offClick: noop }
-  } };
-})();
-"""
-
-STATE_OK = {"ok": True, "score": 7, "streak": 1, "daily_claimed": False, "prize": 5, "cooldown_seconds": 0}
-CLAIM_OK = {"ok": True, "message": "Tabriklaymiz! +5 ball", "score": 12, "is_super": False}
+from tests.e2e_base import CLAIM_OK, INIT_DATA, STATE_OK, MiniAppE2EBase
 
 
-@unittest.skipIf(sync_playwright is None, "playwright o'rnatilmagan")
-class WheelApiE2ETest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        handler = functools.partial(app_server.MiniAppHandler, directory=APP_DIR)
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        cls.port = cls.server.server_address[1]
-        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.pw = sync_playwright().start()
-        try:
-            cls.browser = cls.pw.chromium.launch()
-        except Exception as exc:  # pragma: no cover
-            cls.pw.stop()
-            cls.server.shutdown()
-            raise unittest.SkipTest(f"Chromium ishga tushmadi: {exc}")
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.browser.close()
-        cls.pw.stop()
-        cls.server.shutdown()
-        cls.server.server_close()
-
-    # ---- yordamchilar -------------------------------------------------------
-    def open_app(self, routes, query="", init_data=INIT_DATA):
-        """routes: {'state': (status, json) | 'abort', ...}. Qaytaradi: (page, calls)."""
-        ctx = self.browser.new_context(viewport={"width": 390, "height": 844})
-        self.addCleanup(ctx.close)
-        page = ctx.new_page()
-        calls = []
-        errors = []
-        page.on("pageerror", lambda e: errors.append(str(e)))
-        self.addCleanup(lambda: self.assertEqual(errors, [], f"sahifada xato: {errors}"))
-
-        def handle(route):
-            url = route.request.url
-            if url.startswith(f"http://127.0.0.1:{self.port}/api/"):
-                name = url.split("/api/", 1)[1]
-                body = route.request.post_data_json if route.request.method == "POST" else None
-                calls.append((name, body))
-                spec = routes.get(name, (404, {"ok": False}))
-                if spec == "abort":
-                    return route.abort()
-                status, data = spec
-                return route.fulfill(status=status, content_type="application/json", body=json.dumps(data))
-            if url.startswith(f"http://127.0.0.1:{self.port}"):
-                return route.continue_()
-            return route.abort()          # tashqi manbalar (shrift, FontAwesome, telegram.org) bloklanadi
-
-        page.route("**/*", handle)
-        page.add_init_script(FAKE_TELEGRAM % {"init": json.dumps(init_data)})
-        page.clock.install()
-        page.goto(f"http://127.0.0.1:{self.port}/{query}", wait_until="load")
-        return page, calls
-
-    def open_wheel(self, page):
-        page.click("#btn-open-wheel")
-        page.wait_for_function("document.querySelector('#wheel-modal').style.display === 'flex'")
-
-    def spin_and_finish(self, page):
-        page.click("#btn-spin-wheel")
-        page.clock.fast_forward(6000)       # 5.3 soniyalik animatsiya taymerini ishga tushiradi
-        page.wait_for_selector("#btn-confirm-spin")
-
-    def spin_and_confirm(self, page):
-        self.spin_and_finish(page)
-        page.click("#btn-confirm-spin")
-
-    def tg(self, page):
-        return page.evaluate("window.__tg")
-
-    def card_text(self, page):
-        return page.inner_text("#wheel-result-msg")
-
+class WheelApiE2ETest(MiniAppE2EBase):
     # ---- API orqali oqim ------------------------------------------------------
     def test_spin_claim_via_api_no_bot_redirect(self):
         page, calls = self.open_app({"state": (200, STATE_OK), "spin/claim": (200, CLAIM_OK)})
@@ -178,7 +56,8 @@ class WheelApiE2ETest(unittest.TestCase):
         page, calls = self.open_app({"state": (200, {**STATE_OK, "prize": None, "cooldown_seconds": 3600})})
         self.open_wheel(page)
         page.wait_for_selector("#wheel-countdown-timer")
-        self.assertEqual(page.inner_text("#wheel-countdown-timer"), "01:00:00")
+        h, m, sec = (int(x) for x in page.inner_text("#wheel-countdown-timer").split(":"))
+        self.assertIn(h * 3600 + m * 60 + sec, range(3597, 3601))      # server: 3600 s (ilova ochilganidan beri ~1 s o'tgan bo'lishi mumkin)
         self.assertTrue(page.is_disabled("#btn-spin-wheel"))
         self.assertEqual(page.inner_text("#btn-spin-wheel .wheel-center-text"), "KUTISH")
         self.assertEqual([c[0] for c in calls], ["state"])
@@ -217,7 +96,7 @@ class WheelApiE2ETest(unittest.TestCase):
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.assertEqual(page.inner_text("#global-score-val"), "3")     # URL'dagi ball
         self.spin_and_finish(page)
-        self.assertEqual([c[0] for c in calls], ["state"])               # claim chaqirilmadi
+        self.assertEqual({c[0] for c in calls}, {"state"})               # claim chaqirilmadi (state xatoda qayta uriniladi)
         page.click("#btn-confirm-spin")
         tg = self.tg(page)
         self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=spin_5"])

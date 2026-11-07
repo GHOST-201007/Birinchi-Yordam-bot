@@ -109,6 +109,42 @@ async function api(path, extra) {
     }
 }
 
+// /api/state natijasi — butun ilova uchun BITTA nusxa (header, kunlik bonus, baraban).
+// Bir vaqtda bir nechta so'rov bo'lsa ham tarmoqqa bitta so'rov ketadi.
+const AppState = { data: null, ts: 0, inflight: null };
+
+// Holatni qaytaradi (hech qachon istisno tashlamaydi). API ishlamasa null — chaqiruvchi URL zaxira yo'liga o'tadi.
+// maxAgeMs dan yangi natija keshdan beriladi, aks holda qayta so'raladi.
+function getAppState(maxAgeMs) {
+    if (!canUseApi()) return Promise.resolve(null);
+    if (AppState.data && (Date.now() - AppState.ts) <= (maxAgeMs || 0)) return Promise.resolve(AppState.data);
+    if (AppState.inflight) return AppState.inflight;
+    AppState.inflight = api('state').then((s) => {
+        if (!s || s.ok !== true) throw new Error('bad-state');
+        AppState.data = s;
+        AppState.ts = Date.now();
+        return s;
+    }).catch((err) => {
+        console.warn("[state] /api/state ishlamadi, URL zaxira yo'li ishlatiladi:", err);
+        return null;
+    }).finally(() => {
+        AppState.inflight = null;
+    });
+    return AppState.inflight;
+}
+
+// Claim'dan keyin keshni serverdagi yangi holatga moslaydi (qayta so'ramasdan)
+function patchAppState(patch) {
+    if (AppState.data) {
+        Object.assign(AppState.data, patch);
+        AppState.ts = Date.now();
+    }
+}
+
+function invalidateAppState() {
+    AppState.ts = 0;
+}
+
 // Headerdagi umumiy ball
 function setGlobalScore(value) {
     const scoreEl = document.getElementById('global-score');
@@ -118,6 +154,11 @@ function setGlobalScore(value) {
         scoreEl.style.display = 'inline-block';
     }
 }
+
+// Mini app ochilganda (menyu tugmasidan ham — URL'da hech narsa bo'lmaydi) ball serverdan olinadi
+document.addEventListener('DOMContentLoaded', () => {
+    getAppState(60000).then((s) => { if (s) setGlobalScore(s.score); });
+});
 
 if (tg) {
     try {
@@ -2229,18 +2270,19 @@ function initWheelOfFortune() {
             spinBtn.disabled = true;
             if (centerText) centerText.textContent = "...";
         }
-        api('state').then((s) => {
+        // Umumiy kesh: natija 60 soniyadan eski bo'lsagina qayta so'raladi
+        getAppState(60000).then((s) => {
             if (seq !== wheelSyncSeq || isSpinning) return;
-            if (!s || s.ok !== true) throw new Error('bad-state');
+            if (!s) {
+                wheelApiActive = false;
+                applyLocalWheelState();
+                return;
+            }
             wheelApiActive = true;
             setGlobalScore(s.score);
             serverPrize = (typeof s.prize === 'number') ? s.prize : null;
-            remainingTimeMs = Math.max(0, Number(s.cooldown_seconds) || 0) * 1000;
-            applyLocalWheelState();
-        }).catch((err) => {
-            if (seq !== wheelSyncSeq || isSpinning) return;
-            wheelApiActive = false;
-            console.warn("[wheel] /api/state ishlamadi, URL zaxira yo'li ishlatiladi:", err);
+            const elapsedMs = Date.now() - AppState.ts;     // keshdagi cooldown vaqt o'tgan sari kamayadi
+            remainingTimeMs = Math.max(0, (Number(s.cooldown_seconds) || 0) * 1000 - elapsedMs);
             applyLocalWheelState();
         });
     }
@@ -2518,6 +2560,8 @@ function initWheelOfFortune() {
             return;
         }
         if (typeof r.score === 'number') setGlobalScore(r.score);
+        // Serverda cooldown boshlandi: keshni shunga moslaymiz (qayta ochilganda KUTISH ko'rinadi)
+        patchAppState({ score: r.score, prize: null, cooldown_seconds: 24 * 60 * 60 });
 
         if (!r.ok) {
             renderWheelCard("ℹ️", "Ball qo'shilmadi", r.message || "Mukofot allaqachon olingan.");
@@ -2708,9 +2752,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Parse URL params
     const urlParams = new URLSearchParams(window.location.search);
-    const streak = parseInt(urlParams.get('streak') || '1');
-    const dailyClaimed = urlParams.get('daily_claimed') === '1';
-    const userScore = urlParams.get('score') || '0';
+    // URL-parametrlar — ZAXIRA qiymatlar; /api/state ishlasa ular serverdan yangilanadi
+    let streak = parseInt(urlParams.get('streak') || '1');
+    let dailyClaimed = urlParams.get('daily_claimed') === '1';
+    let userScore = urlParams.get('score') || '0';
     
     if(currentScoreEl) {
         currentScoreEl.textContent = userScore;
@@ -2755,14 +2800,79 @@ document.addEventListener('DOMContentLoaded', () => {
             btnClaim.onclick = null;
         } else {
             btnClaim.onclick = () => {
-                if (window.Telegram && window.Telegram.WebApp) {
-                    const botUsername = "Birinchiyordam1Bot";
-                    window.Telegram.WebApp.openTelegramLink(`https://t.me/${botUsername}?start=claim_daily`);
-                    window.Telegram.WebApp.close();
+                if (AppState.data) {
+                    claimBonusViaApi();         // API ishlayapti: mini app ichida
                 } else {
-                    notify('Faqat Telegram ichida ishlaydi!');
+                    openClaimDailyDeepLink();   // ZAXIRA: eski mantiq
                 }
             };
+        }
+    }
+
+    // ZAXIRA yo'l (API yo'q yoki xato): botga deep link orqali olish
+    function openClaimDailyDeepLink() {
+        if (window.Telegram && window.Telegram.WebApp) {
+            const botUsername = "Birinchiyordam1Bot";
+            window.Telegram.WebApp.openTelegramLink(`https://t.me/${botUsername}?start=claim_daily`);
+            window.Telegram.WebApp.close();
+        } else {
+            notify('Faqat Telegram ichida ishlaydi!');
+        }
+    }
+
+    // Serverdagi holatni (seriya, bugun olinganmi, ball) interfeysga qo'llaydi
+    function applyState(s) {
+        streak = Number(s.streak) || 1;
+        dailyClaimed = !!s.daily_claimed;
+        userScore = s.score;
+        if (currentScoreEl) currentScoreEl.textContent = String(s.score);
+        renderGrid();
+    }
+
+    function showBonusResult(text) {
+        let el = document.getElementById('daily-bonus-result');
+        if (!el) {
+            el = document.createElement('p');
+            el.id = 'daily-bonus-result';
+            el.className = 'daily-bonus-result';
+            btnClaim.insertAdjacentElement('beforebegin', el);
+        }
+        el.textContent = text;
+    }
+
+    let bonusClaiming = false;
+    async function claimBonusViaApi() {
+        if (bonusClaiming) return;
+        bonusClaiming = true;
+        let r;
+        try {
+            r = await api('bonus/claim');
+            if (!r || typeof r.ok !== 'boolean') throw new Error('bad-claim');
+        } catch (err) {
+            bonusClaiming = false;
+            console.warn("[bonus] /api/bonus/claim ishlamadi, botga yo'naltiriladi:", err);
+            openClaimDailyDeepLink();
+            return;
+        }
+        bonusClaiming = false;
+        if (typeof r.score === 'number') {
+            userScore = r.score;
+            setGlobalScore(r.score);
+            if (currentScoreEl) currentScoreEl.textContent = String(r.score);
+        }
+        if (r.ok) {
+            streak = Number(r.streak) || streak;
+            dailyClaimed = true;
+            patchAppState({ score: r.score, streak: r.streak, daily_claimed: true });
+            renderGrid();                                   // tugma "Olindi" holatiga o'tadi
+            showBonusResult(`+${r.points} ball, ${r.streak}-kun`);
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+        } else {
+            notify(r.message || "Bonusni olib bo'lmadi.");
+            invalidateAppState();                           // haqiqiy holatni serverdan qayta olamiz
+            getAppState(0).then((s) => { if (s) applyState(s); });
         }
     }
     
@@ -2770,7 +2880,12 @@ document.addEventListener('DOMContentLoaded', () => {
         renderGrid();
         modal.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
+        // Umumiy kesh: 60 soniyadan eski bo'lsagina qayta so'raladi
+        getAppState(60000).then((s) => { if (s) applyState(s); });
     };
+
+    // Mini app ochilganda seriya va "bugun olingan" holati serverdan (menyu tugmasidan ochilganda ham to'g'ri)
+    getAppState(60000).then((s) => { if (s) applyState(s); });
     
     btnClose.onclick = () => {
         modal.classList.add('hidden');
