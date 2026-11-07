@@ -509,6 +509,17 @@ def plus_discount_price(plus_price: int | None = None) -> int:
     return max(1, (plus_price + 1) // 2)
 
 
+def discount_plus_offer() -> tuple:
+    """SUPER PRIZ chegirmali Premium Plus (30 kun) taklifi: (title, desc, payload, stars).
+    Inline tugma (buy_plus_30_discount) ham, ?start=buy_plus_30 deep link ham SHU funksiyadan foydalanadi."""
+    return (
+        "🎁 Premium Plus — 30 kun (50% chegirma)",
+        "Omad barabani SUPER PRIZ: 30 kunlik Premium Plus obuna yarim narxda.",
+        DISCOUNT_PAYLOAD,
+        plus_discount_price(),
+    )
+
+
 # Eski payload: hech qayerda yaratilmaydi, lekin ilgari yuborilgan invoice'lar uchun saqlanadi.
 # Git tarixidan (all_git_history_utf8.txt):
 # 1) stars_premium_1month: currency="XTR", narxi dinamik (chegirma bilan 20 XTR yoki PREMIUM_STARS_PRICE env, default 50 XTR)
@@ -1187,6 +1198,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
                 payload = "PRO_7_DAYS"
                 stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
+            elif action == "buy_plus_30" and await asyncio.to_thread(database.has_discount, user.id):
+                # SUPER PRIZ yutgan foydalanuvchi mini appdan shu havola orqali kelsa ham chegirma hisobga olinadi
+                title, desc, payload, stars = discount_plus_offer()
             elif action == "buy_plus_30":
                 title = "💎 Premium Plus — 30 kun"
                 desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
@@ -2785,10 +2799,7 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             if not await asyncio.to_thread(database.has_discount, user_id):
                 await callback.answer("ℹ️ Sizda faol chegirma yo'q.", show_alert=True)
                 return
-            title = "🎁 Premium Plus — 30 kun (50% chegirma)"
-            desc = "Omad barabani SUPER PRIZ: 30 kunlik Premium Plus obuna yarim narxda."
-            payload = DISCOUNT_PAYLOAD
-            stars = plus_discount_price()
+            title, desc, payload, stars = discount_plus_offer()
         elif action == "buy_ultra_30":
             title = "👑 Premium Ultra — 30 kun"
             desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
