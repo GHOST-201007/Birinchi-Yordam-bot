@@ -48,3 +48,7 @@ Interpreter: `.\venv\Scripts\python.exe` (Python 3.11).
 - `test_admin_auth.py` — created earlier in this session (unchanged in this step).
 
 No commit, push, deploy, restart, production DB connection or `.env` output was performed.
+
+---
+
+2026-11-07: Production DB paroli Neon'da almashtirildi, server .env yangilandi.
