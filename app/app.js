@@ -2614,7 +2614,12 @@ function initWheelOfFortune() {
         if (r.is_super) {
             renderSuperPrizeCard();
         } else {
-            renderWheelCard("🎉", `+${winningPoints} ball yutdingiz!`, `✅ +${winningPoints} ball hisobingizga qo'shildi`);
+            // Ball soni SERVERDAN: sarlavhada oldingi/yangi score farqi, matnda server xabari (r.message — server
+            // uni allaqachon oddiy matnga aylantirgan). Klientdagi winningPoints ko'rsatilmaydi. renderWheelCard textContent ishlatadi.
+            const gained = (typeof prevScore === 'number' && typeof r.score === 'number') ? r.score - prevScore : 0;
+            renderWheelCard("🎉",
+                gained > 0 ? `+${gained} ball yutdingiz!` : "Ball hisobingizga qo'shildi",
+                r.message || "✅ Ball hisobingizga qo'shildi");
         }
     }
 

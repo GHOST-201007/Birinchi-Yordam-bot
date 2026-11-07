@@ -83,7 +83,7 @@ class LateSpinClaimE2ETest(MiniAppE2EBase):
         page.wait_for_selector("#wheel-result-msg .result-title:has-text('Ulanishda xatolik')")
         self.assertEqual(self.tg(page)["links"], [])                  # botga otilmadi
         page.click("#wheel-result-msg .result-confirm-btn")           # "Qayta urinish"
-        page.wait_for_selector("#wheel-result-msg .result-desc:has-text('hisobingizga qo')")
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+5 ball yutdingiz!')")
         self.assertEqual(page.inner_text("#global-score-val"), "12")
         self.assertEqual(self.tg(page)["links"], [])
 

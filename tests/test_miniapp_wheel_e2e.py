@@ -19,7 +19,8 @@ class WheelApiE2ETest(MiniAppE2EBase):
         page.click("#btn-confirm-spin")
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '12'")
 
-        self.assertIn("+5 ball hisobingizga qo'shildi", self.card_text(page))
+        self.assertIn("+5 ball yutdingiz!", self.card_text(page))             # score farqi: 12 - 7
+        self.assertIn("Tabriklaymiz! +5 ball", self.card_text(page))          # server xabari
         self.assertEqual([c[0] for c in calls], ["state", "spin/claim"])
         for _, body in calls:
             self.assertEqual(body, {"init_data": INIT_DATA})        # tanada boshqa hech narsa yo'q
@@ -33,7 +34,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.spin_and_confirm(page)
-        page.wait_for_selector("#wheel-result-msg .result-desc:has-text('hisobingizga qo')")
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+5 ball yutdingiz!')")
         self.assertNotIn("Bot orqali kiring", self.card_text(page))
 
     def test_super_prize_offers_discount_button(self):
@@ -87,6 +88,48 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.assertIn("<b>qalin</b>", self.card_text(page))             # matn sifatida ko'rinadi
         self.assertEqual(page.locator("#wheel-result-msg img").count(), 0)
         self.assertIsNone(page.evaluate("window.__xss"))
+
+    # ---- 3b: ball soni serverdan ---------------------------------------------------
+    def test_success_text_uses_server_values_not_client_prize(self):
+        # Klient animatsiyada 5 ball ko'rdi (state.prize=5), lekin server 7 ball berdi (score 7 -> 14)
+        page, _ = self.open_app({
+            "state": (200, STATE_OK),
+            "spin/claim": (200, {"ok": True, "message": "Server: +7 ball qo'shildi", "score": 14, "is_super": False}),
+        })
+        self.open_wheel(page)
+        page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
+        self.spin_and_confirm(page)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+7 ball yutdingiz!')")
+        text = self.card_text(page)
+        self.assertIn("Server: +7 ball qo'shildi", text)
+        self.assertNotIn("+5 ball", text)                       # klientdagi winningPoints ko'rsatilmaydi
+        self.assertEqual(page.inner_text("#global-score-val"), "14")
+
+    def test_success_message_html_is_shown_as_text(self):
+        evil = "<img src=x onerror=\"window.__xss2=1\"><b>qalin</b>"
+        page, _ = self.open_app({
+            "state": (200, STATE_OK),
+            "spin/claim": (200, {"ok": True, "message": evil, "score": 12, "is_super": False}),
+        })
+        self.open_wheel(page)
+        page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
+        self.spin_and_confirm(page)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+5 ball yutdingiz!')")
+        self.assertIn("<b>qalin</b>", self.card_text(page))      # teglar matn sifatida ko'rinadi
+        self.assertEqual(page.locator("#wheel-result-msg img").count(), 0)
+        self.assertEqual(page.locator("#wheel-result-msg b").count(), 0)
+        self.assertIsNone(page.evaluate("window.__xss2"))
+
+    def test_success_without_server_message_falls_back_to_score_difference(self):
+        page, _ = self.open_app({
+            "state": (200, STATE_OK),
+            "spin/claim": (200, {"ok": True, "message": "", "score": 10, "is_super": False}),
+        })
+        self.open_wheel(page)
+        page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
+        self.spin_and_confirm(page)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+3 ball yutdingiz!')")   # 10 - 7
+        self.assertIn("Ball hisobingizga qo'shildi", self.card_text(page))
 
     # ---- ZAXIRA yo'l (eski URL-parametr + deep link mantig'i) --------------------
     def test_fallback_when_state_api_fails_uses_url_prize_and_deep_link(self):
