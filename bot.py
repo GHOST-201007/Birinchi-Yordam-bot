@@ -520,6 +520,63 @@ def discount_plus_offer() -> tuple:
     )
 
 
+class OfferUnavailable(Exception):
+    """Taklif tuzib bo'lmadi. code: 'bad_plan' (noma'lum tarif) yoki 'no_discount' (chegirma yo'q)."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+# Mini App /api/invoice shu tariflarni qabul qiladi ("buy_plus_30_discount" API'da YO'Q: chegirma serverda avtomatik)
+API_INVOICE_PLANS = ("buy_pro_7", "buy_plus_30", "buy_ultra_30")
+
+
+def _base_premium_offer(action: str) -> tuple:
+    if action in ("buy_pro_7", "pay_stars"):
+        return (
+            "⭐ Premium Pro — 7 kun",
+            "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil.",
+            "PRO_7_DAYS",
+            int(os.getenv("PRO_TRIAL_STARS", "50")),
+        )
+    if action == "buy_plus_30":
+        return (
+            "💎 Premium Plus — 30 kun",
+            "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar.",
+            "PLUS_30_DAYS",
+            int(os.getenv("PRO_MONTHLY_STARS", "150")),
+        )
+    if action == "buy_ultra_30":
+        return (
+            "👑 Premium Ultra — 30 kun",
+            "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat.",
+            "ULTRA_30_DAYS",
+            int(os.getenv("ULTRA_MONTHLY_STARS", "300")),
+        )
+    raise OfferUnavailable("bad_plan")
+
+
+async def build_premium_offer(user_id: int, action: str) -> tuple:
+    """Premium taklifi (title, desc, payload, stars) — YAGONA joy. ?start=buy_* deep link, inline callback
+    (process_pay_stars_tariff) va Mini App /api/invoice uchalasi shuni ishlatadi. Narx va payload FAQAT serverdan.
+
+    buy_plus_30 + faol SUPER PRIZ chegirmasi -> discount_plus_offer(). "buy_plus_30_discount" (faqat inline tugma)
+    chegirma bo'lmasa OfferUnavailable('no_discount'). Noma'lum tarif -> OfferUnavailable('bad_plan').
+    Huquq tekshiruvi (check_premium_purchase_eligibility) chaqiruvchining zimmasida."""
+    if action == "buy_plus_30_discount":
+        if not await asyncio.to_thread(database.has_discount, user_id):
+            raise OfferUnavailable("no_discount")
+        offer = discount_plus_offer()
+    elif action == "buy_plus_30" and await asyncio.to_thread(database.has_discount, user_id):
+        offer = discount_plus_offer()
+    else:
+        offer = _base_premium_offer(action)
+    if offer[3] <= 0:
+        raise ValueError("Stars price must be greater than zero")
+    return offer
+
+
 # Eski payload: hech qayerda yaratilmaydi, lekin ilgari yuborilgan invoice'lar uchun saqlanadi.
 # Git tarixidan (all_git_history_utf8.txt):
 # 1) stars_premium_1month: currency="XTR", narxi dinamik (chegirma bilan 20 XTR yoki PREMIUM_STARS_PRICE env, default 50 XTR)
@@ -1195,29 +1252,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     reply_markup=get_start_keyboard()
                 )
                 return
-            if action == "buy_pro_7":
-                title = "⭐ Premium Pro — 7 kun"
-                desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
-                payload = "PRO_7_DAYS"
-                stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
-            elif action == "buy_plus_30" and await asyncio.to_thread(database.has_discount, user.id):
-                # SUPER PRIZ yutgan foydalanuvchi mini appdan shu havola orqali kelsa ham chegirma hisobga olinadi
-                title, desc, payload, stars = discount_plus_offer()
-            elif action == "buy_plus_30":
-                title = "💎 Premium Plus — 30 kun"
-                desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
-                payload = "PLUS_30_DAYS"
-                stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
-            elif action == "buy_ultra_30":
-                title = "👑 Premium Ultra — 30 kun"
-                desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
-                payload = "ULTRA_30_DAYS"
-                stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
-            else:
-                return
-
-            if stars <= 0:
-                raise ValueError("Stars price must be greater than zero")
+            # SUPER PRIZ chegirmasi (buy_plus_30) ham shu yagona funksiyada hisobga olinadi
+            title, desc, payload, stars = await build_premium_offer(user.id, action)
 
             await message.answer(
                 f"💎 <b>{title}</b>\n\n{desc}\n\n"
@@ -2821,33 +2857,14 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             )
             return
 
-        if action in ("buy_pro_7", "pay_stars"):
-            title = "⭐ Premium Pro — 7 kun"
-            desc = "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil."
-            payload = "PRO_7_DAYS"
-            stars = int(os.getenv("PRO_TRIAL_STARS", "50"))
-        elif action == "buy_plus_30":
-            title = "💎 Premium Plus — 30 kun"
-            desc = "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar."
-            payload = "PLUS_30_DAYS"
-            stars = int(os.getenv("PRO_MONTHLY_STARS", "150"))
-        elif action == "buy_plus_30_discount":
-            if not await asyncio.to_thread(database.has_discount, user_id):
+        try:
+            title, desc, payload, stars = await build_premium_offer(user_id, action)
+        except OfferUnavailable as exc:
+            if exc.code == "no_discount":
                 await callback.answer("ℹ️ Sizda faol chegirma yo'q.", show_alert=True)
-                return
-            title, desc, payload, stars = discount_plus_offer()
-        elif action == "buy_ultra_30":
-            title = "👑 Premium Ultra — 30 kun"
-            desc = "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat."
-            payload = "ULTRA_30_DAYS"
-            stars = int(os.getenv("ULTRA_MONTHLY_STARS", "300"))
-        else:
-            await callback.answer("⚠️ Noto'g'ri tarif tanlandi.", show_alert=True)
+            else:
+                await callback.answer("⚠️ Noto'g'ri tarif tanlandi.", show_alert=True)
             return
-
-        # Validate stars amount
-        if stars <= 0:
-            raise ValueError("Stars price must be greater than zero")
 
         prices = [LabeledPrice(label=title, amount=stars)]
         await callback.message.answer_invoice(
@@ -4822,13 +4839,16 @@ async def _api_authenticate(request: web.Request):
     user = parse_init_data(payload["init_data"])
     if user is None:
         return None, _api_error(403, "forbidden")
+    request["api_payload"] = payload        # tana (faqat tekshiruvdan o'tgach): ixtiyoriy maydonlar uchun, masalan plan
     user_id = user["id"]
     if not api_rate_limiter.allow(user_id):
         return None, _api_error(429, "rate_limited", {"Retry-After": str(int(API_RATE_WINDOW))})
     return user_id, None
 
 
-async def _api_handle(request: web.Request, name: str, action) -> web.Response:
+async def _api_handle(request: web.Request, name: str, action, *, with_body: bool = False) -> web.Response:
+    """with_body=True bo'lsa action(user_id, tana) chaqiriladi (tana — tekshiruvdan o'tgan JSON dict).
+    action dict qaytarsa 200 JSON, web.Response qaytarsa (masalan 400) o'sha javob beriladi."""
     user_id, error = await _api_authenticate(request)
     if error is not None:
         return error
@@ -4836,7 +4856,8 @@ async def _api_handle(request: web.Request, name: str, action) -> web.Response:
         banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
         if banned:
             return _api_error(403, "banned")
-        return _api_json(await action(user_id))
+        result = await (action(user_id, request["api_payload"]) if with_body else action(user_id))
+        return result if isinstance(result, web.Response) else _api_json(result)
     except Exception:
         # init_data va so'rov tanasi loglanmaydi
         logging.exception("API %s xatosi (user=%s)", name, user_id)
@@ -4881,6 +4902,33 @@ async def _api_bonus_claim_action(user_id: int) -> dict:
     return {"ok": bool(granted), "message": message, "points": points, "streak": streak, "score": score}
 
 
+def not_eligible_text(current_tier_name) -> str:
+    return (f"Siz allaqachon {current_tier_name} foydalanuvchisiz! "
+            f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng.")
+
+
+async def _api_invoice_action(user_id: int, body: dict):
+    # plan FAQAT whitelist'dan. Tanadagi boshqa maydonlar (price, stars, payload...) e'tiborga olinmaydi:
+    # narx va payload faqat build_premium_offer dan keladi.
+    plan = body.get("plan")
+    if not isinstance(plan, str) or plan not in API_INVOICE_PLANS:
+        return _api_error(400, "bad_plan")
+    user_info = await asyncio.to_thread(database.get_user_info, user_id)
+    eligible, current_tier_name = check_premium_purchase_eligibility(user_info, plan)
+    if not eligible:
+        return {"ok": False, "error": "not_eligible", "message": not_eligible_text(current_tier_name)}
+    title, desc, payload, stars = await build_premium_offer(user_id, plan)
+    url = await bot.create_invoice_link(
+        title=title,
+        description=desc,
+        payload=payload,
+        currency=STARS_CURRENCY,
+        prices=[LabeledPrice(label=title, amount=stars)],
+        provider_token=STARS_PROVIDER_TOKEN,
+    )
+    return {"ok": True, "url": url}
+
+
 async def api_state(request: web.Request) -> web.Response:
     return await _api_handle(request, "state", _api_state_action)
 
@@ -4893,6 +4941,10 @@ async def api_bonus_claim(request: web.Request) -> web.Response:
     return await _api_handle(request, "bonus/claim", _api_bonus_claim_action)
 
 
+async def api_invoice(request: web.Request) -> web.Response:
+    return await _api_handle(request, "invoice", _api_invoice_action, with_body=True)
+
+
 def create_web_app() -> web.Application:
     app = web.Application(client_max_size=API_MAX_BODY)
     app.router.add_get("/", health_check)
@@ -4901,6 +4953,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/spin/claim", api_spin_claim)
     app.router.add_post("/api/bonus/claim", api_bonus_claim)
+    app.router.add_post("/api/invoice", api_invoice)
     return app
 
 
