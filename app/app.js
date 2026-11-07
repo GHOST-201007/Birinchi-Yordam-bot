@@ -82,6 +82,43 @@ function reportError(where, err) {
     notify("Kutilmagan xatolik yuz berdi. Iltimos, mini appni qayta oching.");
 }
 
+const BOT_USERNAME = "Birinchiyordam1Bot";
+
+// Mini App -> bot API (/api/...). Foydalanuvchi faqat tekshirilgan initData orqali aniqlanadi.
+// initData yo'q bo'lsa yoki so'rov xato bersa istisno ko'tariladi: chaqiruvchi URL-parametr zaxira yo'liga o'tadi.
+function canUseApi() {
+    return !!(tg && tg.initData);
+}
+
+async function api(path, extra) {
+    const initData = (tg && tg.initData) || '';
+    if (!initData) throw new Error('no-initdata');
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+    try {
+        const r = await fetch('/api/' + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ init_data: initData }, extra || {})),
+            signal: ctrl ? ctrl.signal : undefined
+        });
+        if (!r.ok) throw new Error('http-' + r.status);
+        return await r.json();
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+// Headerdagi umumiy ball
+function setGlobalScore(value) {
+    const scoreEl = document.getElementById('global-score');
+    const scoreValEl = document.getElementById('global-score-val');
+    if (scoreEl && scoreValEl && value !== null && value !== undefined) {
+        scoreValEl.textContent = String(value);
+        scoreEl.style.display = 'inline-block';
+    }
+}
+
 if (tg) {
     try {
         tg.ready();
@@ -2057,10 +2094,11 @@ function initWheelOfFortune() {
     const lastSpin = urlParams.get('last_spin');
     // prize parametri server tomonidan yuborilishi shart (default '1' noto'g'ri)
     const prizeParam = urlParams.get('prize');
-    const serverPrize = prizeParam !== null ? parseInt(prizeParam) : null;
+    let serverPrize = prizeParam !== null ? parseInt(prizeParam) : null;
     const centerText = spinBtn.querySelector('.wheel-center-text');
 
     let remainingTimeMs = 0;
+    let wheelApiActive = false;   // /api/state muvaffaqiyatli bo'lsa true (server — haqiqat manbai)
 
     // Get the most recent spin time from either URL parameter or localStorage
     let effectiveLastSpin = lastSpin;
@@ -2138,7 +2176,7 @@ function initWheelOfFortune() {
     // Query Telegram CloudStorage for cross-device & cookie-independent state
     if (tg && tg.CloudStorage) {
         tg.CloudStorage.getItem('last_spin_time', (err, value) => {
-            if (!err && value) {
+            if (!err && value && !wheelApiActive) {
                 const lastSpinTime = new Date(value).getTime();
                 if (!isNaN(lastSpinTime)) {
                     const cooldownMs = 24 * 60 * 60 * 1000;
@@ -2157,6 +2195,56 @@ function initWheelOfFortune() {
         });
     }
 
+    const WHEEL_WAITING_HTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+
+    function showWheelWaiting(ms) {
+        spinBtn.disabled = true;
+        if (centerText) centerText.textContent = "KUTISH";
+        resultMsg.innerHTML = WHEEL_WAITING_HTML;
+        resultMsg.classList.remove('hidden');
+        startCountdown(ms);
+    }
+
+    function showWheelReady() {
+        if (countdownInterval) clearInterval(countdownInterval);
+        spinBtn.disabled = false;
+        if (centerText) centerText.textContent = "AYLANTIR";
+        resultMsg.classList.add('hidden');
+    }
+
+    // Server javob bermasa: URL-parametr / localStorage asosidagi avvalgi holat
+    function applyLocalWheelState() {
+        if (remainingTimeMs > 0 || hasSpunThisSession) {
+            showWheelWaiting(remainingTimeMs > 0 ? remainingTimeMs : 24 * 60 * 60 * 1000);
+        } else {
+            showWheelReady();
+        }
+    }
+
+    let wheelSyncSeq = 0;
+    function syncWheelWithServer() {
+        if (!canUseApi() || isSpinning) return;
+        const seq = ++wheelSyncSeq;
+        if (!spinBtn.disabled) {                 // javob kelguncha tasodifan aylantirib yuborilmasin
+            spinBtn.disabled = true;
+            if (centerText) centerText.textContent = "...";
+        }
+        api('state').then((s) => {
+            if (seq !== wheelSyncSeq || isSpinning) return;
+            if (!s || s.ok !== true) throw new Error('bad-state');
+            wheelApiActive = true;
+            setGlobalScore(s.score);
+            serverPrize = (typeof s.prize === 'number') ? s.prize : null;
+            remainingTimeMs = Math.max(0, Number(s.cooldown_seconds) || 0) * 1000;
+            applyLocalWheelState();
+        }).catch((err) => {
+            if (seq !== wheelSyncSeq || isSpinning) return;
+            wheelApiActive = false;
+            console.warn("[wheel] /api/state ishlamadi, URL zaxira yo'li ishlatiladi:", err);
+            applyLocalWheelState();
+        });
+    }
+
     function checkWheelStateAndOpen() {
         modal.classList.remove('hidden');
         modal.style.display = 'flex';
@@ -2171,6 +2259,7 @@ function initWheelOfFortune() {
             const timeToUse = remainingTimeMs > 0 ? remainingTimeMs : 24 * 60 * 60 * 1000;
             startCountdown(timeToUse);
         }
+        syncWheelWithServer();
     }
 
     // Modal open
@@ -2347,6 +2436,106 @@ function initWheelOfFortune() {
         }
     }
 
+    // Animatsiya tugagach ko'rsatiladigan karta. Tugma bosilganda: API ishlayotgan bo'lsa serverda hisobga qo'shiladi,
+    // aks holda ZAXIRA yo'l — eski botga deep link.
+    function renderSpinConfirmCard(winningPoints) {
+        let icon, title, desc, btnText;
+        if (winningPoints === 0) {
+            icon = "🏆";
+            title = "SUPER PRIZ!";
+            desc = "Siz <b>Super Priz</b> — 30 kunlik Premium Plus uchun <b>50% chegirma</b> yutib oldingiz!";
+            btnText = "Prizni Tasdiqlash 🎁";
+        } else {
+            icon = "🎉";
+            title = `+${winningPoints} ball yutdingiz!`;
+            desc = "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang.";
+            btnText = "Hisobga qo'shish ✅";
+        }
+
+        resultMsg.innerHTML = `
+            <div class="result-icon">${icon}</div>
+            <p class="result-title">${title}</p>
+            <p class="result-desc">${desc}</p>
+            <button class="result-confirm-btn" id="btn-confirm-spin">${btnText}</button>
+        `;
+        resultMsg.classList.remove('hidden');
+
+        document.getElementById('btn-confirm-spin').onclick = () => {
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+            if (wheelApiActive) {
+                claimSpinViaApi(winningPoints);
+            } else {
+                openSpinDeepLink(winningPoints);
+            }
+        };
+    }
+
+    // ZAXIRA yo'l (API yo'q yoki xato): eski mantiq — botga deep link orqali tasdiqlash
+    function openSpinDeepLink(winningPoints) {
+        if (tg) {
+            const botUsername = "Birinchiyordam1Bot";
+            const pv = (winningPoints === 0) ? "super" : winningPoints;
+            tg.openTelegramLink(`https://t.me/${botUsername}?start=spin_${pv}`);
+            tg.close();
+        } else {
+            notify("Telegram orqali tasdiqlang!");
+        }
+    }
+
+    // Natija kartasi: matnlar textContent orqali qo'yiladi (server xabari HTML sifatida talqin qilinmaydi)
+    function renderWheelCard(icon, title, desc, btnText, onBtn) {
+        resultMsg.replaceChildren();
+        const iconEl = document.createElement('div');
+        iconEl.className = 'result-icon';
+        iconEl.textContent = icon;
+        const titleEl = document.createElement('p');
+        titleEl.className = 'result-title';
+        titleEl.textContent = title;
+        const descEl = document.createElement('p');
+        descEl.className = 'result-desc';
+        descEl.textContent = desc;
+        resultMsg.append(iconEl, titleEl, descEl);
+        if (btnText && onBtn) {
+            const btn = document.createElement('button');
+            btn.className = 'result-confirm-btn';
+            btn.textContent = btnText;
+            btn.onclick = onBtn;
+            resultMsg.appendChild(btn);
+        }
+        resultMsg.classList.remove('hidden');
+    }
+
+    // "Hisobga qo'shish" bosilganda ballni serverda hisobga qo'shadi (botga chiqmasdan, tg.close() yo'q)
+    async function claimSpinViaApi(winningPoints) {
+        renderWheelCard("⏳", "Hisobga qo'shilmoqda...", "");
+        let r;
+        try {
+            r = await api('spin/claim');
+            if (!r || typeof r.ok !== 'boolean') throw new Error('bad-claim');
+        } catch (err) {
+            console.warn("[wheel] /api/spin/claim ishlamadi, botga yo'naltiriladi:", err);
+            openSpinDeepLink(winningPoints);
+            return;
+        }
+        if (typeof r.score === 'number') setGlobalScore(r.score);
+
+        if (!r.ok) {
+            renderWheelCard("ℹ️", "Ball qo'shilmadi", r.message || "Mukofot allaqachon olingan.");
+            return;
+        }
+        if (r.is_super) {
+            renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
+                "Premium olish", () => {
+                    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+                    if (tg && tg.openTelegramLink) {
+                        tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=buy_plus_30`);
+                    }
+                });
+        } else {
+            renderWheelCard("🎉", `+${winningPoints} ball yutdingiz!`, `✅ +${winningPoints} ball hisobingizga qo'shildi`);
+        }
+    }
+
     // Spin handler
     spinBtn.onclick = () => {
         if (isSpinning || hasSpunThisSession || remainingTimeMs > 0) return;
@@ -2426,38 +2615,7 @@ function initWheelOfFortune() {
             // Fire Confetti!
             fireConfetti();
 
-            let icon, title, desc, btnText;
-            if (winningPoints === 0) {
-                icon = "🏆";
-                title = "SUPER PRIZ!";
-                desc = "Siz <b>Super Priz</b> — 30 kunlik Premium Plus uchun <b>50% chegirma</b> yutib oldingiz!";
-                btnText = "Prizni Tasdiqlash 🎁";
-            } else {
-                icon = "🎉";
-                title = `+${winningPoints} ball yutdingiz!`;
-                desc = "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang.";
-                btnText = "Hisobga qo'shish ✅";
-            }
-
-            resultMsg.innerHTML = `
-                <div class="result-icon">${icon}</div>
-                <p class="result-title">${title}</p>
-                <p class="result-desc">${desc}</p>
-                <button class="result-confirm-btn" id="btn-confirm-spin">${btnText}</button>
-            `;
-            resultMsg.classList.remove('hidden');
-
-            document.getElementById('btn-confirm-spin').onclick = () => {
-                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
-                if (tg) {
-                    const botUsername = "Birinchiyordam1Bot";
-                    const pv = (winningPoints === 0) ? "super" : winningPoints;
-                    tg.openTelegramLink(`https://t.me/${botUsername}?start=spin_${pv}`);
-                    tg.close();
-                } else {
-                    notify("Telegram orqali tasdiqlang!");
-                }
-            };
+            renderSpinConfirmCard(winningPoints);
         }, 5300);
     };
 
