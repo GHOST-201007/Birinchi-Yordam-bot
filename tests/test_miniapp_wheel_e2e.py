@@ -4,7 +4,7 @@ Asos: tests/e2e_base.py
 """
 import unittest
 
-from tests.e2e_base import CLAIM_OK, INIT_DATA, STATE_OK, MiniAppE2EBase
+from tests.e2e_base import CLAIM_OK, INIT_DATA, STATE_OK, MiniAppE2EBase, sequence
 
 
 class WheelApiE2ETest(MiniAppE2EBase):
@@ -119,13 +119,14 @@ class WheelApiE2ETest(MiniAppE2EBase):
         page.wait_for_selector("#btn-open-bot-wheel")
         self.assertIn("Bot orqali kiring", self.card_text(page))
 
-    def test_claim_network_failure_falls_back_to_deep_link(self):
-        page, calls = self.open_app({"state": (200, STATE_OK), "spin/claim": "abort"})
+    def test_claim_network_failure_and_state_unavailable_falls_back_to_deep_link(self):
+        # claim ham, qayta so'ralgan state ham olinmasa — ESKI deep link zaxira yo'li
+        page, calls = self.open_app({"state": sequence((200, STATE_OK), "abort"), "spin/claim": "abort"})
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.spin_and_confirm(page)
         page.wait_for_function("window.__tg.links.length === 1")
-        self.assertEqual([c[0] for c in calls], ["state", "spin/claim"])
+        self.assertEqual([c[0] for c in calls], ["state", "spin/claim", "state"])
         self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=spin_5"])
         self.assertEqual(self.tg(page)["closed"], 1)
 

@@ -4,7 +4,7 @@ Asos: tests/e2e_base.py
 """
 import unittest
 
-from tests.e2e_base import INIT_DATA, STATE_OK, MiniAppE2EBase
+from tests.e2e_base import INIT_DATA, STATE_OK, MiniAppE2EBase, sequence
 
 BONUS_STATE = {"ok": True, "score": 7, "streak": 3, "daily_claimed": False, "prize": 5, "cooldown_seconds": 0}
 BONUS_OK = {"ok": True, "message": "Bugungi bonus olindi!", "points": 3, "streak": 3, "score": 10}
@@ -142,8 +142,9 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         self.assertEqual(calls, [])
         self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=claim_daily"])
 
-    def test_claim_network_failure_falls_back_to_deep_link(self):
-        page, calls = self.open_app({"state": (200, BONUS_STATE), "bonus/claim": "abort"})
+    def test_claim_network_failure_and_state_unavailable_falls_back_to_deep_link(self):
+        # claim ham, qayta so'ralgan state ham olinmasa — ESKI deep link zaxira yo'li
+        page, calls = self.open_app({"state": sequence((200, BONUS_STATE), "abort"), "bonus/claim": "abort"})
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
         page.click("#btn-claim-daily-bonus")

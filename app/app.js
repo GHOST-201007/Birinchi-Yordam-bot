@@ -145,6 +145,14 @@ function invalidateAppState() {
     AppState.ts = 0;
 }
 
+// Claim javobi kelmasa (timeout / tarmoq / 5xx) server ballni ALLAQACHON bergan bo'lishi mumkin
+// (server uzoqda, javob 8 s dan kechikishi mumkin). Shuning uchun darhol botga otmasdan, holat qayta so'raladi.
+// Qaytaradi: yangi state yoki null (holat ham olinmadi — chaqiruvchi eski deep link zaxira yo'liga o'tadi).
+async function recoverStateAfterClaimFailure() {
+    invalidateAppState();
+    return await getAppState(0);
+}
+
 // Headerdagi umumiy ball
 function setGlobalScore(value) {
     const scoreEl = document.getElementById('global-score');
@@ -2547,16 +2555,52 @@ function initWheelOfFortune() {
         resultMsg.classList.remove('hidden');
     }
 
+    function renderSuperPrizeCard() {
+        renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
+            "Premium olish", () => {
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+                if (tg && tg.openTelegramLink) {
+                    tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=buy_plus_30`);
+                }
+            });
+    }
+
+    // Javob kelmadi: server ballni allaqachon bergan bo'lishi mumkin — holatni qayta so'raymiz
+    async function recoverSpinClaim(winningPoints, prevScore) {
+        renderWheelCard("⏳", "Natija tekshirilmoqda...", "");
+        const s = await recoverStateAfterClaimFailure();
+        if (!s) {                                   // holat ham olinmadi: ESKI zaxira yo'l
+            openSpinDeepLink(winningPoints);
+            return;
+        }
+        setGlobalScore(s.score);
+        if (s.prize === null && Number(s.cooldown_seconds) > 0) {
+            // Server ballni allaqachon bergan: deep link YO'Q
+            if (winningPoints === 0) {
+                renderSuperPrizeCard();
+                return;
+            }
+            const diff = (typeof prevScore === 'number') ? s.score - prevScore : 0;
+            renderWheelCard("✅", "Ball hisobingizga qo'shilgan",
+                diff > 0 ? `+${diff} ball hisobingizga qo'shildi` : "Ball hisobingizga qo'shilgan.");
+            return;
+        }
+        // Server hali bermagan (ulanish muammosi). Server ikki marta bermaydi, shuning uchun qayta urinish xavfsiz
+        renderWheelCard("⚠️", "Ulanishda xatolik", "Ball hali qo'shilmadi. Qayta urinib ko'ring.",
+            "Qayta urinish", () => claimSpinViaApi(winningPoints));
+    }
+
     // "Hisobga qo'shish" bosilganda ballni serverda hisobga qo'shadi (botga chiqmasdan, tg.close() yo'q)
     async function claimSpinViaApi(winningPoints) {
+        const prevScore = AppState.data ? AppState.data.score : null;
         renderWheelCard("⏳", "Hisobga qo'shilmoqda...", "");
         let r;
         try {
             r = await api('spin/claim');
             if (!r || typeof r.ok !== 'boolean') throw new Error('bad-claim');
         } catch (err) {
-            console.warn("[wheel] /api/spin/claim ishlamadi, botga yo'naltiriladi:", err);
-            openSpinDeepLink(winningPoints);
+            console.warn("[wheel] /api/spin/claim javobi olinmadi, holat tekshiriladi:", err);
+            await recoverSpinClaim(winningPoints, prevScore);
             return;
         }
         if (typeof r.score === 'number') setGlobalScore(r.score);
@@ -2568,13 +2612,7 @@ function initWheelOfFortune() {
             return;
         }
         if (r.is_super) {
-            renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
-                "Premium olish", () => {
-                    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
-                    if (tg && tg.openTelegramLink) {
-                        tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=buy_plus_30`);
-                    }
-                });
+            renderSuperPrizeCard();
         } else {
             renderWheelCard("🎉", `+${winningPoints} ball yutdingiz!`, `✅ +${winningPoints} ball hisobingizga qo'shildi`);
         }
@@ -2840,21 +2878,64 @@ document.addEventListener('DOMContentLoaded', () => {
         el.textContent = text;
     }
 
+    // Javob kutilayotganda tugma matni o'zgaradi (server uzoqda: 8 s gacha kutish mumkin)
+    let bonusLabelBackup = null;
+    function setBonusBusy(busy) {
+        const label = btnClaim.querySelector('.wheel-center-text');
+        if (!label) return;
+        if (busy) {
+            if (bonusLabelBackup === null) bonusLabelBackup = label.textContent;
+            label.textContent = 'Kutilmoqda...';
+        } else if (bonusLabelBackup !== null) {
+            label.textContent = bonusLabelBackup;
+            bonusLabelBackup = null;
+        }
+    }
+
+    function hapticSuccess() {
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+    }
+
+    // Javob kelmadi: server bonusni allaqachon bergan bo'lishi mumkin — holatni qayta so'raymiz
+    async function recoverBonusClaim(prevScore) {
+        const s = await recoverStateAfterClaimFailure();
+        bonusClaiming = false;
+        setBonusBusy(false);
+        if (!s) {                                   // holat ham olinmadi: ESKI zaxira yo'l
+            openClaimDailyDeepLink();
+            return;
+        }
+        setGlobalScore(s.score);
+        applyState(s);                              // seriya, ball va tugma holati serverdan
+        if (s.daily_claimed) {
+            // Server bonusni allaqachon bergan: deep link YO'Q
+            const diff = (typeof prevScore === 'number') ? s.score - prevScore : 0;
+            showBonusResult(diff > 0 ? `+${diff} ball hisobingizga qo'shilgan` : "Bugungi bonus hisobingizga qo'shilgan");
+            hapticSuccess();
+        } else {
+            notify("Ulanishda xatolik. Qayta urinib ko'ring.");
+        }
+    }
+
     let bonusClaiming = false;
     async function claimBonusViaApi() {
         if (bonusClaiming) return;
         bonusClaiming = true;
+        const prevScore = AppState.data ? AppState.data.score : null;
+        setBonusBusy(true);
         let r;
         try {
             r = await api('bonus/claim');
             if (!r || typeof r.ok !== 'boolean') throw new Error('bad-claim');
         } catch (err) {
-            bonusClaiming = false;
-            console.warn("[bonus] /api/bonus/claim ishlamadi, botga yo'naltiriladi:", err);
-            openClaimDailyDeepLink();
+            console.warn("[bonus] /api/bonus/claim javobi olinmadi, holat tekshiriladi:", err);
+            await recoverBonusClaim(prevScore);
             return;
         }
         bonusClaiming = false;
+        setBonusBusy(false);
         if (typeof r.score === 'number') {
             userScore = r.score;
             setGlobalScore(r.score);
@@ -2866,16 +2947,14 @@ document.addEventListener('DOMContentLoaded', () => {
             patchAppState({ score: r.score, streak: r.streak, daily_claimed: true });
             renderGrid();                                   // tugma "Olindi" holatiga o'tadi
             showBonusResult(`+${r.points} ball, ${r.streak}-kun`);
-            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
-                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-            }
+            hapticSuccess();
         } else {
             notify(r.message || "Bonusni olib bo'lmadi.");
             invalidateAppState();                           // haqiqiy holatni serverdan qayta olamiz
             getAppState(0).then((s) => { if (s) applyState(s); });
         }
     }
-    
+
     btnOpenDailyBonus.onclick = () => {
         renderGrid();
         modal.classList.remove('hidden');

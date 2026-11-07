@@ -52,6 +52,19 @@ FAKE_TELEGRAM = """
 })();
 """
 
+def sequence(*specs):
+    """Har bir chaqiruvga ketma-ket bittadan javob beradi (oxirgisi takrorlanadi).
+    Javob: (status, json) | "abort" | "hang" (so'rov javobsiz osilib qoladi — sekin server taqlidi)."""
+    counter = {"i": 0}
+
+    def next_spec(_body):
+        spec = specs[min(counter["i"], len(specs) - 1)]
+        counter["i"] += 1
+        return spec
+
+    return next_spec
+
+
 STATE_OK = {"ok": True, "score": 7, "streak": 1, "daily_claimed": False, "prize": 5, "cooldown_seconds": 0}
 CLAIM_OK = {"ok": True, "message": "Tabriklaymiz! +5 ball", "score": 12, "is_super": False}
 
@@ -81,10 +94,12 @@ class MiniAppE2EBase(unittest.TestCase):
 
     # ---- yordamchilar -------------------------------------------------------
     def open_app(self, routes, query="", init_data=INIT_DATA):
-        """routes: {'state': (status, json) | 'abort', ...}. Qaytaradi: (page, calls)."""
+        """routes: {'state': (status, json) | 'abort' | 'hang' | callable(body) -> shulardan biri, ...}.
+        Qaytaradi: (page, calls)."""
         ctx = self.browser.new_context(viewport={"width": 390, "height": 844})
         self.addCleanup(ctx.close)
         page = ctx.new_page()
+        self.page_for_wait = page
         calls = []
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
@@ -97,8 +112,12 @@ class MiniAppE2EBase(unittest.TestCase):
                 body = route.request.post_data_json if route.request.method == "POST" else None
                 calls.append((name, body))
                 spec = routes.get(name, (404, {"ok": False}))
+                if callable(spec):
+                    spec = spec(body)
                 if spec == "abort":
                     return route.abort()
+                if spec == "hang":
+                    return          # javob berilmaydi: sahifadagi 8 s timeout (soat) ishlaguncha osilib turadi
                 status, data = spec
                 return route.fulfill(status=status, content_type="application/json", body=json.dumps(data))
             if url.startswith(f"http://127.0.0.1:{self.port}"):
@@ -110,6 +129,16 @@ class MiniAppE2EBase(unittest.TestCase):
         page.clock.install()
         page.goto(f"http://127.0.0.1:{self.port}/{query}", wait_until="load")
         return page, calls
+
+    def wait_for_call(self, calls, name, timeout_s=10):
+        """So'rov serverga yetib kelguncha kutadi (haqiqiy vaqt; sahifa soatiga bog'liq emas)."""
+        import time as _t
+        end = _t.time() + timeout_s
+        while _t.time() < end:
+            if any(c[0] == name for c in calls):
+                return
+            self.page_for_wait.wait_for_timeout(50)
+        raise AssertionError(f"/api/{name} so'rovi kelmadi")
 
     def open_wheel(self, page):
         page.click("#btn-open-wheel")
