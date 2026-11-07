@@ -1839,7 +1839,7 @@ async function initBodyMap() {
             const partLabel = partData ? partData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (selectedBodyPartKey || 'bosh');
 
             if (tg) {
-                const botUsername = "Birinchiyordam1Bot";
+                const botUsername = BOT_USERNAME;
                 const url = `https://t.me/${botUsername}?start=ai_consult_${selectedBodyPartKey || 'head'}`;
                 tg.openTelegramLink(url);
                 tg.close();
@@ -2523,7 +2523,7 @@ function initWheelOfFortune() {
     // ZAXIRA yo'l (API yo'q yoki xato): eski mantiq — botga deep link orqali tasdiqlash
     function openSpinDeepLink(winningPoints) {
         if (tg) {
-            const botUsername = "Birinchiyordam1Bot";
+            const botUsername = BOT_USERNAME;
             const pv = (winningPoints === 0) ? "super" : winningPoints;
             tg.openTelegramLink(`https://t.me/${botUsername}?start=spin_${pv}`);
             tg.close();
@@ -2646,7 +2646,7 @@ function initWheelOfFortune() {
             if (btnBotWheel) {
                 btnBotWheel.onclick = () => {
                     if (tg && tg.openTelegramLink) {
-                        const botUsername = "Birinchiyordam1Bot";
+                        const botUsername = BOT_USERNAME;
                         tg.openTelegramLink(`https://t.me/${botUsername}?start=wheel`);
                         tg.close();
                     }
@@ -2855,7 +2855,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ZAXIRA yo'l (API yo'q yoki xato): botga deep link orqali olish
     function openClaimDailyDeepLink() {
         if (window.Telegram && window.Telegram.WebApp) {
-            const botUsername = "Birinchiyordam1Bot";
+            const botUsername = BOT_USERNAME;
             window.Telegram.WebApp.openTelegramLink(`https://t.me/${botUsername}?start=claim_daily`);
             window.Telegram.WebApp.close();
         } else {
@@ -3024,7 +3024,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Global helper: buy premium via Telegram deep link
 function buyPremium(plan) {
     var tg = window.Telegram && window.Telegram.WebApp;
-    var botUsername = 'Birinchiyordam1Bot';
+    var botUsername = BOT_USERNAME;
     var url = 'https://t.me/' + botUsername + '?start=' + plan;
     if (tg) {
         tg.openTelegramLink(url);
