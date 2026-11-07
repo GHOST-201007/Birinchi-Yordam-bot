@@ -1,18 +1,19 @@
 /* Custom Styling for Telegram Mini App */
 :root {
+    /* Yagona :root — avvalgi ikki blokdan birlashtirilgan (keyingisi qiymati yutadi). */
     /* CSS Variables — Light Mode */
-    --bg-color: #ffffff;
-    --text-color: #222222;
-    --hint-color: #888888;
-    --link-color: #248bcf;
-    --secondary-bg-color: #f4f5f7;
+    --bg-color: #f0fbf9; /* Soft mint background matching image */
+    --text-color: #1a2f2e; /* Dark slate/teal text */
+    --hint-color: #7b9996; /* Soft teal-gray */
+    --link-color: #159b8a;
+    --secondary-bg-color: #ffffff;
     /* Brand Colors */
-    --color-primary: #2CAE9D;
-    --color-primary-light: #5FD0C0;
+    --color-primary: #159b8a; /* Teal primary from image */
+    --color-primary-light: #2cc4b2;
     /* Map legacy vars to brand */
     --button-color: var(--color-primary);
     --button-text-color: #ffffff;
-    --color-surface: var(--bg-color);
+    --color-surface: #ffffff;
     --color-text-primary: var(--text-color);
     --color-text-muted: var(--hint-color);
     /* Accent colors */
@@ -25,12 +26,12 @@
     --accent-blue: #007aff;
     --accent-blue-bg: rgba(0, 122, 255, 0.1);
     /* Shadows & Radii */
-    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --card-shadow: 0 8px 24px rgba(21, 155, 138, 0.08);
     --border-radius-sm: 8px;
-    --border-radius-md: 16px;
+    --border-radius-md: 20px;
     --border-radius-lg: 24px;
     /* Yetishmayotgan o'zgaruvchilar (scratch/overrides.css dan tiklandi).
-       Ularsiz 103 tugmasi foni, oraliqlar va burchaklar ishlamay qolgan edi. */
+    Ularsiz 103 tugmasi foni, oraliqlar va burchaklar ishlamay qolgan edi. */
     --color-error: #ff3b30;
     --space-1: 6px;
     --space-2: 12px;
@@ -42,26 +43,31 @@
     --radius-lg: 28px;
     --shadow-md: 0 8px 16px rgba(15, 118, 110, 0.05);
     --shadow-lg: 0 16px 32px rgba(15, 118, 110, 0.08);
+    --color-primary-dark: #0f7a6c;
+    --shadow-sm: 0 4px 12px rgba(21, 155, 138, 0.05);
 }
 
 /* Dark mode overrides – keep contrast */
+/* Yagona qorong'u rejim bloki — avvalgi ikki blokdan birlashtirilgan. */
 body.dark-mode {
     --shadow-md: 0 8px 16px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.4);
-    --bg-color: #1c1c1e;
-    --text-color: #f2f2f7;
-    --hint-color: #8e8e93;
+    --bg-color: #0b1816;
+    --text-color: #e2f1ef;
+    --hint-color: #648581;
     --link-color: #4da6ff;
-    --button-color: #4da6ff; /* keep primary-like for dark */
+    --button-color: #1eb5a2;
     --button-text-color: #ffffff;
-    --secondary-bg-color: #2c2c2e;
-    --card-shadow: var(--shadow-md);
-
-    --card-shadow: var(--shadow-md);
+    --secondary-bg-color: #122825;
+    --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     --accent-red-bg: rgba(255, 59, 48, 0.15);
     --accent-green-bg: rgba(52, 199, 89, 0.15);
     --accent-orange-bg: rgba(255, 149, 0, 0.15);
     --accent-blue-bg: rgba(0, 122, 255, 0.15);
+    --color-surface: #122825;
+    --color-primary: #1eb5a2;
+    --color-primary-dark: #2cc4b2;
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Smooth transition for theme switch */
@@ -1118,21 +1124,6 @@ body.dark-mode .back-btn:hover .back-btn-shape {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-}
-
-.symptom-tag {
-    background: var(--secondary-bg-color);
-    color: var(--text-color);
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid rgba(0,0,0,0.06);
-    transition: transform 0.15s ease;
-}
-
-body.dark-mode .symptom-tag {
-    border-color: rgba(255,255,255,0.08);
 }
 
 .prohibited-card {
@@ -2646,43 +2637,6 @@ body.dark-mode .body-disease-modal::before {
 /* =========================================
    PERFECT REFERENCE MATCH OVERRIDE
    ========================================= */
-
-:root {
-    --bg-color: #f0fbf9; /* Soft mint background matching image */
-    --text-color: #1a2f2e; /* Dark slate/teal text */
-    --hint-color: #7b9996; /* Soft teal-gray */
-    --link-color: #159b8a;
-    --secondary-bg-color: #ffffff; 
-    
-    --color-primary: #159b8a; /* Teal primary from image */
-    --color-primary-light: #2cc4b2;
-    --color-primary-dark: #0f7a6c;
-    
-    --button-color: var(--color-primary);
-    --button-text-color: #ffffff;
-    --color-surface: #ffffff;
-    --color-text-primary: var(--text-color);
-    --color-text-muted: var(--hint-color);
-    
-    --card-shadow: 0 8px 24px rgba(21, 155, 138, 0.08);
-    --shadow-sm: 0 4px 12px rgba(21, 155, 138, 0.05);
-    
-    --border-radius-md: 20px;
-    --border-radius-lg: 24px;
-}
-
-body.dark-mode {
-    --bg-color: #0b1816; 
-    --text-color: #e2f1ef;
-    --hint-color: #648581;
-    --secondary-bg-color: #122825;
-    --color-surface: #122825;
-    --color-primary: #1eb5a2;
-    --color-primary-dark: #2cc4b2;
-    --button-color: #1eb5a2;
-    --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
 
 /* App Container */
 html, body {
