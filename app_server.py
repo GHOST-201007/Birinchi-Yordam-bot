@@ -3,7 +3,7 @@ app_server.py - Mini App uchun maxsus HTTP server.
 """
 import os
 import time
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
 PORT = int(os.environ.get("PORT", 8000))
@@ -17,6 +17,8 @@ def get_file_version(filepath):
 
 class MiniAppHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         path = self.path.split("?")[0]
         if path in ("/", "/index.html", ""):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -62,7 +64,7 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(APP_DIR)
-    server = HTTPServer(("127.0.0.1", PORT), MiniAppHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), MiniAppHandler)
     print(f"Mini App server ishga tushdi: http://127.0.0.1:{PORT}")
     try:
         server.serve_forever()

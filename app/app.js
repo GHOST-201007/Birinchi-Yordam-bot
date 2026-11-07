@@ -72,6 +72,16 @@ const SafeStorage = {
 // Telegram WebApp Initialization
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 
+// Foydalanuvchiga xabar ko'rsatish (Telegram ichida showAlert, brauzerda alert)
+function notify(msg) {
+    if (tg && tg.showAlert) tg.showAlert(msg); else alert(msg);
+}
+// Xatoni konsolga yozadi, foydalanuvchiga esa stack trace'siz oddiy xabar ko'rsatadi
+function reportError(where, err) {
+    console.error('[' + where + ']', err);
+    notify("Kutilmagan xatolik yuz berdi. Iltimos, mini appni qayta oching.");
+}
+
 if (tg) {
     try {
         tg.ready();
@@ -500,7 +510,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const avatarEl = document.getElementById('user-avatar');
                     if (avatarEl && user.photo_url) {
-                        avatarEl.innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                        const img = document.createElement('img');
+                        img.src = user.photo_url;
+                        img.alt = '';
+                        img.className = 'avatar-img';
+                        avatarEl.replaceChildren(img);
                     }
                 }
             }
@@ -514,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
             initQuiz();
             initHistory();
         } catch (e) {
-            alert("DOM Init 1 Error: " + e.message + "\nStack: " + e.stack);
+            reportError('DOM Init 1', e);
         }
     });
 });
@@ -820,7 +834,7 @@ function initCalculators() {
 
         if (!weight || !height || weight <= 0 || height <= 0) {
             if (tg) tg.showAlert("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
-            else alert("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
+            else notify("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
             return;
         }
 
@@ -873,7 +887,7 @@ function initCalculators() {
 
         if (!weight || weight <= 0) {
             if (tg) tg.showAlert("Iltimos, vazningizni to'g'ri kiriting!");
-            else alert("Iltimos, vazningizni to'g'ri kiriting!");
+            else notify("Iltimos, vazningizni to'g'ri kiriting!");
             return;
         }
 
@@ -903,7 +917,7 @@ function initCalculators() {
 
         if (!weight || !height || !age || weight <= 0 || height <= 0 || age <= 0) {
             if (tg) tg.showAlert("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
-            else alert("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
+            else notify("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
             return;
         }
 
@@ -1744,7 +1758,7 @@ async function initBodyMap() {
                 tg.openTelegramLink(url);
                 tg.close();
             } else {
-                alert(`AI konsultant: Tana qismi � ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
+                notify(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
             }
             }, 300);
         };
@@ -1875,15 +1889,11 @@ function openBodyMapModal(partKey) {
             // Data not loaded yet or missing
             console.error("DATA MISSING FOR:", partKey);
             const statusMsg = bodyMapData ? "topilmadi" : "yuklanmagan";
-            alert(`A'zo ma'lumoti topilmadi (${partKey}). bodyMapData: ${statusMsg}`);
-            if (tg && tg.showAlert) {
-                tg.showAlert("Ma'lumotlar yuklanmoqda yoki topilmadi...");
-            } else {
-                alert("Ma'lumotlar yuklanmoqda yoki topilmadi...");
-            }
+            console.warn(`A'zo ma'lumoti topilmadi (${partKey}). bodyMapData: ${statusMsg}`);
+            notify("Ma'lumotlar yuklanmoqda yoki topilmadi...");
         }
     } catch (err) {
-        alert("openBodyMapModal Xatoligi: " + err.message + "\nStack: " + err.stack);
+        reportError('openBodyMapModal', err);
     }
 }
 
@@ -1895,7 +1905,7 @@ function _openFullModal(partKey, data) {
         const iconEl = document.getElementById('modal-organ-icon');
 
         if (!modal) {
-            alert("Xatolik: #body-map-modal oynasi HTML ichida topilmadi!");
+            reportError('_openFullModal', new Error('#body-map-modal oynasi HTML ichida topilmadi'));
             return;
         }
 
@@ -2011,7 +2021,7 @@ function _openFullModal(partKey, data) {
             }
         });
     } catch (err) {
-        alert("_openFullModal Xatoligi: " + err.message + "\nStack: " + err.stack);
+        reportError('_openFullModal', err);
     }
 }
 
@@ -2021,7 +2031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initBodyMap();
         initWheelOfFortune();
     } catch (e) {
-        alert("DOM Init 2 Error: " + e.message + "\nStack: " + e.stack);
+        reportError('DOM Init 2', e);
     }
 });
 
@@ -2445,7 +2455,7 @@ function initWheelOfFortune() {
                     tg.openTelegramLink(`https://t.me/${botUsername}?start=spin_${pv}`);
                     tg.close();
                 } else {
-                    alert("Telegram orqali tasdiqlang!");
+                    notify("Telegram orqali tasdiqlang!");
                 }
             };
         }, 5300);
@@ -2592,7 +2602,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.Telegram.WebApp.openTelegramLink(`https://t.me/${botUsername}?start=claim_daily`);
                     window.Telegram.WebApp.close();
                 } else {
-                    alert('Faqat Telegram ichida ishlaydi!');
+                    notify('Faqat Telegram ichida ishlaydi!');
                 }
             };
         }
