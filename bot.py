@@ -1148,6 +1148,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     # Always register user first to ensure they exist in database
     await asyncio.to_thread(database.register_user, user.id, full_name=full_name, username=username)
+    # Eski shaxsiy (trycloudflare) menyu tugmasini fonda tozalaymiz: javobni kechiktirmaydi va to'xtatmaydi
+    schedule_personal_menu_reset(message.bot, user.id)
     db_reg_ts = time.time()
     logging.info(f"DB register_user: {(db_reg_ts - start_ts) * 1000:.1f} ms")
     
@@ -1413,6 +1415,40 @@ async def cmd_start(message: types.Message, state: FSMContext):
     after_menu_ts = time.time()
     logging.info(f"Menu button update latency: {(after_menu_ts - start_ts) * 1000:.1f} ms")
     logging.info(f"TOTAL /start latency: {(after_menu_ts - start_ts) * 1000:.1f} ms")
+
+# ─── Eski shaxsiy menyu tugmasini tozalash ────────────────────────────────────
+# Ilgari update_user_menu_button har /start da chat_id li (shaxsiy) tugma o'rnatgan (o'shanda MINI_APP_URL
+# trycloudflare edi). Shaxsiy tugma umumiysidan ustun. scripts/reset_menu_buttons.py botni bloklagan
+# foydalanuvchilarga yeta olmaydi; ular qaytib /start bossa tugma shu yerda tuzaladi.
+MENU_RESET_TIMEOUT = 5.0
+_MENU_RESET_DONE_MAX = 50000
+_menu_reset_done: set = set()      # shu jarayonda tozalangan foydalanuvchilar (takroriy so'rov yubormaslik uchun)
+_menu_reset_tasks: set = set()     # fon vazifalariga havola (axlat yig'uvchi o'chirib yubormasligi uchun)
+
+
+async def reset_personal_menu_button(bot_instance, user_id: int) -> None:
+    """MenuButtonDefault yuboradi: shaxsiy tugma o'chadi, botning umumiy (to'g'ri) tugmasi ishlaydi.
+    Xato yoki timeout bo'lsa faqat ogohlantirish loglanadi (xato matni emas, turi)."""
+    if user_id in _menu_reset_done:
+        return
+    try:
+        await asyncio.wait_for(
+            bot_instance.set_chat_menu_button(chat_id=user_id, menu_button=types.MenuButtonDefault()),
+            timeout=MENU_RESET_TIMEOUT,
+        )
+        if len(_menu_reset_done) >= _MENU_RESET_DONE_MAX:
+            _menu_reset_done.clear()
+        _menu_reset_done.add(user_id)
+    except Exception as exc:
+        logging.warning("Shaxsiy menyu tugmasini tozalab bo'lmadi (user=%s): %s", user_id, type(exc).__name__)
+
+
+def schedule_personal_menu_reset(bot_instance, user_id: int) -> None:
+    """Tozalashni fonda boshlaydi (await qilinmaydi): /start javobi kechikmaydi."""
+    task = asyncio.create_task(reset_personal_menu_button(bot_instance, user_id))
+    _menu_reset_tasks.add(task)
+    task.add_done_callback(_menu_reset_tasks.discard)
+
 
 async def update_user_menu_button(user_id: int, current_bot: Bot):
     # Telegram API requires MenuButton WebAppInfo URL to have NO query params
