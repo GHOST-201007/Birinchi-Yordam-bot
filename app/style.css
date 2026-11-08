@@ -232,55 +232,18 @@ body {
 
 
 /* SEARCH BOX */
-.search-box {
-    position: relative;
-    margin-bottom: 16px;
-}
 
-.search-box input {
-    width: 100%;
-    padding: 12px 16px 12px 42px;
-    border-radius: var(--border-radius-md);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    background-color: var(--secondary-bg-color);
-    color: var(--text-color);
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-}
 
-.search-box input:focus {
-    border-color: var(--button-color);
-}
 
-.search-icon {
-    position: absolute;
-    left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--hint-color);
-}
 
-.clear-btn {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: var(--hint-color);
-    font-size: 16px;
-    padding: 4px;
-    display: none;
-    cursor: pointer;
-}
+
+
+
+
+
 
 /* DISEASE LIST */
-.disease-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
+
 
 .disease-item {
     background-color: var(--secondary-bg-color);
@@ -297,15 +260,9 @@ body {
     background-color: rgba(0, 0, 0, 0.05);
 }
 
-.disease-info h4 {
-    font-size: 15px;
-    font-weight: 500;
-}
 
-.disease-info span {
-    font-size: 11px;
-    color: var(--hint-color);
-}
+
+
 
 .disease-item .icon {
     color: var(--hint-color);
@@ -2201,17 +2158,8 @@ html, body {
     border: none !important;
 }
 
-.search-box input {
-    background: var(--color-surface) !important;
-    border: 1px solid rgba(21, 155, 138, 0.1) !important;
-    border-radius: 100px !important; 
-    padding: 16px 16px 16px 52px !important;
-    box-shadow: var(--shadow-sm) !important;
-}
-.search-icon {
-    left: 20px !important;
-    color: var(--color-primary-light) !important;
-}
+
+
 
 .action-btn {
     background: var(--color-primary) !important;
@@ -2794,3 +2742,86 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     color: var(--text-2);
 }
 .detail-disclaimer .icon { font-size: 14px; margin-top: 1px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   REDESIGN — EKRAN SARLAVHASI (umumiy) va KASALLIKLAR (4.4-D)
+   ═══════════════════════════════════════════════════════════════════ */
+.screen-head { margin-bottom: var(--s-3); }
+.screen-title {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin: 0;
+    font-size: var(--fs-h2);
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--text);
+}
+.screen-title .icon { color: var(--primary); }
+.screen-sub { margin: 2px 0 0; font-size: 14px; color: var(--text-2); }
+
+.sticky-tools {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: 0 calc(-1 * var(--s-4)) var(--s-2);
+    padding: var(--s-2) var(--s-4) var(--s-2);
+    background: var(--bg);
+}
+.sticky-tools .search-field { margin-bottom: var(--s-2); }
+.search-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-right: -6px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.search-clear[hidden] { display: none; }
+
+.chip-scroll {
+    display: flex;
+    gap: var(--s-2);
+    overflow-x: auto;
+    margin: 0 calc(-1 * var(--s-4));
+    padding: 4px var(--s-4);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.chip-scroll::-webkit-scrollbar { display: none; }
+.cat-chip {
+    position: relative;
+    flex-shrink: 0;
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--separator);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font: 600 13px var(--font);
+    white-space: nowrap;
+    cursor: pointer;
+}
+.cat-chip::after { content: ''; position: absolute; inset: -5px 0; }      /* bosish maydoni >= 44px */
+.cat-chip[aria-selected="true"] {
+    border-color: transparent;
+    background: var(--primary-strong);
+    color: var(--on-primary);
+}
+
+.letter-header {
+    margin: var(--s-4) 0 var(--s-2) var(--s-1);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-2);
+}
+.disease-groups .letter-header:first-child { margin-top: var(--s-1); }
+.disease-groups .inset-group { margin-bottom: 0; }
+.disease-groups .list-row { min-height: 52px; }
+.disease-groups .list-row + .list-row::before { left: var(--s-4); }

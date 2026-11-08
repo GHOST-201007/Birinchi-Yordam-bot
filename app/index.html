@@ -142,20 +142,22 @@
 
             <!-- TAB 2: KASALLIKLAR -->
             <section id="tab-diseases" class="tab-content">
-                <div class="section-title">
-                    <h2>📚 Kasalliklar Ro'yxati</h2>
-                    <p>100+ kasalliklar va simptomlar bo'yicha qidiruv</p>
+                <div class="screen-head">
+                    <h1 class="screen-title">Kasalliklar</h1>
+                    <p class="screen-sub">100+ kasalliklar va simptomlar bo'yicha qidiruv</p>
                 </div>
-
-                <div class="search-box">
-                    <svg class="icon search-icon" aria-hidden="true"><use href="#i-search"/></svg>
-                    <input type="text" id="disease-search-input" placeholder="Kasallik nomini kiriting (masalan: Gripp)...">
-                    <button class="clear-btn" id="search-clear-btn"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+                <div class="sticky-tools">
+                    <label class="search-field">
+                        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+                        <input type="search" id="disease-search-input" placeholder="Kasallik nomini kiriting (masalan: Gripp)..." aria-label="Kasalliklar bo'yicha qidirish" autocomplete="off">
+                        <button type="button" class="search-clear" id="search-clear-btn" aria-label="Qidiruvni tozalash" hidden><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+                    </label>
+                    <div class="chip-scroll" id="disease-cats" role="tablist" aria-label="Kategoriyalar"></div>
                 </div>
-
-                <div class="disease-list" id="disease-list-container">
-                    <!-- Disease items will be rendered here -->
+                <div class="disease-groups" id="disease-list-container">
+                    <!-- Alifbo bo'yicha guruhlar JS bilan yaratiladi -->
                 </div>
+                <p class="list-empty" id="disease-empty" hidden>Natija topilmadi</p>
             </section>
 
             <!-- TAB 3: KALKULYATOR -->

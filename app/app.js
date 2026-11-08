@@ -1030,33 +1030,47 @@ function openFirstAidDetail(item) {
         : { text: "AI'dan so'rash", onClick: askAiInBot });
 }
 
-// RENDER DISEASES
+// RENDER DISEASES — alifbo harflari bo'yicha guruhlangan inset ro'yxat (4.4-D)
+const UZ_LETTER_ORDER = 'ABDEFGHIJKLMNOPQRSTUVXYZ';
+
+function letterRank(letter) {
+    const i = UZ_LETTER_ORDER.indexOf(letter);
+    return i === -1 ? 100 + letter.charCodeAt(0) : i;
+}
+
 function renderDiseases(data) {
     const container = document.getElementById('disease-list-container');
+    const empty = document.getElementById('disease-empty');
     container.innerHTML = '';
+    if (empty) empty.hidden = data.length !== 0;
+    if (data.length === 0) return;
 
-    if (data.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--hint-color);">Natija topilmadi 😕</div>`;
-        return;
-    }
-
+    const groups = {};
     data.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'disease-item';
+        const letter = (displayTitle(item.name).charAt(0) || '#').toUpperCase();
+        (groups[letter] = groups[letter] || []).push(item);
+    });
+    Object.keys(groups).sort((x, y) => letterRank(x) - letterRank(y)).forEach(letter => {
+        const header = document.createElement('h2');
+        header.className = 'letter-header';
+        header.textContent = letter;
+        container.appendChild(header);
 
-        div.innerHTML = `
-            <div class="disease-info">
-                <h4>${item.name}</h4>
-                <span>📁 ${item.cat}</span>
-            </div>
-            ${svgIcon('chevron-right')}
-        `;
-
-        div.addEventListener('click', () => {
-            openDiseaseDetail(item);
-        });
-
-        container.appendChild(div);
+        const group = document.createElement('div');
+        group.className = 'inset-group';
+        groups[letter]
+            .sort((p, q) => p.name.localeCompare(q.name, 'uz'))
+            .forEach(item => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'list-row';
+                row.innerHTML = `<span class="row-text"><span class="row-title"></span><span class="row-sub"></span></span>${svgIcon('chevron-right', 'row-chevron')}`;
+                row.querySelector('.row-title').textContent = item.name;
+                row.querySelector('.row-sub').textContent = item.cat;
+                row.addEventListener('click', () => openDiseaseDetail(item));
+                group.appendChild(row);
+            });
+        container.appendChild(group);
     });
 }
 
@@ -1069,32 +1083,59 @@ function openDiseaseDetail(item) {
     showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiInBot });
 }
 
-// SEARCH FUNCTIONALITY
+// SEARCH + KATEGORIYA CHIPLARI
+let diseaseCategory = 'all';
+
+function applyDiseaseFilter() {
+    const input = document.getElementById('disease-search-input');
+    const q = normalizeSearch(input ? input.value.trim() : '');
+    const filtered = DISEASES_DATA.filter(item =>
+        (diseaseCategory === 'all' || item.cat === diseaseCategory) &&
+        (!q || normalizeSearch(item.name + ' ' + item.cat).includes(q))
+    );
+    renderDiseases(filtered);
+}
+
+function renderDiseaseCategories() {
+    const bar = document.getElementById('disease-cats');
+    if (!bar) return;
+    const counts = {};
+    DISEASES_DATA.forEach(d => { counts[d.cat] = (counts[d.cat] || 0) + 1; });
+    const cats = ['all'].concat(Object.keys(counts).sort((x, y) => counts[y] - counts[x] || x.localeCompare(y, 'uz')));
+    bar.innerHTML = '';
+    cats.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'cat-chip';
+        chip.setAttribute('role', 'tab');
+        chip.setAttribute('data-cat', cat);
+        chip.setAttribute('aria-selected', cat === diseaseCategory ? 'true' : 'false');
+        chip.textContent = cat === 'all' ? 'Hammasi' : cat;
+        chip.addEventListener('click', () => {
+            diseaseCategory = cat;
+            bar.querySelectorAll('.cat-chip').forEach(c => c.setAttribute('aria-selected', c === chip ? 'true' : 'false'));
+            applyDiseaseFilter();
+        });
+        bar.appendChild(chip);
+    });
+}
+
 function initSearch() {
     const input = document.getElementById('disease-search-input');
     const clearBtn = document.getElementById('search-clear-btn');
+    renderDiseaseCategories();
 
-    input.addEventListener('input', (e) => {
-        const val = e.target.value.toLowerCase().trim();
-
-        if (val.length > 0) {
-            clearBtn.style.display = 'block';
-        } else {
-            clearBtn.style.display = 'none';
-        }
-
-        const filtered = DISEASES_DATA.filter(item =>
-            item.name.toLowerCase().includes(val) ||
-            item.cat.toLowerCase().includes(val)
-        );
-
-        renderDiseases(filtered);
+    input.addEventListener('input', () => {
+        clearBtn.hidden = input.value.length === 0;
+        applyDiseaseFilter();
     });
 
-    clearBtn.addEventListener('click', () => {
+    clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         input.value = '';
-        clearBtn.style.display = 'none';
-        renderDiseases(DISEASES_DATA);
+        clearBtn.hidden = true;
+        applyDiseaseFilter();
+        input.focus();
     });
 }
 
