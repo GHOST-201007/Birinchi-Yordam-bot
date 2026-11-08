@@ -299,57 +299,65 @@
 
             <!-- TAB 4: QUIZ -->
             <section id="tab-quiz" class="tab-content">
-                <div class="section-title">
-                    <h2>🧠 Birinchi Yordam Testi</h2>
-                    <p>Bilimingizni sinab ko'ring va natijangizni kuzating</p>
+                <div class="screen-head">
+                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg>Birinchi yordam testi</h1>
+                    <p class="screen-sub">Bilimingizni sinab ko'ring va natijangizni kuzating</p>
                 </div>
 
-                <!-- Quiz Start Screen -->
+                <!-- Boshlash -->
                 <div id="quiz-start-screen" class="quiz-screen active">
                     <div class="quiz-start-card">
-                        <div class="quiz-start-icon">🧠</div>
-                        <h3>Bilimingizni Sinang!</h3>
-                        <p>10 ta savol. Har bir to'g'ri javob uchun 10 ball. Qancha olasiz?</p>
+                        <div class="quiz-start-icon"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg></div>
+                        <h2 class="quiz-start-title">Bilimingizni sinang!</h2>
+                        <p class="quiz-start-text">10 ta savol. Har bir to'g'ri javob uchun 10 ball. Qancha olasiz?</p>
                         <div class="quiz-stats-row">
                             <div class="quiz-stat">
-                                <span id="quiz-best-score">0</span>
+                                <span class="tabular" id="quiz-best-score">0</span>
                                 <small>Eng yuqori ball</small>
                             </div>
                             <div class="quiz-stat">
-                                <span id="quiz-attempts">0</span>
+                                <span class="tabular" id="quiz-attempts">0</span>
                                 <small>Urinishlar soni</small>
                             </div>
                         </div>
-                        <button class="action-btn" id="btn-start-quiz">Boshlash ▶️</button>
+                        <button type="button" class="btn-primary" id="btn-start-quiz">Boshlash</button>
                     </div>
                 </div>
 
-                <!-- Quiz Question Screen -->
+                <!-- Savol -->
                 <div id="quiz-question-screen" class="quiz-screen">
-                    <div class="quiz-progress-bar"><div class="quiz-progress-fill" id="quiz-progress-fill"></div></div>
                     <div class="quiz-info-row">
-                        <span id="quiz-q-num">Savol 1/10</span>
-                        <span id="quiz-score-live">🎯 0 ball</span>
+                        <span class="quiz-q-num tabular" id="quiz-q-num">1 / 10</span>
+                        <span class="quiz-score"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg><span class="tabular" id="quiz-score-live">0 ball</span></span>
+                    </div>
+                    <div class="quiz-progress-bar" role="progressbar" aria-label="Test jarayoni" aria-valuemin="0" aria-valuemax="10" aria-valuenow="1" id="quiz-progress">
+                        <div class="quiz-progress-fill" id="quiz-progress-fill"></div>
                     </div>
                     <div class="quiz-card">
                         <p id="quiz-question-text">Savol matni shu yerda bo'ladi...</p>
                     </div>
-                    <div class="quiz-options" id="quiz-options-container">
-                        <!-- Options rendered by JS -->
+                    <div class="quiz-options" id="quiz-options-container" role="group" aria-labelledby="quiz-question-text">
+                        <!-- Variantlar JS bilan -->
                     </div>
+                    <p class="sr-only" id="quiz-feedback" aria-live="assertive"></p>
                 </div>
 
-                <!-- Quiz Result Screen -->
+                <!-- Natija -->
                 <div id="quiz-result-screen" class="quiz-screen">
                     <div class="quiz-result-card">
-                        <div class="quiz-result-icon" id="quiz-result-icon">🏆</div>
-                        <h3 id="quiz-result-title">Barakallo!</h3>
-                        <div class="quiz-final-score">
-                            <span id="quiz-final-score-num">80</span>
-                            <small>/ 100 ball</small>
+                        <div class="quiz-ring" id="quiz-ring" role="img" aria-label="100 dan 0 ball">
+                            <svg viewBox="0 0 120 120" aria-hidden="true">
+                                <circle class="ring-track" cx="60" cy="60" r="52"/>
+                                <circle class="ring-fill" id="quiz-ring-fill" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="0 100"/>
+                            </svg>
+                            <div class="ring-center" aria-hidden="true">
+                                <span class="tabular" id="quiz-final-score-num">80</span>
+                                <small>/ 100</small>
+                            </div>
                         </div>
-                        <p id="quiz-result-desc">Juda yaxshi natija!</p>
-                        <button class="action-btn" id="btn-retry-quiz" style="margin-top: 16px;">Qayta urinish 🔄</button>
+                        <h2 class="quiz-result-title" id="quiz-result-title">Barakallo!</h2>
+                        <p class="quiz-result-desc" id="quiz-result-desc">Juda yaxshi natija!</p>
+                        <button type="button" class="btn-primary" id="btn-retry-quiz"><svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg><span>Qayta urinish</span></button>
                     </div>
                 </div>
             </section>

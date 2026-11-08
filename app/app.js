@@ -1861,10 +1861,14 @@ function startQuiz() {
 function renderQuizQuestion() {
     const q = QUIZ_QUESTIONS[quizState.current];
     const total = QUIZ_QUESTIONS.length;
-    document.getElementById('quiz-q-num').innerText = `Savol ${quizState.current + 1}/${total}`;
-    document.getElementById('quiz-score-live').innerText = `\uD83C\uDFAF ${quizState.score} ball`;
+    document.getElementById('quiz-q-num').innerText = `${quizState.current + 1} / ${total}`;
+    document.getElementById('quiz-score-live').innerText = `${quizState.score} ball`;
     document.getElementById('quiz-progress-fill').style.width = `${((quizState.current + 1) / total) * 100}%`;
+    const bar = document.getElementById('quiz-progress');
+    bar.setAttribute('aria-valuemax', String(total));
+    bar.setAttribute('aria-valuenow', String(quizState.current + 1));
     document.getElementById('quiz-question-text').innerText = q.q;
+    document.getElementById('quiz-feedback').textContent = '';
 
     const container = document.getElementById('quiz-options-container');
     container.innerHTML = '';
@@ -1872,29 +1876,42 @@ function renderQuizQuestion() {
 
     q.options.forEach((opt, idx) => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'quiz-option-btn';
-        btn.innerText = opt;
+        btn.innerHTML = `<span class="quiz-opt-badge" aria-hidden="true"><span class="quiz-opt-letter">${'ABCDEF'[idx]}</span>${svgIcon('check', 'quiz-opt-ok')}${svgIcon('x', 'quiz-opt-bad')}</span><span class="quiz-opt-text"></span>`;
+        btn.querySelector('.quiz-opt-text').textContent = opt;
         btn.addEventListener('click', () => handleAnswer(idx, btn));
         container.appendChild(btn);
     });
+}
+
+function quizHaptic(type) {
+    try { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(type); } catch (e) { /* eski klient */ }
 }
 
 function handleAnswer(idx, btn) {
     if (quizState.answered) return;
     quizState.answered = true;
 
-    const correct = QUIZ_QUESTIONS[quizState.current].answer;
+    const q = QUIZ_QUESTIONS[quizState.current];
+    const correct = q.answer;
     const allBtns = document.querySelectorAll('.quiz-option-btn');
+    const feedback = document.getElementById('quiz-feedback');
 
     allBtns.forEach(b => b.disabled = true);
 
     if (idx === correct) {
         btn.classList.add('correct');
         quizState.score += 10;
+        quizHaptic('success');
+        feedback.textContent = "To'g'ri!";
     } else {
         btn.classList.add('wrong');
         allBtns[correct].classList.add('correct');
+        quizHaptic('error');
+        feedback.textContent = `Noto'g'ri. To'g'ri javob: ${q.options[correct]}`;
     }
+    document.getElementById('quiz-score-live').innerText = `${quizState.score} ball`;
 
     setTimeout(() => {
         quizState.current++;
@@ -1913,11 +1930,15 @@ function finishQuiz() {
     if (score > best) SafeStorage.setItem('quiz_best', score);
     SafeStorage.setItem('quiz_attempts', attempts + 1);
 
-    let icon = '\uD83D\uDE22', title = 'Ko\'proq o\'qing!', desc = 'Hali siz uchun o\'rganish vaqti!';
-    if (score >= 80) { icon = '\uD83C\uDFC6'; title = 'Barakallo!'; desc = 'Siz juda yaxshi bilasiz!'; }
-    else if (score >= 50) { icon = '\uD83D\uDCAA'; title = 'Yaxshi natija!'; desc = 'Ozgina ko\'proq o\'qisangiz mukammal bo\'ladi!'; }
+    const max = QUIZ_QUESTIONS.length * 10;
+    let tier = 'low', title = 'Ko\'proq o\'qing!', desc = 'Hali siz uchun o\'rganish vaqti!';
+    if (score >= 80) { tier = 'good'; title = 'Barakallo!'; desc = 'Siz juda yaxshi bilasiz!'; }
+    else if (score >= 50) { tier = 'ok'; title = 'Yaxshi natija!'; desc = 'Ozgina ko\'proq o\'qisangiz mukammal bo\'ladi!'; }
 
-    document.getElementById('quiz-result-icon').innerText = icon;
+    const ring = document.getElementById('quiz-ring');
+    ring.className = 'quiz-ring quiz-ring--' + tier;
+    ring.setAttribute('aria-label', `${max} dan ${score} ball`);
+    document.getElementById('quiz-ring-fill').setAttribute('stroke-dasharray', `${Math.round(score / max * 100)} 100`);
     document.getElementById('quiz-result-title').innerText = title;
     document.getElementById('quiz-final-score-num').innerText = score;
     document.getElementById('quiz-result-desc').innerText = desc;
