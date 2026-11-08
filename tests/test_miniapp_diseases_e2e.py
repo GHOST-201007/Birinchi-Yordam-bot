@@ -89,6 +89,114 @@ class DiseasesE2ETest(MiniAppE2EBase):
         page.wait_for_selector("#overlay-details.active")
         self.assertEqual(page.inner_text("#overlay-title"), name)
 
+    # ---- 10/10: indeks, chiplar, kategoriya nuqtasi, highlight, bo'sh holat, animatsiya, klaviatura -----------------
+    def test_az_index_jumps_to_letter_group(self):
+        page = self.open_tab()
+        letters = page.evaluate("[...document.querySelectorAll('#disease-az button')].map(b => b.textContent)")
+        headers = page.evaluate("[...document.querySelectorAll('#disease-list-container .letter-header')].map(h => h.textContent)")
+        self.assertEqual(letters, headers)
+        self.assertTrue(page.is_visible("#disease-az"))
+        self.assertEqual(page.get_attribute('#disease-az [data-letter="K"]', "aria-label"), "K harfiga o'tish")
+        page.click('#disease-az [data-letter="K"]')
+        header = page.locator('#disease-list-container .letter-header[data-letter="K"]').bounding_box()
+        tools = page.locator("#tab-diseases .sticky-tools").bounding_box()
+        self.assertAlmostEqual(header["y"], tools["y"] + tools["height"], delta=12)   # sarlavha sticky panel ostida
+
+    def test_az_index_keyboard_moves_focus_to_group(self):
+        page = self.open_tab()
+        page.focus('#disease-az [data-letter="S"]')
+        page.keyboard.press("Enter")
+        self.assertTrue(page.evaluate("""document.activeElement === document.querySelector(
+            '#disease-list-container .letter-header[data-letter="S"]').nextElementSibling.querySelector('.list-row')"""))
+
+    def test_az_index_hidden_when_search_or_chip_active(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "gri")
+        self.assertFalse(page.is_visible("#disease-az"))
+        page.click("#search-clear-btn")
+        self.assertTrue(page.is_visible("#disease-az"))
+        page.click('#disease-cats [data-cat="Yurak"]')
+        self.assertFalse(page.is_visible("#disease-az"))
+
+    def test_chip_row_fade_and_active_chip_scrolls_into_view(self):
+        page = self.open_tab()
+        mask = page.evaluate("getComputedStyle(document.getElementById('disease-cats')).webkitMaskImage")
+        self.assertIn("gradient", mask)
+        page.evaluate("document.querySelector('#disease-cats .cat-chip:last-child').click()")
+        page.wait_for_function("""(() => { const b = document.getElementById('disease-cats').getBoundingClientRect();
+            const c = document.querySelector('#disease-cats .cat-chip:last-child').getBoundingClientRect();
+            return c.left >= b.left - 1 && c.right <= b.right + 1; })()""", timeout=3000)   # silliq skroll tugaguncha
+        page.wait_for_function("document.getElementById('disease-cats').classList.contains('at-end')", timeout=3000)
+
+    def test_chips_keyboard_arrows(self):
+        page = self.open_tab()
+        page.focus('#disease-cats [data-cat="all"]')
+        page.keyboard.press("ArrowRight")
+        second = page.evaluate("document.querySelectorAll('#disease-cats .cat-chip')[1].getAttribute('data-cat')")
+        self.assertEqual(page.get_attribute(f'#disease-cats [data-cat="{second}"]', "aria-selected"), "true")
+        self.assertEqual(page.evaluate("document.activeElement.getAttribute('data-cat')"), second)
+        self.assertEqual(page.evaluate(
+            "[...document.querySelectorAll('#disease-cats .cat-chip')].filter(c => c.tabIndex === 0).length"), 1)
+        page.keyboard.press("Home")
+        self.assertEqual(page.get_attribute('#disease-cats [data-cat="all"]', "aria-selected"), "true")
+
+    def test_rows_show_colored_category_dot(self):
+        page = self.open_tab()
+        self.assertEqual(page.evaluate("DISEASES_DATA.filter(d => !CAT_HUE[d.cat]).length"), 0)   # har kategoriyaga rang
+        row = page.locator(ROWS).first
+        self.assertEqual(row.locator(".row-sub .cat-dot").count(), 1)
+        self.assertEqual(row.locator(".cat-dot").get_attribute("aria-hidden"), "true")
+        hues = page.evaluate(
+            f"new Set([...document.querySelectorAll('{ROWS} .cat-dot')].map(d => getComputedStyle(d).backgroundColor)).size")
+        self.assertGreaterEqual(hues, 6)
+
+    def test_search_highlight_count_and_flat_list(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "gripp")
+        marks = page.evaluate(f"[...document.querySelectorAll('{ROWS} mark')].map(m => m.textContent)")
+        self.assertTrue(marks)
+        self.assertTrue(all(m.lower() == "gripp" for m in marks))
+        n = len(self.names(page))
+        self.assertEqual(page.inner_text("#disease-count"), f"{n} ta natija")
+        self.assertEqual(page.get_attribute("#disease-count", "role"), "status")
+        self.assertEqual(page.locator("#disease-list-container .letter-header").count(), 0)   # filtrda harflarsiz
+        page.fill("#disease-search-input", "ogrig")                         # apostroflarsiz: "og'rig'i"
+        self.assertTrue(self.names(page))
+        self.assertTrue(all(m.lower().replace("'", "") == "ogrig" for m in
+                            page.evaluate(f"[...document.querySelectorAll('{ROWS} mark')].map(m => m.textContent)")))
+        page.click("#search-clear-btn")
+        self.assertFalse(page.is_visible("#disease-count"))
+
+    def test_highlight_never_injects_html(self):
+        page = self.open_tab()
+        page.evaluate("""DISEASES_DATA.push({ name: '<img src=x onerror="window.__xss=1">Zzz', cat: 'Umumiy',
+                                              desc: '', symptoms: [], firstAid: '' }); applyDiseaseFilter()""")
+        page.fill("#disease-search-input", "zzz")
+        self.assertEqual(page.locator(f"{ROWS} img").count(), 0)
+        self.assertIn("<img", self.names(page)[0])
+        self.assertIsNone(page.evaluate("window.__xss"))
+
+    def test_empty_state_offers_ai(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "xyzxyz")
+        self.assertTrue(page.is_visible("#disease-empty .empty-icon svg"))
+        self.assertEqual(page.inner_text("#disease-empty .empty-title"), "Topilmadi")
+        self.assertFalse(page.is_visible("#disease-count"))
+        page.click("#disease-ask-ai")
+        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
+
+    def test_entry_animation_respects_reduced_motion(self):
+        page = self.open_tab()
+        page.click('#disease-cats [data-cat="Yurak"]')
+        self.assertEqual(page.evaluate(
+            "getComputedStyle(document.querySelector('#disease-list-container .inset-group')).animationName"), "row-in")
+        page.emulate_media(reduced_motion="reduce")
+        page.click('#disease-cats [data-cat="Travma"]')
+        self.assertFalse(page.evaluate(
+            "document.getElementById('disease-list-container').classList.contains('animate-in')"))
+        self.assertEqual(page.evaluate(
+            "getComputedStyle(document.querySelector('#disease-list-container .list-row')).transitionDuration"), "0s")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -157,10 +157,17 @@
                     </label>
                     <div class="chip-scroll" id="disease-cats" role="tablist" aria-label="Kategoriyalar"></div>
                 </div>
+                <p class="result-count" id="disease-count" role="status" aria-live="polite" hidden></p>
                 <div class="disease-groups" id="disease-list-container">
                     <!-- Alifbo bo'yicha guruhlar JS bilan yaratiladi -->
                 </div>
-                <p class="list-empty" id="disease-empty" hidden>Natija topilmadi</p>
+                <nav class="az-index" id="disease-az" aria-label="Alifbo bo'yicha o'tish"></nav>
+                <div class="empty-state" id="disease-empty" hidden>
+                    <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></div>
+                    <h2 class="empty-title">Topilmadi</h2>
+                    <p class="empty-text">Bu nom bo'yicha kasallik topilmadi. Savolingizni AI konsultantga yozing.</p>
+                    <button type="button" class="btn-secondary" id="disease-ask-ai"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg><span>AI'dan so'rash</span></button>
+                </div>
             </section>
 
             <!-- TAB 3: KALKULYATOR -->

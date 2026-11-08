@@ -717,7 +717,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFirstAidGrid();
             initFirstAidSearch();
             initHomeActions();
-            renderDiseases(DISEASES_DATA);
             initSearch();
             initCalculators();
             initOverlay();
@@ -1091,40 +1090,162 @@ function letterRank(letter) {
     return i === -1 ? 100 + letter.charCodeAt(0) : i;
 }
 
-function renderDiseases(data) {
+// Kategoriya -> rang guruhi (faqat bezak nuqtasi; kategoriya nomi matn sifatida ham yoziladi)
+const CAT_HUE = {
+    Yurak: 'red', Qon: 'red', Travma: 'red',
+    Nafas: 'blue', Tomoq: 'blue', Quloq: 'blue', "Ko'z": 'blue', "Og'iz": 'blue',
+    Oshqozon: 'teal', Ichak: 'teal', Jigar: 'teal', Metabolizm: 'teal', Endokrin: 'teal',
+    Teriga: 'amber', Tish: 'amber',
+    Ruhiy: 'violet', Asab: 'violet', Miya: 'violet',
+    Yuqumli: 'green', Infeksiya: 'green', Profilaktika: 'green',
+    Tanosil: 'pink', Siydik: 'pink', Buyrak: 'pink',
+    Tayanch: 'slate', Umumiy: 'slate'
+};
+
+function catDot(cat) {
+    const dot = document.createElement('span');
+    dot.className = 'cat-dot cat--' + (CAT_HUE[cat] || 'slate');
+    dot.setAttribute('aria-hidden', 'true');
+    return dot;
+}
+
+// Mos kelgan qismni <mark> bilan belgilaydi. Solishtirish normalizeSearch() bilan bir xil (apostroflarsiz).
+// Xavfsiz: faqat text node'lar, innerHTML ishlatilmaydi.
+function setHighlighted(el, text, q) {
+    el.textContent = '';
+    let norm = '';
+    const map = [];
+    for (let i = 0; i < text.length; i++) {
+        if (/['ʻʼ‘’`´]/.test(text[i])) continue;
+        norm += text[i].toLowerCase();
+        map.push(i);
+    }
+    const at = q ? norm.indexOf(q) : -1;
+    if (at === -1) { el.append(text); return; }
+    const start = map[at];
+    const end = map[at + q.length - 1] + 1;
+    const mark = document.createElement('mark');
+    mark.textContent = text.slice(start, end);
+    el.append(text.slice(0, start), mark, text.slice(end));
+}
+
+function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function renderDiseases(data, opts) {
+    opts = opts || {};
+    const q = opts.query || '';
     const container = document.getElementById('disease-list-container');
     const empty = document.getElementById('disease-empty');
     container.innerHTML = '';
     if (empty) empty.hidden = data.length !== 0;
-    if (data.length === 0) return;
 
     const groups = {};
     data.forEach(item => {
         const letter = (displayTitle(item.name).charAt(0) || '#').toUpperCase();
         (groups[letter] = groups[letter] || []).push(item);
     });
-    Object.keys(groups).sort((x, y) => letterRank(x) - letterRank(y)).forEach(letter => {
-        const header = document.createElement('h2');
-        header.className = 'letter-header';
-        header.textContent = letter;
-        container.appendChild(header);
+    const letters = Object.keys(groups).sort((x, y) => letterRank(x) - letterRank(y));
+    // Filtr (qidiruv yoki kategoriya) faol bo'lsa — harf sarlavhalarisiz bitta ro'yxat
+    const flat = !!q || diseaseCategory !== 'all';
+    const sections = flat ? (letters.length ? [{ letter: null, items: [].concat(...letters.map(l => groups[l])) }] : [])
+                          : letters.map(l => ({ letter: l, items: groups[l] }));
+    sections.forEach(({ letter, items }) => {
+        if (letter) {
+            const header = document.createElement('h2');
+            header.className = 'letter-header';
+            header.setAttribute('data-letter', letter);
+            header.textContent = letter;
+            container.appendChild(header);
+        }
 
         const group = document.createElement('div');
         group.className = 'inset-group';
-        groups[letter]
-            .sort((p, q) => p.name.localeCompare(q.name, 'uz'))
+        items
+            .sort((p, r) => letterRank(displayTitle(p.name).charAt(0).toUpperCase()) - letterRank(displayTitle(r.name).charAt(0).toUpperCase())
+                            || p.name.localeCompare(r.name, 'uz'))
             .forEach(item => {
                 const row = document.createElement('button');
                 row.type = 'button';
                 row.className = 'list-row';
-                row.innerHTML = `<span class="row-text"><span class="row-title"></span><span class="row-sub"></span></span>${svgIcon('chevron-right', 'row-chevron')}`;
-                row.querySelector('.row-title').textContent = item.name;
-                row.querySelector('.row-sub').textContent = item.cat;
+                row.innerHTML = `<span class="row-text"><span class="row-title"></span><span class="row-sub"><span class="row-cat"></span></span></span>${svgIcon('chevron-right', 'row-chevron')}`;
+                setHighlighted(row.querySelector('.row-title'), item.name, q);
+                const sub = row.querySelector('.row-sub');
+                sub.insertBefore(catDot(item.cat), sub.firstChild);
+                setHighlighted(row.querySelector('.row-cat'), item.cat, q);
                 row.addEventListener('click', () => openDiseaseDetail(item));
                 group.appendChild(row);
             });
         container.appendChild(group);
     });
+
+    container.classList.remove('animate-in');
+    if (opts.animate && !prefersReducedMotion()) {
+        void container.offsetWidth;                       // animatsiyani qayta boshlash
+        container.classList.add('animate-in');
+        setTimeout(() => container.classList.remove('animate-in'), 400);
+    }
+    renderAzIndex(letters, !q && diseaseCategory === 'all' && data.length > 0);
+}
+
+// ── A–Z tezkor indeks (o'ng chetda). Qidiruv yoki kategoriya faol bo'lsa yashirin. ──
+function scrollToLetter(letter, focusRow) {
+    const header = document.querySelector(`#disease-list-container .letter-header[data-letter="${CSS.escape(letter)}"]`);
+    const content = document.querySelector('.app-content');
+    if (!header || !content) return;
+    const tools = document.querySelector('#tab-diseases .sticky-tools');
+    const offset = header.getBoundingClientRect().top - content.getBoundingClientRect().top - (tools ? tools.offsetHeight : 0) - 4;
+    content.scrollTop += offset;
+    if (focusRow) {
+        const row = header.nextElementSibling && header.nextElementSibling.querySelector('.list-row');
+        if (row) row.focus({ preventScroll: true });
+    }
+}
+
+function renderAzIndex(letters, visible) {
+    const nav = document.getElementById('disease-az');
+    if (!nav) return;
+    nav.hidden = !visible;
+    document.getElementById('tab-diseases').classList.toggle('az-on', visible);
+    if (nav.getAttribute('data-letters') === letters.join('')) return;
+    nav.setAttribute('data-letters', letters.join(''));
+    nav.innerHTML = '';
+    letters.forEach(letter => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = letter;
+        btn.setAttribute('data-letter', letter);
+        btn.setAttribute('aria-label', `${letter} harfiga o'tish`);
+        // Klaviatura (detail === 0) — fokus ham guruhning birinchi qatoriga o'tadi
+        btn.addEventListener('click', (e) => scrollToLetter(letter, e.detail === 0));
+        nav.appendChild(btn);
+    });
+}
+
+function initAzScrub() {
+    const nav = document.getElementById('disease-az');
+    if (!nav) return;
+    let active = false, last = null;
+    const pick = (e) => {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const btn = el && el.closest && el.closest('#disease-az button');
+        if (!btn) return;
+        const letter = btn.getAttribute('data-letter');
+        if (letter === last) return;
+        last = letter;
+        scrollToLetter(letter, false);
+        try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (err) { /* yo'q */ }
+    };
+    nav.addEventListener('pointerdown', (e) => {
+        active = true; last = null;
+        try { nav.setPointerCapture(e.pointerId); } catch (err) { /* eski brauzer */ }
+        pick(e);
+    });
+    nav.addEventListener('pointermove', (e) => { if (active) pick(e); });
+    const stop = () => { active = false; };
+    nav.addEventListener('pointerup', stop);
+    nav.addEventListener('pointercancel', stop);
 }
 
 // OPEN DISEASE DETAILS
@@ -1139,14 +1260,61 @@ function openDiseaseDetail(item) {
 // SEARCH + KATEGORIYA CHIPLARI
 let diseaseCategory = 'all';
 
-function applyDiseaseFilter() {
+function applyDiseaseFilter(animate) {
     const input = document.getElementById('disease-search-input');
     const q = normalizeSearch(input ? input.value.trim() : '');
     const filtered = DISEASES_DATA.filter(item =>
         (diseaseCategory === 'all' || item.cat === diseaseCategory) &&
         (!q || normalizeSearch(item.name + ' ' + item.cat).includes(q))
     );
-    renderDiseases(filtered);
+    renderDiseases(filtered, { query: q, animate: !!animate });
+    const count = document.getElementById('disease-count');
+    if (count) {
+        const filteredOn = !!q || diseaseCategory !== 'all';
+        count.hidden = !filteredOn || filtered.length === 0;
+        count.textContent = filteredOn ? `${filtered.length} ta natija` : '';
+    }
+}
+
+// Chiplar qatori: o'ng chetda fade (skroll borligi ko'rinadi); oxiriga yetganda fade olinadi
+function updateChipFade(bar) {
+    bar.classList.toggle('at-end', bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 2);
+}
+
+// Faol chip ko'rinadigan joyga o'zi skroll qiladi (faqat gorizontal)
+function revealChip(bar, chip) {
+    const b = bar.getBoundingClientRect();
+    const c = chip.getBoundingClientRect();
+    let dx = 0;
+    if (c.right > b.right - 40) dx = c.right - b.right + 48;
+    else if (c.left < b.left + 8) dx = c.left - b.left - 16;
+    if (!dx) return;
+    const left = Math.max(0, Math.min(bar.scrollLeft + dx, bar.scrollWidth - bar.clientWidth));
+    bar.classList.toggle('at-end', left >= bar.scrollWidth - bar.clientWidth - 2);   // silliq skroll tugashini kutmaymiz
+    if (bar.scrollTo && !prefersReducedMotion()) bar.scrollTo({ left: left, behavior: 'smooth' });
+    else bar.scrollLeft = left;
+}
+
+function selectDiseaseCategory(cat, focus) {
+    const bar = document.getElementById('disease-cats');
+    diseaseCategory = cat;
+    let chosen = null;
+    bar.querySelectorAll('.cat-chip').forEach(c => {
+        const on = c.getAttribute('data-cat') === cat;
+        c.setAttribute('aria-selected', on ? 'true' : 'false');
+        c.tabIndex = on ? 0 : -1;
+        if (on) chosen = c;
+    });
+    if (chosen) {
+        if (focus) chosen.focus({ preventScroll: true });
+        revealChip(bar, chosen);
+    }
+    const content = document.querySelector('.app-content');
+    applyDiseaseFilter(true);
+    if (content) {
+        const head = document.querySelector('#tab-diseases .sticky-tools');
+        if (head && content.scrollTop > head.offsetTop) content.scrollTop = head.offsetTop;   // ro'yxat boshiga
+    }
 }
 
 function renderDiseaseCategories() {
@@ -1163,33 +1331,55 @@ function renderDiseaseCategories() {
         chip.setAttribute('role', 'tab');
         chip.setAttribute('data-cat', cat);
         chip.setAttribute('aria-selected', cat === diseaseCategory ? 'true' : 'false');
-        chip.textContent = cat === 'all' ? 'Hammasi' : cat;
-        chip.addEventListener('click', () => {
-            diseaseCategory = cat;
-            bar.querySelectorAll('.cat-chip').forEach(c => c.setAttribute('aria-selected', c === chip ? 'true' : 'false'));
-            applyDiseaseFilter();
-        });
+        chip.tabIndex = cat === diseaseCategory ? 0 : -1;
+        if (cat !== 'all') chip.appendChild(catDot(cat));
+        chip.append(cat === 'all' ? 'Hammasi' : cat);
+        chip.addEventListener('click', () => selectDiseaseCategory(cat, false));
         bar.appendChild(chip);
     });
+    // Klaviatura: ←/→, Home/End (roving tabindex)
+    bar.addEventListener('keydown', (e) => {
+        const chips = [...bar.querySelectorAll('.cat-chip')];
+        const i = chips.indexOf(document.activeElement);
+        if (i === -1) return;
+        let j = null;
+        if (e.key === 'ArrowRight') j = Math.min(i + 1, chips.length - 1);
+        else if (e.key === 'ArrowLeft') j = Math.max(i - 1, 0);
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = chips.length - 1;
+        if (j === null) return;
+        e.preventDefault();
+        selectDiseaseCategory(chips[j].getAttribute('data-cat'), true);
+    });
+    bar.addEventListener('scroll', () => updateChipFade(bar), { passive: true });
+    updateChipFade(bar);
 }
 
 function initSearch() {
     const input = document.getElementById('disease-search-input');
     const clearBtn = document.getElementById('search-clear-btn');
     renderDiseaseCategories();
+    initAzScrub();
+    applyDiseaseFilter(true);
 
     input.addEventListener('input', () => {
         clearBtn.hidden = input.value.length === 0;
-        applyDiseaseFilter();
+        applyDiseaseFilter(false);
     });
 
     clearBtn.addEventListener('click', (e) => {
         e.preventDefault();
         input.value = '';
         clearBtn.hidden = true;
-        applyDiseaseFilter();
+        applyDiseaseFilter(false);
         input.focus();
     });
+
+    const ask = document.getElementById('disease-ask-ai');
+    if (ask) ask.addEventListener('click', askAiInBot);
+    // Tab birinchi marta ko'ringanda chiplar o'lchami ma'lum bo'ladi
+    document.querySelectorAll('.nav-btn[data-tab="tab-diseases"]').forEach(b =>
+        b.addEventListener('click', () => updateChipFade(document.getElementById('disease-cats'))));
 }
 
 // OVERLAY CONTROLS
