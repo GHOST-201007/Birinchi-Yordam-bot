@@ -82,8 +82,10 @@ class DetailE2ETest(MiniAppE2EBase):
     def test_disease_detail(self):
         page, _ = self.open_app({})
         page.click('nav [data-tab="tab-diseases"]')
-        first = page.evaluate("DISEASES_DATA[0]")
-        page.locator("#disease-list-container .disease-item, #disease-list-container .list-row").first.click()
+        row = page.locator("#disease-list-container .list-row").first             # ro'yxat alifbo tartibida
+        name = row.locator(".row-title").inner_text()
+        first = page.evaluate("(n) => DISEASES_DATA.find(d => d.name === n)", name)
+        row.click()
         page.wait_for_selector("#overlay-details.active")
         self.assertEqual(page.inner_text("#overlay-title"), first["name"])
         self.assertEqual(page.inner_text("#overlay-chips .chip"), first["cat"])
