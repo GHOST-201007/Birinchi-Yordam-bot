@@ -267,7 +267,7 @@ const AppNavigation = (function () {
 
     // Telegram ichida o'z tugmamiz o'rniga tg.BackButton (stek bo'sh bo'lmasa ko'rinadi)
     function tgBackButton() {
-        return (tg && tg.BackButton) ? tg.BackButton : null;
+        return (tg && tg.initData && tg.BackButton) ? tg.BackButton : null;
     }
 
     function updateBtn() {
@@ -1025,6 +1025,103 @@ function detailSection(title, inner) {
     return `<section class="detail-block"><h2 class="detail-h">${title}</h2>${inner}</section>`;
 }
 
+// HTML qatorni oddiy matnga (ulashish uchun)
+function plainText(htmlText) {
+    const d = document.createElement('div');
+    d.innerHTML = String(htmlText || '');
+    return d.textContent.replace(/\s+/g, ' ').trim();
+}
+
+// "Qilmang!" matnini bandlarga ajratadi: "!" bilan tugagan har gap — alohida band, izoh gaplar oldingi bandga qo'shiladi.
+// Matnning o'zi o'zgarmaydi (faqat bo'linadi).
+function splitProhibited(text) {
+    const parts = String(text || '').split(/(?<=[!.])\s+/).filter(Boolean);
+    const out = [];
+    parts.forEach(p => {
+        if (out.length && !/!$/.test(p)) out[out.length - 1] += ' ' + p;   // izoh gap — oldingi bandga
+        else out.push(p);
+    });
+    return out;
+}
+
+// ── Toast (qisqa xabar) ──
+let toastTimer = null;
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+}
+
+// ── Ulashish: matnni nusxalash (tg.shareToStory rasm talab qiladi — bu yerda mos emas) ──
+let detailShareText = '';
+function copyText(text) {
+    const fallback = () => {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.className = 'sr-only';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            ta.remove();
+            return ok;
+        } catch (e) { return false; }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => fallback());
+    }
+    return Promise.resolve(fallback());
+}
+
+function shareDetail() {
+    if (!detailShareText) return;
+    copyText(detailShareText).then(ok => {
+        showToast(ok ? "Matn nusxalandi — xohlagan chatga yuboring" : "Nusxalab bo'lmadi");
+        try { if (ok && tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); } catch (e) { /* yo'q */ }
+    });
+}
+
+// ── Qadamlarni belgilash: faqat sahifa ochiq turganda (saqlanmaydi) ──
+function updateStepsProgress() {
+    const steps = document.querySelectorAll('#overlay-body-content .timeline-btn');
+    if (!steps.length) return;
+    const done = document.querySelectorAll('#overlay-body-content .timeline-btn[aria-checked="true"]').length;
+    const label = document.getElementById('steps-progress-count');
+    if (label) label.textContent = `${done}/${steps.length}`;
+    const fill = document.getElementById('steps-bar-fill');
+    if (fill) fill.style.width = `${Math.round(done / steps.length * 100)}%`;
+}
+
+function initStepToggles() {
+    document.querySelectorAll('#overlay-body-content .timeline-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const on = btn.getAttribute('aria-checked') !== 'true';
+            btn.setAttribute('aria-checked', on ? 'true' : 'false');
+            btn.closest('.timeline-step').classList.toggle('done', on);
+            updateStepsProgress();
+            try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (e) { /* yo'q */ }
+        });
+    });
+    updateStepsProgress();
+}
+
+// ── Sticky sarlavha: katta sarlavha ko'rinmay qolganda ixcham holat ──
+function updateDetailBar() {
+    const overlay = document.getElementById('overlay-details');
+    const bar = document.getElementById('detail-bar');
+    const title = document.getElementById('overlay-title');
+    if (!overlay || !bar || !title) return;
+    // Katta sarlavha panel ostiga kirib ketgach (Telegram ichida panel bo'sh — kamida 24px skrolldan keyin)
+    const threshold = Math.max(24, title.offsetTop + title.offsetHeight - bar.offsetHeight);
+    bar.classList.toggle('compact', overlay.scrollTop > threshold);
+}
+
+let detailOpener = null;
+
 function closeDetail() {
     document.getElementById('overlay-details').classList.remove('active');
     MainButtonCtl.clear();
@@ -1032,54 +1129,93 @@ function closeDetail() {
     if (fb) fb.hidden = true;
     AppNavigation.pop();
     syncCalcMainButton();
+    // Fokus detalni ochgan elementga qaytadi (klaviatura / ekran o'quvchi)
+    if (detailOpener && document.body.contains(detailOpener)) {
+        try { detailOpener.focus({ preventScroll: true }); } catch (e) { /* eski brauzer */ }
+    }
+    detailOpener = null;
 }
 
 // Detal sahifani ochadi (birinchi yordam va kasallik uchun umumiy)
-function showDetail(titleText, chipsHtml, bodyHtml, mainButton) {
+function showDetail(titleText, chipsHtml, bodyHtml, mainButton, extra) {
+    extra = extra || {};
     const overlay = document.getElementById('overlay-details');
+    detailOpener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
     document.getElementById('overlay-title').textContent = titleText;
     document.getElementById('overlay-chips').innerHTML = chipsHtml;
+    document.getElementById('detail-bar-name').textContent = titleText;
+    document.getElementById('detail-bar-chip').innerHTML = chipsHtml;
     document.getElementById('overlay-body-content').innerHTML = bodyHtml;
+    detailShareText = extra.shareText || '';
+    const ai = document.getElementById('detail-ai-btn');
+    if (ai) ai.hidden = !extra.secondaryAi;
+    initStepToggles();
     overlay.classList.add('active');
     overlay.scrollTop = 0;
+    document.getElementById('detail-bar').classList.remove('compact');
     const fb = document.getElementById('detail-main-fallback');
     if (fb) fb.hidden = !mainButton;
     if (mainButton) MainButtonCtl.set(Object.assign({ owner: 'detail' }, mainButton), fb); else MainButtonCtl.clear();
     AppNavigation.push({ type: 'detail', close: closeDetail });
+    try { document.getElementById('overlay-title').focus({ preventScroll: true }); } catch (e) { /* eski brauzer */ }
 }
 
 function openFirstAidDetail(item) {
     const urg = URGENCY_CHIPS[item.urgency] || URGENCY_CHIPS.medium;
     const chips = `<span class="chip ${urg.cls}">${urg.label}</span>`;
+    const severe = item.urgency === 'critical';
+    const has103 = item.whenToCall103 && item.whenToCall103.length;
 
-    const steps = `<ol class="timeline">${item.steps.map((step, idx) => `
-        <li class="timeline-step"><span class="timeline-num tabular" aria-hidden="true">${idx + 1}</span><div class="timeline-text">${step}</div></li>`).join('')}
-    </ol>`;
+    const callCard = (top) => `<section class="call-card${top ? ' call-card--top' : ''}">
+            <h2 class="detail-h">${top ? svgIcon('siren') : ''}<span>Qachon 103 chaqirish kerak?</span></h2>
+            ${has103 ? `<ul class="dot-list">${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}</ul>` : ''}
+            <a href="tel:103" class="call-btn">${svgIcon('phone')}<span>103 — Tez yordam</span></a>
+        </section>`;
 
-    let html = `<p class="detail-lead">${item.desc}</p>`;
+    let html = '';
+    // Eng tepada: kritik holatda 103 kartasi, aks holda xavfsizlik eslatmasi
+    if (severe) {
+        html += callCard(true);
+    } else {
+        html += `<div class="safety-row" role="note">${svgIcon('shield-check')}<span><strong>Avval xavfsizlikni tekshiring.</strong> O'zingiz va bemor uchun xavf yo'qligiga ishonch hosil qiling.</span></div>`;
+    }
+    html += `<p class="detail-lead">${item.desc}</p>`;
     if (item.symptoms && item.symptoms.length) {
         html += detailSection('Alomatlar', `<div class="chips-wrap">${item.symptoms.map(s => `<span class="symptom-tag">${s}</span>`).join('')}</div>`);
     }
-    html += detailSection('Bosqichma-bosqich yordam', steps);
-    html += `<section class="dont-card" role="note">
-        <h2 class="dont-title">${svgIcon('alert-triangle')}<span>Qilmang!</span></h2>
-        <p>${item.prohibited}</p>
+    const steps = `<ol class="timeline">${item.steps.map((step, idx) => `
+        <li class="timeline-step"><button type="button" class="timeline-btn" role="checkbox" aria-checked="false">
+            <span class="timeline-num tabular" aria-hidden="true"><span class="timeline-n">${idx + 1}</span>${svgIcon('check', 'timeline-check')}</span>
+            <span class="timeline-text">${step}</span>
+        </button></li>`).join('')}
+    </ol>`;
+    html += `<section class="detail-block">
+        <div class="steps-head">
+            <h2 class="detail-h">Bosqichma-bosqich yordam</h2>
+            <span class="steps-progress" aria-live="polite"><span class="tabular" id="steps-progress-count">0/${item.steps.length}</span><span class="sr-only"> qadam bajarildi</span></span>
+        </div>
+        <div class="steps-bar" aria-hidden="true"><span id="steps-bar-fill"></span></div>
+        <p class="steps-hint">Bajarilgan qadamni belgilash uchun ustiga bosing</p>
+        ${steps}
+    </section>`;
+    html += `<section class="dont-card" role="note" aria-label="Qilmang">
+        <h2 class="dont-title">${svgIcon('ban')}<span>Qilmang!</span></h2>
+        <ul class="dont-list">${splitProhibited(item.prohibited).map(p => `<li><span class="dont-x" aria-hidden="true">${svgIcon('x')}</span><span>${p}</span></li>`).join('')}</ul>
     </section>`;
     if (item.tips && item.tips.length) {
         html += detailSection('Foydali maslahatlar', `<ul class="dot-list">${item.tips.map(t => `<li>${t}</li>`).join('')}</ul>`);
     }
-    if (item.whenToCall103 && item.whenToCall103.length) {
-        html += `<section class="call-card">
-            <h2 class="detail-h">Qachon 103 chaqirish kerak?</h2>
-            <ul class="dot-list">${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}</ul>
-            <a href="tel:103" class="call-btn">${svgIcon('phone')}<span>103 — Tez yordam</span></a>
-        </section>`;
-    }
+    if (!severe && has103) html += callCard(false);
 
-    const severe = item.urgency === 'critical';
+    const share = [plainText(item.title), '', 'Bosqichma-bosqich yordam:']
+        .concat(item.steps.map((s, i) => `${i + 1}. ${plainText(s)}`))
+        .concat(['', 'Qilmang:'], splitProhibited(item.prohibited).map(p => '✕ ' + plainText(p)))
+        .concat(['', "Og'ir holatda: 103 — Tez yordam", 'Birinchi Yordam bot: https://t.me/' + BOT_USERNAME]);
+
     showDetail(item.title, chips, html, severe
         ? { text: "103 ga qo'ng'iroq", color: '#C9343A', textColor: '#FFFFFF', onClick: dial103 }
-        : { text: "AI'dan so'rash", onClick: askAiInBot });
+        : { text: "AI'dan so'rash", onClick: askAiInBot },
+        { shareText: share.join('\n'), secondaryAi: severe });
 }
 
 // RENDER DISEASES — alifbo harflari bo'yicha guruhlangan inset ro'yxat (4.4-D)
@@ -1254,7 +1390,9 @@ function openDiseaseDetail(item) {
     let html = detailSection('Kasallik tavsifi', `<p>${item.desc}</p>`);
     html += detailSection('Birinchi yordam va chora', `<div class="aid-card"><p>${item.aid}</p></div>`);
     html += `<p class="detail-note">Har qanday kasallikda o'z-o'zini davolashdan ko'ra, malakali shifokor ko'rigidan o'tish tavsiya etiladi.</p>`;
-    showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiInBot });
+    const share = [item.name, '', 'Kasallik tavsifi: ' + plainText(item.desc), '', 'Birinchi yordam va chora: ' + plainText(item.aid),
+                   '', 'Birinchi Yordam bot: https://t.me/' + BOT_USERNAME].join('\n');
+    showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiInBot }, { shareText: share, secondaryAi: false });
 }
 
 // SEARCH + KATEGORIYA CHIPLARI
@@ -1388,6 +1526,13 @@ function initOverlay() {
     const overlay = document.getElementById('overlay-details');
 
     closeBtn.addEventListener('click', closeDetail);
+    overlay.addEventListener('scroll', updateDetailBar, { passive: true });
+    document.getElementById('detail-share-btn').addEventListener('click', shareDetail);
+    document.getElementById('detail-ai-btn').addEventListener('click', askAiInBot);
+    // Klaviatura: Esc — detalni yopadi
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.classList.contains('active')) closeDetail();
+    });
 }
 
 // CALCULATORS (4.4-E). Formulalar o'zgarmagan; "Hisoblash" — MainButton (Telegram) yoki sahifadagi tugma.
