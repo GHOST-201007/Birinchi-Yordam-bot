@@ -197,6 +197,53 @@ class DiseasesE2ETest(MiniAppE2EBase):
         self.assertEqual(page.evaluate(
             "getComputedStyle(document.querySelector('#disease-list-container .list-row')).transitionDuration"), "0s")
 
+    # ---- Kasalliklar (2): tartib, alomatlar bo'yicha qidiruv, sticky harflar ----------------------------------------
+    def test_search_order_prefix_then_mid_word_alphabetical_inside(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "gri")
+        names = self.names(page)
+        self.assertEqual(names[:2], ["Gribok", "Gripp"])                    # so'z boshidan — birinchi
+        self.assertTrue(all("og'rig'i" in n for n in names[2:]), names)      # so'z o'rtasidan — keyin
+        ranks = page.evaluate("""(q) => [...document.querySelectorAll('#disease-list-container .list-row .row-title')]
+            .map(e => diseaseMatchRank(DISEASES_DATA.find(d => d.name === e.textContent), q))""", "gri")
+        self.assertEqual(ranks, sorted(ranks))
+        self.assertEqual(page.locator(f"{ROWS} .row-match").count(), 0)      # tavsifdagi "og'riq" hisoblanmaydi
+        expected = page.evaluate("""(n) => n.map(x => DISEASES_DATA.find(d => d.name === x)).sort(compareDiseaseNames).map(d => d.name)""",
+                                 names[2:])
+        self.assertEqual(names[2:], expected)                               # daraja ichida alifbo
+
+    def test_symptom_search_shows_matching_fragment(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "harorat")
+        names = self.names(page)
+        self.assertIn("Gripp", names)
+        self.assertTrue(all("harorat" not in n.lower() for n in names))
+        rows = page.locator(ROWS)
+        for i in range(rows.count()):
+            self.assertEqual(rows.nth(i).locator(".row-match mark").inner_text().lower(), "harorat")
+        self.assertEqual(page.inner_text("#disease-count"), f"{len(names)} ta natija")
+
+    def test_short_query_does_not_search_description(self):
+        page = self.open_tab()
+        page.fill("#disease-search-input", "yu")
+        self.assertEqual(page.locator(f"{ROWS} .row-match").count(), 0)
+
+    def test_regex_special_characters_are_safe(self):
+        page = self.open_tab()
+        for q in ("(((", "a+b?", "[xq", "\\\\"):
+            page.fill("#disease-search-input", q)                            # sahifada xato bo'lmasligi (base tekshiradi)
+            self.assertTrue(page.is_visible("#disease-empty"), q)
+
+    def test_letter_headers_stick_under_search_panel(self):
+        page = self.open_tab()
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.letter-header')).position"), "sticky")
+        page.evaluate("document.querySelector('.app-content').scrollTop = 1400")
+        page.wait_for_timeout(100)
+        tools = page.locator("#tab-diseases .sticky-tools").bounding_box()
+        tops = page.evaluate("[...document.querySelectorAll('#disease-list-container .letter-header')].map(h => h.getBoundingClientRect().top)")
+        bottom = tools["y"] + tools["height"]
+        self.assertTrue(any(abs(t - bottom) < 2 for t in tops), (bottom, tops[:6]))  # bitta harf panel ostida qotgan
+
 
 if __name__ == "__main__":
     unittest.main()

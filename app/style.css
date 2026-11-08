@@ -2573,13 +2573,19 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     color: var(--on-primary);
 }
 
+/* Harf sarlavhasi skrollda qidiruv paneli ostida sticky turadi */
 .letter-header {
-    margin: var(--s-4) 0 var(--s-2) var(--s-1);
+    position: sticky;
+    top: var(--tools-h, 0px);
+    z-index: 4;
+    margin: var(--s-2) calc(-1 * var(--s-4)) 0;
+    padding: var(--s-2) calc(var(--s-4) + var(--s-1)) var(--s-2);
+    background: var(--bg);
     font-size: 13px;
     font-weight: 700;
     color: var(--text-2);
 }
-.disease-groups .letter-header:first-child { margin-top: var(--s-1); }
+.disease-groups .letter-header:first-child { margin-top: 0; }
 .disease-groups .inset-group { margin-bottom: 0; }
 .disease-groups .list-row { min-height: 56px; }
 .disease-groups .list-row + .list-row::before { left: var(--s-4); }
@@ -3302,4 +3308,16 @@ body.dark-mode .btn-danger-text { color: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
     .timeline-step.done .timeline-check { animation: none; }
     .collapse-chevron, .timeline-step.done .timeline-num { transition: none; }
+}
+
+/* Tavsifdagi alomat orqali topilgan qator: mos bo'lak */
+.row-match {
+    margin-top: 2px;
+    font-size: 14px;
+    line-height: 1.35;
+    color: var(--text-2);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }

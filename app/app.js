@@ -1306,6 +1306,19 @@ function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
+// Alifbo tartibi: o'zbek harflar ketma-ketligi, keyin localeCompare
+function compareDiseaseNames(p, r) {
+    return letterRank(displayTitle(p.name).charAt(0).toUpperCase()) - letterRank(displayTitle(r.name).charAt(0).toUpperCase())
+        || p.name.localeCompare(r.name, 'uz');
+}
+
+// Sticky harf sarlavhalari qidiruv paneli ostida to'xtashi uchun panel balandligi
+function syncStickyToolsHeight() {
+    const tab = document.getElementById('tab-diseases');
+    const tools = tab && tab.querySelector('.sticky-tools');
+    if (tools && tools.offsetHeight) tab.style.setProperty('--tools-h', tools.offsetHeight + 'px');
+}
+
 function renderDiseases(data, opts) {
     opts = opts || {};
     const q = opts.query || '';
@@ -1322,7 +1335,7 @@ function renderDiseases(data, opts) {
     const letters = Object.keys(groups).sort((x, y) => letterRank(x) - letterRank(y));
     // Filtr (qidiruv yoki kategoriya) faol bo'lsa — harf sarlavhalarisiz bitta ro'yxat
     const flat = !!q || diseaseCategory !== 'all';
-    const sections = flat ? (letters.length ? [{ letter: null, items: [].concat(...letters.map(l => groups[l])) }] : [])
+    const sections = flat ? (data.length ? [{ letter: null, items: data }] : [])
                           : letters.map(l => ({ letter: l, items: groups[l] }));
     sections.forEach(({ letter, items }) => {
         if (letter) {
@@ -1335,9 +1348,7 @@ function renderDiseases(data, opts) {
 
         const group = document.createElement('div');
         group.className = 'inset-group';
-        items
-            .sort((p, r) => letterRank(displayTitle(p.name).charAt(0).toUpperCase()) - letterRank(displayTitle(r.name).charAt(0).toUpperCase())
-                            || p.name.localeCompare(r.name, 'uz'))
+        (flat ? items : items.slice().sort(compareDiseaseNames))
             .forEach(item => {
                 const row = document.createElement('button');
                 row.type = 'button';
@@ -1347,6 +1358,14 @@ function renderDiseases(data, opts) {
                 const sub = row.querySelector('.row-sub');
                 sub.insertBefore(catDot(item.cat), sub.firstChild);
                 setHighlighted(row.querySelector('.row-cat'), item.cat, q);
+                const snippet = opts.snippets && opts.snippets.get(item);
+                if (snippet) {
+                    // Tavsifdagi alomat orqali topilgan: mos bo'lak kichik matn bilan
+                    const m = document.createElement('span');
+                    m.className = 'row-match';
+                    setHighlighted(m, snippet, q);
+                    row.querySelector('.row-text').appendChild(m);
+                }
                 row.addEventListener('click', () => openDiseaseDetail(item));
                 group.appendChild(row);
             });
@@ -1436,20 +1455,55 @@ function openDiseaseDetail(item) {
 // SEARCH + KATEGORIYA CHIPLARI
 let diseaseCategory = 'all';
 
+// Tavsifdan mos bo'lakni ajratadi (vergul/nuqta oralig'i, uzun bo'lsa moslik atrofida qisqartiriladi)
+// Tavsifda so'z boshidan moslik (so'z o'rtasidagi moslik — masalan "gri" ichida "og'riq" — hisoblanmaydi)
+function wordStartRe(q) {
+    return new RegExp('(^|[^\\p{L}\\p{N}])' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'u');
+}
+
+function descSnippet(desc, q) {
+    const re = wordStartRe(q);
+    const parts = String(desc || '').split(/[.,;:!?]/).map(s => s.trim()).filter(Boolean);
+    const hit = parts.find(s => re.test(normalizeSearch(s)));
+    if (!hit) return null;
+    if (hit.length <= 70) return hit;
+    const at = Math.max(0, normalizeSearch(hit).indexOf(q) - 25);
+    return (at > 0 ? '…' : '') + hit.slice(at, at + 64).trim() + '…';
+}
+
+// Moslik darajasi: 0 — so'z boshi (prefix), 1 — nom ichida, 2 — kategoriya, 3 — tavsif/alomat (>= 3 belgi, so'z boshidan).
+// -1 — mos emas
+function diseaseMatchRank(item, q) {
+    const name = normalizeSearch(item.name);
+    if (name.split(/[\s()\-\/,«»"]+/).some(w => w && w.startsWith(q))) return 0;
+    if (name.includes(q)) return 1;
+    if (normalizeSearch(item.cat).includes(q)) return 2;
+    if (q.length >= 3 && wordStartRe(q).test(normalizeSearch(item.desc))) return 3;
+    return -1;
+}
+
 function applyDiseaseFilter(animate) {
     const input = document.getElementById('disease-search-input');
     const q = normalizeSearch(input ? input.value.trim() : '');
-    const filtered = DISEASES_DATA.filter(item =>
-        (diseaseCategory === 'all' || item.cat === diseaseCategory) &&
-        (!q || normalizeSearch(item.name + ' ' + item.cat).includes(q))
-    );
-    renderDiseases(filtered, { query: q, animate: !!animate });
+    const snippets = new Map();
+    const ranked = [];
+    DISEASES_DATA.forEach(item => {
+        if (diseaseCategory !== 'all' && item.cat !== diseaseCategory) return;
+        const rank = q ? diseaseMatchRank(item, q) : 0;
+        if (rank === -1) return;
+        if (rank === 3) snippets.set(item, descSnippet(item.desc, q));
+        ranked.push({ item, rank });
+    });
+    ranked.sort((x, y) => x.rank - y.rank || compareDiseaseNames(x.item, y.item));
+    const filtered = ranked.map(r => r.item);
+    renderDiseases(filtered, { query: q, animate: !!animate, snippets });
     const count = document.getElementById('disease-count');
     if (count) {
         const filteredOn = !!q || diseaseCategory !== 'all';
         count.hidden = !filteredOn || filtered.length === 0;
         count.textContent = filteredOn ? `${filtered.length} ta natija` : '';
     }
+    syncStickyToolsHeight();
 }
 
 // Chiplar qatori: o'ng chetda fade (skroll borligi ko'rinadi); oxiriga yetganda fade olinadi
@@ -1555,7 +1609,8 @@ function initSearch() {
     if (ask) ask.addEventListener('click', askAiInBot);
     // Tab birinchi marta ko'ringanda chiplar o'lchami ma'lum bo'ladi
     document.querySelectorAll('.nav-btn[data-tab="tab-diseases"]').forEach(b =>
-        b.addEventListener('click', () => updateChipFade(document.getElementById('disease-cats'))));
+        b.addEventListener('click', () => { updateChipFade(document.getElementById('disease-cats')); syncStickyToolsHeight(); }));
+    window.addEventListener('resize', syncStickyToolsHeight);
 }
 
 // OVERLAY CONTROLS
