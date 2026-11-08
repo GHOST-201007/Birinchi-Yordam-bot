@@ -363,6 +363,8 @@ function applyTheme(mode) {
     // Telegram'ning yorug' mavzu ranglari faqat Telegram ham yorug' bo'lsa ishlatiladi (aks holda aralash ranglar)
     body.classList.toggle('tg-light', mode === 'light' && !!tg && tg.colorScheme === 'light');
     syncTelegramChrome();
+    // Grafik ranglari CSS tokenlaridan olinadi — mavzu o'zgarsa qayta chiziladi
+    if (document.getElementById('bmi-chart')) { try { drawChart(currentHistory); } catch (e) { /* hali tayyor emas */ } }
 }
 
 // Telegram sarlavha va fon rangini ilova tokenlariga moslaydi (--surface / --bg)
@@ -748,6 +750,7 @@ function showTab(tabId) {
     const content = document.querySelector('.app-content');
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
+    if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
 
 function initTabs() {
@@ -1960,27 +1963,27 @@ function saveHistory(type, data) {
     SafeStorage.setItem(key, JSON.stringify(arr));
 }
 
+let currentHistory = 'bmi';
+
 function initHistory() {
+    document.querySelectorAll('[data-history]').forEach(btn => {
+        btn.addEventListener('click', () => switchHistoryTab(btn.getAttribute('data-history')));
+    });
+    ['bmi', 'water'].forEach(type => {
+        document.getElementById(`btn-clear-${type}-history`).addEventListener('click', () => {
+            SafeStorage.removeItem(`history_${type}`);
+            renderHistoryLog();
+        });
+    });
     renderHistoryLog();
-    const btnBmi = document.getElementById('btn-clear-bmi-history');
-    if (btnBmi) {
-        btnBmi.addEventListener('click', () => {
-            SafeStorage.removeItem('history_bmi');
-            renderHistoryLog();
-        });
-    }
-    const btnWater = document.getElementById('btn-clear-water-history');
-    if (btnWater) {
-        btnWater.addEventListener('click', () => {
-            SafeStorage.removeItem('history_water');
-            renderHistoryLog();
-        });
-    }
+    // Grafik o'lchami faqat bo'lim ko'ringanda ma'lum — Tarix ochilganda qayta chiziladi
+    window.addEventListener('resize', () => drawChart(currentHistory));
 }
 
 function switchHistoryTab(type) {
-    document.querySelectorAll('.history-tab-btn').forEach((b, i) => {
-        b.classList.toggle('active', (i === 0 && type === 'bmi') || (i === 1 && type === 'water'));
+    currentHistory = type;
+    document.querySelectorAll('[data-history]').forEach(b => {
+        b.setAttribute('aria-selected', b.getAttribute('data-history') === type ? 'true' : 'false');
     });
     document.getElementById('history-bmi').classList.toggle('active', type === 'bmi');
     document.getElementById('history-water').classList.toggle('active', type === 'water');
@@ -1994,109 +1997,140 @@ function renderHistoryLog() {
     drawChart('water');
 }
 
+function readHistory(type) {
+    try { return JSON.parse(SafeStorage.getItem(`history_${type}`) || '[]'); } catch (e) { return []; }
+}
+
+// Log qatori: sana chapda, qiymat o'ngda (tabular). Qiymatlar textContent orqali.
+function historyRow(date, value, chip) {
+    const row = document.createElement('div');
+    row.className = 'list-row history-row';
+    row.innerHTML = '<span class="h-date"></span><span class="h-right"><span class="h-val tabular"></span></span>';
+    row.querySelector('.h-date').textContent = date;
+    row.querySelector('.h-val').textContent = value;
+    if (chip) {
+        const c = document.createElement('span');
+        c.className = 'chip ' + chip.cls;
+        c.textContent = chip.text;
+        row.querySelector('.h-right').appendChild(c);
+    }
+    return row;
+}
+
+function updateHistoryEmpty(type, count) {
+    const empty = document.getElementById(`${type}-chart-empty`);
+    const canvas = document.getElementById(`${type}-chart`);
+    const log = document.getElementById(`${type}-history-log`);
+    const clear = document.getElementById(`btn-clear-${type}-history`);
+    empty.hidden = count >= 2;
+    canvas.hidden = count < 2;
+    if (count === 1) empty.querySelector('span').textContent = "Grafik ikkinchi natijadan keyin paydo bo'ladi";
+    log.hidden = count === 0;
+    clear.hidden = count === 0;
+}
+
 function renderBmiLog() {
-    const arr = JSON.parse(SafeStorage.getItem('history_bmi') || '[]').slice().reverse();
+    const arr = readHistory('bmi');
     const log = document.getElementById('bmi-history-log');
-    const empty = document.getElementById('bmi-chart-empty');
     log.innerHTML = '';
-    if (arr.length === 0) { empty.style.display = 'flex'; return; }
-    empty.style.display = 'none';
-    arr.forEach(entry => {
-        const badgeClass = parseFloat(entry.bmi) < 18.5 ? 'low' : parseFloat(entry.bmi) < 25 ? 'normal' : 'high';
-        const badgeText = parseFloat(entry.bmi) < 18.5 ? 'Kam' : parseFloat(entry.bmi) < 25 ? 'Normal' : 'Yuqori';
-        log.innerHTML += `
-        <div class="history-log-item">
-            <span class="h-date">${entry.date}</span>
-            <span class="h-val">BMI: ${entry.bmi}</span>
-            <span class="h-badge ${badgeClass}">${badgeText}</span>
-        </div>`;
+    updateHistoryEmpty('bmi', arr.length);
+    arr.slice().reverse().forEach(entry => {
+        const v = parseFloat(entry.bmi);
+        const chip = v < 18.5 ? { text: 'Kam', cls: 'chip--warning' }
+                   : v < 25 ? { text: 'Normal', cls: 'chip--teal' }
+                   : { text: 'Yuqori', cls: 'chip--danger' };
+        log.appendChild(historyRow(entry.date, `BMI ${entry.bmi}`, chip));
     });
 }
 
 function renderWaterLog() {
-    const arr = JSON.parse(SafeStorage.getItem('history_water') || '[]').slice().reverse();
+    const arr = readHistory('water');
     const log = document.getElementById('water-history-log');
-    const empty = document.getElementById('water-chart-empty');
     log.innerHTML = '';
-    if (arr.length === 0) { empty.style.display = 'flex'; return; }
-    empty.style.display = 'none';
-    arr.forEach(entry => {
-        log.innerHTML += `
-        <div class="history-log-item">
-            <span class="h-date">${entry.date}</span>
-            <span class="h-val">${entry.liters} L</span>
-            <span class="h-badge normal">Hisoblandi</span>
-        </div>`;
+    updateHistoryEmpty('water', arr.length);
+    arr.slice().reverse().forEach(entry => {
+        log.appendChild(historyRow(entry.date, `${entry.liters} L`, null));
     });
 }
 
+// Grafik: bitta rang (--primary), to'r chiziqlari --separator, nuqtalar yo'q (faqat oxirgi qiymat), HiDPI
 function drawChart(type) {
-    const canvasId = type === 'bmi' ? 'bmi-chart' : 'water-chart';
-    const key = `history_${type}`;
-    const arr = JSON.parse(SafeStorage.getItem(key) || '[]');
-    const canvas = document.getElementById(canvasId);
+    const canvas = document.getElementById(type === 'bmi' ? 'bmi-chart' : 'water-chart');
+    if (!canvas) return;
+    const arr = readHistory(type);
+    const cssW = canvas.parentElement.clientWidth - 32;
+    if (arr.length < 2 || cssW <= 0) return;
+
+    const cs = getComputedStyle(document.body);
+    const color = cs.getPropertyValue('--primary').trim() || '#0A84C6';
+    const grid = cs.getPropertyValue('--separator').trim() || 'rgba(15,27,45,0.08)';
+    const muted = cs.getPropertyValue('--text-2').trim() || '#5E6B7E';
+    const font = cs.getPropertyValue('--font').trim() || 'sans-serif';
+
+    const cssH = 180;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
     const ctx = canvas.getContext('2d');
-
-    canvas.width = canvas.parentElement.clientWidth - 32;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (arr.length < 2) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
 
     const values = arr.map(e => parseFloat(type === 'bmi' ? e.bmi : e.liters));
     const labels = arr.map(e => e.date);
-    const min = Math.min(...values) * 0.9;
-    const max = Math.max(...values) * 1.1;
-    const w = canvas.width;
-    const h = canvas.height;
-    const pad = { top: 16, bottom: 30, left: 10, right: 10 };
-    const chartW = w - pad.left - pad.right;
-    const chartH = h - pad.top - pad.bottom;
+    let min = Math.min(...values), max = Math.max(...values);
+    const span = (max - min) || Math.max(1, max * 0.1);
+    min -= span * 0.15; max += span * 0.15;
+    const pad = { top: 12, bottom: 26, left: 4, right: 40 };
+    const w = cssW - pad.left - pad.right;
+    const h = cssH - pad.top - pad.bottom;
+    const toX = i => pad.left + (values.length === 1 ? w / 2 : i * w / (values.length - 1));
+    const toY = v => pad.top + h - ((v - min) / (max - min)) * h;
 
-    const xStep = chartW / (values.length - 1);
-    const toX = i => pad.left + i * xStep;
-    const toY = v => pad.top + chartH - ((v - min) / (max - min || 1)) * chartH;
+    // To'r chiziqlari va o'ng tomonda qiymatlar
+    ctx.font = `12px ${font}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    for (let k = 0; k <= 3; k++) {
+        const v = min + (max - min) * k / 3;
+        const y = toY(v);
+        ctx.strokeStyle = grid;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, Math.round(y) + 0.5);
+        ctx.lineTo(pad.left + w, Math.round(y) + 0.5);
+        ctx.stroke();
+        ctx.fillStyle = muted;
+        ctx.fillText(v.toFixed(1), pad.left + w + 6, y);
+    }
 
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
-    grad.addColorStop(0, 'rgba(0,122,255,0.25)');
-    grad.addColorStop(1, 'rgba(0,122,255,0.01)');
-
+    // Chiziq
     ctx.beginPath();
-    ctx.moveTo(toX(0), toY(values[0]));
-    values.forEach((v, i) => { if (i > 0) ctx.lineTo(toX(i), toY(v)); });
-    ctx.lineTo(toX(values.length - 1), h - pad.bottom);
-    ctx.lineTo(toX(0), h - pad.bottom);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Line
-    ctx.beginPath();
-    ctx.moveTo(toX(0), toY(values[0]));
-    values.forEach((v, i) => { if (i > 0) ctx.lineTo(toX(i), toY(v)); });
-    ctx.strokeStyle = '#007aff';
+    values.forEach((v, i) => { if (i === 0) ctx.moveTo(toX(i), toY(v)); else ctx.lineTo(toX(i), toY(v)); });
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Dots and labels
-    values.forEach((v, i) => {
-        ctx.beginPath();
-        ctx.arc(toX(i), toY(v), 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#007aff';
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+    // Faqat oxirgi nuqta
+    const li = values.length - 1;
+    ctx.beginPath();
+    ctx.arc(toX(li), toY(values[li]), 4, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
 
-        // Date labels (every 2nd if many)
-        if (arr.length <= 7 || i % 2 === 0) {
-            ctx.fillStyle = '#888';
-            ctx.font = '9px Outfit, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(labels[i], toX(i), h - 6);
-        }
-    });
+    // Sanalar: birinchi va oxirgi
+    ctx.fillStyle = muted;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillText(labels[0], pad.left, cssH - 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(labels[li], pad.left + w, cssH - 6);
+
+    const unit = type === 'bmi' ? '' : ' L';
+    canvas.setAttribute('aria-label', `${type === 'bmi' ? 'BMI' : 'Suv'} grafigi: ${values.length} ta natija, oxirgisi ${values[li]}${unit}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════

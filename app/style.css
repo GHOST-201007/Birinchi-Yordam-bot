@@ -423,91 +423,28 @@ body {
 
 
 /* ── HISTORY ───────────────────────────────────────── */
-.history-tabs {
-    display: flex;
-    background: var(--secondary-bg-color);
-    border-radius: var(--border-radius-md);
-    padding: 4px;
-    margin-bottom: 16px;
-    gap: 4px;
-}
-.history-tab-btn {
-    flex: 1;
-    border: none;
-    background: none;
-    padding: 10px;
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--hint-color);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.history-tab-btn.active {
-    background: var(--bg-color);
-    color: var(--text-color);
-    box-shadow: var(--card-shadow);
-}
+
+
+
 
 .history-section { display: none; }
 .history-section.active { display: block; animation: fadeIn 0.3s ease; }
 
-.history-chart-card {
-    background: var(--secondary-bg-color);
-    border-radius: var(--border-radius-md);
-    padding: 16px;
-    margin-bottom: 12px;
-    position: relative;
-    min-height: 100px;
-}
-.chart-empty {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: var(--hint-color);
-    text-align: center;
-    padding: 16px;
-}
 
-.history-log { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 
-.history-log-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--secondary-bg-color);
-    border-radius: var(--border-radius-sm);
-    padding: 12px 14px;
-    animation: fadeIn 0.2s ease;
-}
-.history-log-item .h-date { font-size: 12px; color: var(--hint-color); }
-.history-log-item .h-val  { font-size: 15px; font-weight: 700; color: var(--button-color); }
-.history-log-item .h-badge {
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 20px;
-    font-weight: 600;
-}
-.h-badge.normal { background: var(--accent-green-bg); color: var(--accent-green); }
-.h-badge.low    { background: var(--accent-orange-bg); color: var(--accent-orange); }
-.h-badge.high   { background: var(--accent-red-bg); color: var(--accent-red); }
 
-.clear-history-btn {
-    width: 100%;
-    padding: 11px;
-    background: none;
-    border: 1.5px solid rgba(255,59,48,0.3);
-    color: var(--accent-red);
-    border-radius: var(--border-radius-sm);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.clear-history-btn:hover { background: var(--accent-red-bg); }
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* 6 ta nav uchun moslashtirish */
 
@@ -1978,7 +1915,7 @@ html, body {
 
 
 /* Other sections matching the vibe */
-.history-chart-card, .disease-item {
+.disease-item {
     background: var(--color-surface) !important;
     border-radius: 20px !important;
     box-shadow: var(--shadow-sm) !important;
@@ -3272,3 +3209,40 @@ body.dark-mode .quiz-option-btn.correct .quiz-opt-badge { background: var(--teal
 @media (prefers-reduced-motion: reduce) {
     .quiz-progress-fill, .ring-fill, .quiz-option-btn { transition: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   REDESIGN — TARIX (4.4-G)
+   ═══════════════════════════════════════════════════════════════════ */
+.history-chart-card {
+    margin-bottom: var(--s-4);
+    padding: var(--s-4);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.history-chart-card canvas { display: block; }
+.history-chart-card canvas[hidden] { display: none; }
+.chart-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-6) var(--s-4);
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--text-2);
+    text-align: center;
+}
+.chart-empty[hidden] { display: none; }
+.chart-empty .icon { width: 32px; height: 32px; color: var(--primary); }
+.history-log[hidden] { display: none; }
+.history-row { cursor: default; justify-content: space-between; min-height: 52px; }
+.history-row:active { background: transparent; }
+.history-log .list-row + .list-row::before { left: var(--s-4); }
+.h-date { font-size: 15px; color: var(--text-2); }
+.h-right { display: inline-flex; align-items: center; gap: var(--s-2); }
+.h-val { font-size: 16px; font-weight: 700; color: var(--text); }
+.btn-danger-text { width: 100%; color: #B4232A; }
+body.dark-mode .btn-danger-text { color: var(--danger); }
+.btn-secondary[hidden] { display: none; }

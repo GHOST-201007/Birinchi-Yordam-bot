@@ -56,6 +56,7 @@
         <symbol id="i-test-tube" viewBox="0 0 24 24"><path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/><path d="M8.5 2h7"/><path d="M14.5 16h-5"/></symbol>
         <symbol id="i-trending-down" viewBox="0 0 24 24"><path d="M16 17h6v-6"/><path d="m22 17-8.5-8.5-5 5L2 7"/></symbol>
         <symbol id="i-trending-up" viewBox="0 0 24 24"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
         <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
         <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></symbol>
         <symbol id="i-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2v8"/><path d="M12 14v8"/><path d="m3.34 7 6.93 4"/><path d="m13.73 13 6.93 4"/><path d="m3.34 17 6.93-4"/><path d="m13.73 11 6.93-4"/></symbol>
@@ -364,42 +365,36 @@
 
             <!-- TAB 5: TARIX -->
             <section id="tab-history" class="tab-content">
+                <div class="screen-head">
+                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>Sog'liq tarixi</h1>
+                    <p class="screen-sub">BMI va suv balansini kuzating</p>
+                </div>
                 <div class="segmented" role="tablist" aria-label="Sog'liq bo'limi">
                     <button type="button" role="tab" aria-selected="false" data-show-tab="tab-health">Kalkulyator</button>
                     <button type="button" role="tab" aria-selected="true" data-show-tab="tab-history">Tarix</button>
                 </div>
-                <div class="section-title">
-                    <h2>📈 Sog'liq Tarixi</h2>
-                    <p>BMI va suv balansini kuzating</p>
+
+                <div class="segmented calc-switch" role="tablist" aria-label="Tarix turi">
+                    <button type="button" role="tab" aria-selected="true" aria-controls="history-bmi" data-history="bmi"><svg class="icon" aria-hidden="true"><use href="#i-scale"/></svg>BMI</button>
+                    <button type="button" role="tab" aria-selected="false" aria-controls="history-water" data-history="water"><svg class="icon" aria-hidden="true"><use href="#i-droplet"/></svg>Suv</button>
                 </div>
 
-                <div class="history-tabs">
-                    <button class="history-tab-btn active" onclick="switchHistoryTab('bmi')">⚖️ BMI Tarixi</button>
-                    <button class="history-tab-btn" onclick="switchHistoryTab('water')">💧 Suv Tarixi</button>
-                </div>
-
-                <!-- BMI History -->
-                <div id="history-bmi" class="history-section active">
+                <div id="history-bmi" class="history-section active" role="tabpanel">
                     <div class="history-chart-card">
-                        <canvas id="bmi-chart" height="180"></canvas>
-                        <p class="chart-empty" id="bmi-chart-empty">📊 BMI hisoblaganingizda bu yerda grafik paydo bo'ladi</p>
+                        <canvas id="bmi-chart" height="180" role="img" aria-label="BMI grafigi"></canvas>
+                        <div class="chart-empty" id="bmi-chart-empty"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span>BMI hisoblaganingizda bu yerda grafik paydo bo'ladi</span></div>
                     </div>
-                    <div class="history-log" id="bmi-history-log">
-                        <!-- Filled by JS -->
-                    </div>
-                    <button class="clear-history-btn" id="btn-clear-bmi-history">🗑️ Tarixni tozalash</button>
+                    <div class="inset-group history-log" id="bmi-history-log"></div>
+                    <button type="button" class="btn-secondary btn-danger-text" id="btn-clear-bmi-history" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Tarixni tozalash</span></button>
                 </div>
 
-                <!-- Water History -->
-                <div id="history-water" class="history-section">
+                <div id="history-water" class="history-section" role="tabpanel">
                     <div class="history-chart-card">
-                        <canvas id="water-chart" height="180"></canvas>
-                        <p class="chart-empty" id="water-chart-empty">📊 Suv hisoblashlaringiz bu yerda grafik shaklida ko'rinadi</p>
+                        <canvas id="water-chart" height="180" role="img" aria-label="Suv grafigi"></canvas>
+                        <div class="chart-empty" id="water-chart-empty"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span>Suv hisoblashlaringiz bu yerda grafik shaklida ko'rinadi</span></div>
                     </div>
-                    <div class="history-log" id="water-history-log">
-                        <!-- Filled by JS -->
-                    </div>
-                    <button class="clear-history-btn" id="btn-clear-water-history">🗑️ Tarixni tozalash</button>
+                    <div class="inset-group history-log" id="water-history-log"></div>
+                    <button type="button" class="btn-secondary btn-danger-text" id="btn-clear-water-history" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Tarixni tozalash</span></button>
                 </div>
             </section>
 
