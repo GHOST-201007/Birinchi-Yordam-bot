@@ -28,7 +28,7 @@ INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000
 FAKE_TELEGRAM = """
 (() => {
   const state = { closed: 0, links: [], alerts: [], invoices: [], backVisible: false, headerColors: [], bgColors: [],
-                  mainVisible: false, mainText: null, mainParams: null, mainActive: true, haptics: [] };
+                  mainVisible: false, mainText: null, mainParams: null, mainActive: true, haptics: [], impacts: [] };
   window.__tg = state;
   const noop = () => {};
   window.Telegram = { WebApp: {
@@ -44,7 +44,7 @@ FAKE_TELEGRAM = """
     openTelegramLink: (u) => { state.links.push(u); },
     showAlert: (m) => { state.alerts.push(m); },
     openInvoice: (u, cb) => { state.invoices.push(u); window.__invoiceCb = cb; },
-    HapticFeedback: { impactOccurred: noop, notificationOccurred: (t) => { state.haptics.push(t); }, selectionChanged: noop },
+    HapticFeedback: { impactOccurred: (t) => { state.impacts.push(t); }, notificationOccurred: (t) => { state.haptics.push(t); }, selectionChanged: noop },
     CloudStorage: {
       getItem: (k, cb) => cb && cb(null, ''), setItem: (k, v, cb) => cb && cb(null, true),
       removeItem: (k, cb) => cb && cb(null, true), getKeys: (cb) => cb && cb(null, []),

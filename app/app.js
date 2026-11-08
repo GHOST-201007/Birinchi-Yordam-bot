@@ -1028,11 +1028,10 @@ function detailSection(title, inner) {
     return `<section class="detail-block"><h2 class="detail-h">${title}</h2>${inner}</section>`;
 }
 
-// HTML qatorni oddiy matnga (ulashish uchun)
+// HTML qatorni oddiy matnga (ulashish uchun). DOMParser — skriptlar ishlamaydi, hujjatga qo'shilmaydi.
 function plainText(htmlText) {
-    const d = document.createElement('div');
-    d.innerHTML = String(htmlText || '');
-    return d.textContent.replace(/\s+/g, ' ').trim();
+    const doc = new DOMParser().parseFromString(String(htmlText || ''), 'text/html');
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 // "Qilmang!" matnini bandlarga ajratadi: "!" bilan tugagan har gap — alohida band, izoh gaplar oldingi bandga qo'shiladi.
@@ -1089,14 +1088,30 @@ function shareDetail() {
 }
 
 // ── Qadamlarni belgilash: faqat sahifa ochiq turganda (saqlanmaydi) ──
+let detailSevere = false;
+
 function updateStepsProgress() {
     const steps = document.querySelectorAll('#overlay-body-content .timeline-btn');
-    if (!steps.length) return;
+    if (!steps.length) return false;
     const done = document.querySelectorAll('#overlay-body-content .timeline-btn[aria-checked="true"]').length;
     const label = document.getElementById('steps-progress-count');
     if (label) label.textContent = `${done}/${steps.length}`;
     const fill = document.getElementById('steps-bar-fill');
     if (fill) fill.style.width = `${Math.round(done / steps.length * 100)}%`;
+    const all = done === steps.length;
+    const box = document.getElementById('steps-done');
+    if (box) {
+        const was = box.classList.contains('is-done');
+        box.classList.toggle('is-done', all);
+        if (all && !was) {
+            box.innerHTML = `<span class="chip chip--teal chip--done">${svgIcon('circle-check')}<span>Barcha qadamlar bajarildi</span></span>` +
+                (detailSevere ? `<div class="steps-done-103"><span>Baribir 103 ga qo'ng'iroq qiling</span>` +
+                                `<a href="tel:103" class="call-btn call-btn--sm">${svgIcon('phone')}<span>103</span></a></div>` : '');
+        } else if (!all) {
+            box.innerHTML = '';
+        }
+    }
+    return all;
 }
 
 function initStepToggles() {
@@ -1105,8 +1120,13 @@ function initStepToggles() {
             const on = btn.getAttribute('aria-checked') !== 'true';
             btn.setAttribute('aria-checked', on ? 'true' : 'false');
             btn.closest('.timeline-step').classList.toggle('done', on);
-            updateStepsProgress();
-            try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (e) { /* yo'q */ }
+            const all = updateStepsProgress();
+            try {
+                if (tg && tg.HapticFeedback) {
+                    if (on && all) tg.HapticFeedback.notificationOccurred('success');
+                    else tg.HapticFeedback.impactOccurred('light');
+                }
+            } catch (e) { /* eski klient */ }
         });
     });
     updateStepsProgress();
@@ -1167,48 +1187,62 @@ function openFirstAidDetail(item) {
     const urg = URGENCY_CHIPS[item.urgency] || URGENCY_CHIPS.medium;
     const chips = `<span class="chip ${urg.cls}">${urg.label}</span>`;
     const severe = item.urgency === 'critical';
+    detailSevere = severe;
     const has103 = item.whenToCall103 && item.whenToCall103.length;
+    const hasSymptoms = item.symptoms && item.symptoms.length;
 
     const callCard = (top) => `<section class="call-card${top ? ' call-card--top' : ''}">
             <h2 class="detail-h">${top ? svgIcon('siren') : ''}<span>Qachon 103 chaqirish kerak?</span></h2>
             ${has103 ? `<ul class="dot-list">${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}</ul>` : ''}
             <a href="tel:103" class="call-btn">${svgIcon('phone')}<span>103 — Tez yordam</span></a>
         </section>`;
-
-    let html = '';
-    // Eng tepada: kritik holatda 103 kartasi, aks holda xavfsizlik eslatmasi
-    if (severe) {
-        html += callCard(true);
-    } else {
-        html += `<div class="safety-row" role="note">${svgIcon('shield-check')}<span><strong>Avval xavfsizlikni tekshiring.</strong> O'zingiz va bemor uchun xavf yo'qligiga ishonch hosil qiling.</span></div>`;
-    }
-    html += `<p class="detail-lead">${item.desc}</p>`;
-    if (item.symptoms && item.symptoms.length) {
-        html += detailSection('Alomatlar', `<div class="chips-wrap">${item.symptoms.map(s => `<span class="symptom-tag">${s}</span>`).join('')}</div>`);
-    }
-    const steps = `<ol class="timeline">${item.steps.map((step, idx) => `
+    const symptomTags = hasSymptoms ? `<div class="chips-wrap">${item.symptoms.map(s => `<span class="symptom-tag">${s}</span>`).join('')}</div>` : '';
+    const stepsHtml = `<ol class="timeline">${item.steps.map((step, idx) => `
         <li class="timeline-step"><button type="button" class="timeline-btn" role="checkbox" aria-checked="false">
             <span class="timeline-num tabular" aria-hidden="true"><span class="timeline-n">${idx + 1}</span>${svgIcon('check', 'timeline-check')}</span>
             <span class="timeline-text">${step}</span>
         </button></li>`).join('')}
     </ol>`;
-    html += `<section class="detail-block">
+    const stepsSection = `<section class="detail-block steps-section">
         <div class="steps-head">
             <h2 class="detail-h">Bosqichma-bosqich yordam</h2>
             <span class="steps-progress" aria-live="polite"><span class="tabular" id="steps-progress-count">0/${item.steps.length}</span><span class="sr-only"> qadam bajarildi</span></span>
         </div>
         <div class="steps-bar" aria-hidden="true"><span id="steps-bar-fill"></span></div>
         <p class="steps-hint">Bajarilgan qadamni belgilash uchun ustiga bosing</p>
-        ${steps}
+        ${stepsHtml}
+        <div class="steps-done" id="steps-done" role="status"></div>
     </section>`;
-    html += `<section class="dont-card" role="note" aria-label="Qilmang">
+    const dontCard = `<section class="dont-card" role="note" aria-label="Qilmang">
         <h2 class="dont-title">${svgIcon('ban')}<span>Qilmang!</span></h2>
         <ul class="dont-list">${splitProhibited(item.prohibited).map(p => `<li><span class="dont-x" aria-hidden="true">${svgIcon('x')}</span><span>${p}</span></li>`).join('')}</ul>
     </section>`;
-    if (item.tips && item.tips.length) {
-        html += detailSection('Foydali maslahatlar', `<ul class="dot-list">${item.tips.map(t => `<li>${t}</li>`).join('')}</ul>`);
+    const tips = (item.tips && item.tips.length)
+        ? detailSection('Foydali maslahatlar', `<ul class="dot-list">${item.tips.map(t => `<li>${t}</li>`).join('')}</ul>`) : '';
+
+    let html = '';
+    if (severe) {
+        // Kritik: 103 -> qadamlar -> Qilmang! -> Alomatlar (yig'iladigan). Qadamlar birinchi ekranda ko'rinadi.
+        html += callCard(true);
+        html += `<p class="detail-lead">${item.desc}</p>`;
+        html += stepsSection;
+        html += dontCard;
+        if (hasSymptoms) {
+            html += `<details class="detail-collapse">
+                <summary><span class="detail-h">Alomatlar</span><span class="collapse-count tabular">${item.symptoms.length}</span>${svgIcon('chevron-down', 'collapse-chevron')}</summary>
+                ${symptomTags}
+            </details>`;
+        }
+        html += tips;
+    } else {
+        html += `<div class="safety-row" role="note">${svgIcon('shield-check')}<span><strong>Avval xavfsizlikni tekshiring.</strong> O'zingiz va bemor uchun xavf yo'qligiga ishonch hosil qiling.</span></div>`;
+        html += `<p class="detail-lead">${item.desc}</p>`;
+        if (hasSymptoms) html += detailSection('Alomatlar', symptomTags);
+        html += stepsSection;
+        html += dontCard;
+        html += tips;
+        if (has103) html += callCard(false);
     }
-    if (!severe && has103) html += callCard(false);
 
     const share = [plainText(item.title), '', 'Bosqichma-bosqich yordam:']
         .concat(item.steps.map((s, i) => `${i + 1}. ${plainText(s)}`))
@@ -1389,6 +1423,7 @@ function initAzScrub() {
 
 // OPEN DISEASE DETAILS
 function openDiseaseDetail(item) {
+    detailSevere = false;
     const chips = `<span class="chip chip--primary">${item.cat}</span>`;
     let html = detailSection('Kasallik tavsifi', `<p>${item.desc}</p>`);
     html += detailSection('Birinchi yordam va chora', `<div class="aid-card"><p>${item.aid}</p></div>`);

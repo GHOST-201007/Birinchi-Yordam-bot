@@ -292,6 +292,92 @@ class DetailE2ETest(MiniAppE2EBase):
         page.wait_for_function("getComputedStyle(document.getElementById('overlay-details')).opacity === '1'")
         self.assertEqual(page.evaluate(TEXT_AUDIT_JS, "#overlay-details"), [])
 
+    # ---- Detal (2): kritik tartib, haptic, tugallash, DOMParser ------------------------------------------------
+    def body_order(self, page):
+        return page.evaluate("""[...document.querySelector('#overlay-body-content').children].map(e =>
+            e.classList.contains('call-card--top') ? 'call103' : e.classList.contains('safety-row') ? 'safety' :
+            e.classList.contains('detail-lead') ? 'lead' : e.classList.contains('steps-section') ? 'steps' :
+            e.classList.contains('dont-card') ? 'dont' : e.classList.contains('detail-collapse') ? 'symptoms-collapsed' :
+            e.classList.contains('call-card') ? 'call103-bottom' : (e.querySelector('.detail-h') || {}).textContent)""")
+
+    def test_critical_order_steps_first_screen_symptoms_collapsed(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "qon_ketishi")
+        order = self.body_order(page)
+        self.assertEqual(order[:5], ["call103", "lead", "steps", "dont", "symptoms-collapsed"])
+        first_step = page.locator(".timeline-step").first.bounding_box()
+        self.assertLess(first_step["y"] + 40, 844)                                     # birinchi ekranda ko'rinadi
+        self.assertIsNone(page.get_attribute(".detail-collapse", "open"))
+        self.assertFalse(page.is_visible(".detail-collapse .symptom-tag"))
+        self.assertEqual(page.inner_text(".detail-collapse .collapse-count"),
+                         str(len(self.item(page, "qon_ketishi")["symptoms"])))
+        page.focus(".detail-collapse summary")
+        page.keyboard.press("Enter")                                                   # klaviatura bilan ochiladi
+        self.assertTrue(page.is_visible(".detail-collapse .symptom-tag"))
+
+    def test_non_critical_order_unchanged(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "kuyish")
+        self.assertEqual(self.body_order(page)[:5], ["safety", "lead", "Alomatlar", "steps", "dont"])
+        self.assertEqual(page.locator(".detail-collapse").count(), 0)
+
+    def test_step_check_light_haptic_and_animation_respects_reduced_motion(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "kuyish")
+        page.locator("#overlay-body-content .timeline-btn").first.click()
+        self.assertEqual(self.tg(page)["impacts"], ["light"])
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.timeline-step.done .timeline-check')).animationName"),
+                         "check-pop")
+        page.emulate_media(reduced_motion="reduce")
+        page.locator("#overlay-body-content .timeline-btn").nth(1).click()
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelectorAll('.timeline-step.done .timeline-check')[1]).animationName"),
+                         "none")
+
+    def check_all(self, page):
+        btns = page.locator("#overlay-body-content .timeline-btn")
+        for i in range(btns.count()):
+            btns.nth(i).click()
+        return btns
+
+    def test_all_steps_done_state_critical_has_103(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "qon_ketishi")
+        self.assertEqual(page.inner_text("#steps-done"), "")
+        btns = self.check_all(page)
+        self.assertIn("Barcha qadamlar bajarildi", page.inner_text("#steps-done .chip--teal"))
+        self.assertEqual(page.get_attribute("#steps-done", "role"), "status")
+        self.assertIn("Baribir 103 ga qo'ng'iroq qiling", page.inner_text("#steps-done"))
+        self.assertEqual(page.get_attribute("#steps-done a.call-btn", "href"), "tel:103")
+        self.assertEqual(self.tg(page)["haptics"][-1], "success")
+        btns.first.click()                                                              # bitta belgini olib tashlash
+        self.assertEqual(page.inner_text("#steps-done"), "")
+
+    def test_all_steps_done_non_critical_has_no_103_line(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "kuyish")
+        self.check_all(page)
+        self.assertIn("Barcha qadamlar bajarildi", page.inner_text("#steps-done"))
+        self.assertNotIn("Baribir 103", page.inner_text("#steps-done"))
+
+    def test_done_state_contrast_both_themes(self):
+        for scheme in ("light", "dark"):
+            with self.subTest(scheme=scheme):
+                page, _ = self.open_app({}, init_data="", init_script=f"window.Telegram.WebApp.colorScheme = '{scheme}';")
+                self.open_item(page, "qon_ketishi")
+                self.check_all(page)
+                page.click(".detail-collapse summary")
+                page.wait_for_function("getComputedStyle(document.getElementById('overlay-details')).opacity === '1'")
+                self.assertEqual(page.evaluate(TEXT_AUDIT_JS, "#overlay-details"), [])
+
+    def test_plain_text_uses_domparser_and_never_runs_markup(self):
+        page, _ = self.open_app({})
+        self.assertEqual(page.evaluate("""plainText('<img src=x onerror="window.__p=1"><b>Salom</b>  dunyo')"""), "Salom dunyo")
+        page.wait_for_timeout(100)
+        self.assertIsNone(page.evaluate("window.__p"))
+        src = page.evaluate("plainText.toString()")
+        self.assertIn("DOMParser", src)
+        self.assertNotIn("innerHTML", src)
+
     def test_disease_detail(self):
         page, _ = self.open_app({})
         page.click('nav [data-tab="tab-diseases"]')

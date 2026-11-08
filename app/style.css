@@ -3246,3 +3246,60 @@ body.dark-mode .quiz-option-btn.correct .quiz-opt-badge { background: var(--teal
 .btn-danger-text { width: 100%; color: #B4232A; }
 body.dark-mode .btn-danger-text { color: var(--danger); }
 .btn-secondary[hidden] { display: none; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DETAL (2): yig'iladigan Alomatlar, belgi animatsiyasi, tugallash holati
+   ═══════════════════════════════════════════════════════════════════ */
+.detail-collapse { margin-bottom: var(--s-5); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-card); }
+.detail-collapse summary {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: 52px;
+    padding: 0 var(--s-4);
+    list-style: none;
+    cursor: pointer;
+}
+.detail-collapse summary::-webkit-details-marker { display: none; }
+.detail-collapse summary .detail-h { margin: 0; }
+.detail-collapse summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: var(--r-md); }
+.collapse-count {
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--bg);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-2);
+}
+.collapse-chevron { margin-left: auto; width: 20px; height: 20px; color: var(--text-2); transition: transform .2s var(--ease); }
+.detail-collapse[open] .collapse-chevron { transform: rotate(180deg); }
+.detail-collapse .chips-wrap { padding: 0 var(--s-4) var(--s-4); }
+
+@keyframes check-pop { 0% { transform: scale(.3); opacity: 0; } 70% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+.timeline-step.done .timeline-check { animation: check-pop .28s var(--ease) both; }
+.timeline-step.done .timeline-num { transition: background-color .2s ease; }
+
+.steps-done:empty { display: none; }
+.steps-done { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); margin-top: var(--s-2); }
+.chip--done { gap: 6px; padding: 6px 12px; }
+.chip--done .icon { width: 18px; height: 18px; }
+.steps-done-103 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    width: 100%;
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--danger-soft);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+}
+.call-btn--sm { flex-shrink: 0; min-height: 44px; margin: 0; padding: 0 var(--s-4); }
+
+@media (prefers-reduced-motion: reduce) {
+    .timeline-step.done .timeline-check { animation: none; }
+    .collapse-chevron, .timeline-step.done .timeline-num { transition: none; }
+}
