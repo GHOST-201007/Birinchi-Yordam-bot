@@ -410,14 +410,18 @@
         </main>
 
         <!-- FULL-SCREEN OVERLAY FOR DETAILS (FIRST AID & DISEASES) -->
-        <div class="overlay-details" id="overlay-details">
-            <div class="overlay-header">
-                <button class="close-overlay-btn" id="close-overlay-btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> Orqaga</button>
-                <h3 id="overlay-title">Sarlavha</h3>
+        <div class="overlay-details" id="overlay-details" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+            <div class="overlay-inner">
+                <!-- Telegram ichida tg.BackButton; bu tugma faqat brauzer uchun zaxira -->
+                <button type="button" class="close-overlay-btn" id="close-overlay-btn" aria-label="Orqaga"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg><span>Orqaga</span></button>
+                <h1 class="detail-title" id="overlay-title">Sarlavha</h1>
+                <div class="detail-chips" id="overlay-chips"></div>
+                <div class="overlay-body" id="overlay-body-content">
+                    <!-- Ma'lumot JS bilan yuklanadi -->
+                </div>
+                <p class="detail-disclaimer"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Bu ma'lumot tashxis emas. Og'ir holatda 103.</span></p>
             </div>
-            <div class="overlay-body" id="overlay-body-content">
-                <!-- Rich details will be loaded here dynamically -->
-            </div>
+        </div>
         </div>
 
         <!-- BOTTOM NAVIGATION BAR -->

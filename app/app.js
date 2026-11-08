@@ -318,6 +318,7 @@ const AppNavigation = (function () {
         if (tgBtn && tgBtn.onClick) {
             try { tgBtn.onClick(back); } catch (e) { /* eski klient */ }
         }
+        document.body.classList.toggle('has-tg-back', !!tgBtn);
         updateBtn();
     }
 
@@ -924,105 +925,109 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // OPEN FIRST AID DETAILS
-function openFirstAidDetail(item) {
-    const overlay = document.getElementById('overlay-details');
-    const title = document.getElementById('overlay-title');
-    const body = document.getElementById('overlay-body-content');
-
-    title.innerText = item.title;
-
-    // Urgency badge
-    const urgencyMap = {
-        critical: { label: 'KRITIK', color: '#ff3b30', bg: 'rgba(255,59,48,0.12)' },
-        high: { label: 'MUHIM', color: '#ff9500', bg: 'rgba(255,149,0,0.12)' },
-        medium: { label: "O'RTA", color: '#007aff', bg: 'rgba(0,122,255,0.12)' }
-    };
-    const urg = urgencyMap[item.urgency] || urgencyMap.medium;
-
-    // Steps HTML
-    let stepsHtml = '';
-    item.steps.forEach((step, idx) => {
-        stepsHtml += `
-            <div class="instruction-step">
-                <div class="step-num">${idx + 1}</div>
-                <div class="step-text">${step}</div>
-            </div>
-        `;
-    });
-
-    // Symptoms HTML
-    let symptomsHtml = '';
-    if (item.symptoms && item.symptoms.length) {
-        symptomsHtml = `
-            <div class="detail-section">
-                <div class="detail-section-title"><span class="detail-icon">🩺</span> Alomatlar</div>
-                <div class="detail-tags-grid">
-                    ${item.symptoms.map(s => `<div class="symptom-tag">${s}</div>`).join('')}
-                </div>
-            </div>`;
-    }
-
-    // When to call 103
-    let call103Html = '';
-    if (item.whenToCall103 && item.whenToCall103.length) {
-        call103Html = `
-            <div class="call103-card">
-                <div class="call103-header">
-                    <span class="call103-icon">📞</span>
-                    <span>Qachon <strong>103</strong> chaqirish kerak?</span>
-                </div>
-                <ul class="call103-list">
-                    ${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}
-                </ul>
-                <a href="tel:103" class="call103-btn">
-                    📞 103 — Tez yordam
-                </a>
-            </div>`;
-    }
-
-    // Tips HTML
-    let tipsHtml = '';
-    if (item.tips && item.tips.length) {
-        tipsHtml = `
-            <div class="detail-section">
-                <div class="detail-section-title"><span class="detail-icon">💡</span> Foydali maslahatlar</div>
-                ${item.tips.map(t => `<div class="tip-item"><span class="tip-dot">•</span><span>${t}</span></div>`).join('')}
-            </div>`;
-    }
-
-    body.innerHTML = `
-        <div class="detail-urgency-badge" style="background:${urg.bg}; color:${urg.color};">
-            ⚡ ${urg.label} HOLAT
-        </div>
-        <p class="detail-desc">${item.desc}</p>
-
-        ${symptomsHtml}
-
-        <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">🛠️</span> Bosqichma-bosqich yordam</div>
-            <div style="margin-top: 10px;">${stepsHtml}</div>
-        </div>
-
-        <div class="prohibited-card">
-            <div class="prohibited-title">🚫 Mutlaqo taqiqlanadi</div>
-            <p>${item.prohibited}</p>
-        </div>
-
-        ${tipsHtml}
-        ${call103Html}
-    `;
-
-    overlay.classList.add('active');
-    body.scrollTop = 0;
-
-    // Push navigation state
-    AppNavigation.push({
-        type: 'firstaid-detail',
-        close: function () {
-            overlay.classList.remove('active');
-            AppNavigation.pop();
+// ── Telegram MainButton (detal sahifada: 103 yoki AI). Telegram tashqarisida — hech narsa (kontentda tugmalar bor). ──
+const MainButtonCtl = {
+    handler: null,
+    set(opts) {
+        if (!tg || !tg.MainButton) return false;
+        this.clear();
+        const mb = tg.MainButton;
+        try {
+            mb.setText(opts.text);
+            if (mb.setParams) {
+                const cs = getComputedStyle(document.body);
+                const color = opts.color || cs.getPropertyValue('--primary-strong').trim();
+                const textColor = opts.textColor || cs.getPropertyValue('--on-primary').trim() || '#FFFFFF';
+                if (/^#[0-9a-f]{6}$/i.test(color)) mb.setParams({ color: color, text_color: textColor });
+            }
+            this.handler = () => opts.onClick();
+            mb.onClick(this.handler);
+            mb.show();
+            return true;
+        } catch (e) {
+            console.warn('MainButton ishlamadi:', e);
+            return false;
         }
-    });
+    },
+    clear() {
+        if (!tg || !tg.MainButton) return;
+        try {
+            if (this.handler && tg.MainButton.offClick) tg.MainButton.offClick(this.handler);
+            tg.MainButton.hide();
+        } catch (e) { /* eski klient */ }
+        this.handler = null;
+    }
+};
+
+function dial103() {
+    window.location.href = 'tel:103';
+}
+
+// AI bilan suhbat: botga o'tadi (botda oddiy matn AI ga yuboriladi). Mantiq o'zgarmagan, faqat havola.
+function askAiInBot() {
+    if (tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/' + BOT_USERNAME);
+}
+
+const URGENCY_CHIPS = {
+    critical: { label: 'Kritik holat', cls: 'chip--danger' },
+    high: { label: 'Muhim holat', cls: 'chip--warning' },
+    medium: { label: "O'rta holat", cls: 'chip--primary' }
+};
+
+function detailSection(title, inner) {
+    return `<section class="detail-block"><h2 class="detail-h">${title}</h2>${inner}</section>`;
+}
+
+function closeDetail() {
+    document.getElementById('overlay-details').classList.remove('active');
+    MainButtonCtl.clear();
+    AppNavigation.pop();
+}
+
+// Detal sahifani ochadi (birinchi yordam va kasallik uchun umumiy)
+function showDetail(titleText, chipsHtml, bodyHtml, mainButton) {
+    const overlay = document.getElementById('overlay-details');
+    document.getElementById('overlay-title').textContent = titleText;
+    document.getElementById('overlay-chips').innerHTML = chipsHtml;
+    document.getElementById('overlay-body-content').innerHTML = bodyHtml;
+    overlay.classList.add('active');
+    overlay.scrollTop = 0;
+    if (mainButton) MainButtonCtl.set(mainButton); else MainButtonCtl.clear();
+    AppNavigation.push({ type: 'detail', close: closeDetail });
+}
+
+function openFirstAidDetail(item) {
+    const urg = URGENCY_CHIPS[item.urgency] || URGENCY_CHIPS.medium;
+    const chips = `<span class="chip ${urg.cls}">${urg.label}</span>`;
+
+    const steps = `<ol class="timeline">${item.steps.map((step, idx) => `
+        <li class="timeline-step"><span class="timeline-num tabular" aria-hidden="true">${idx + 1}</span><div class="timeline-text">${step}</div></li>`).join('')}
+    </ol>`;
+
+    let html = `<p class="detail-lead">${item.desc}</p>`;
+    if (item.symptoms && item.symptoms.length) {
+        html += detailSection('Alomatlar', `<div class="chips-wrap">${item.symptoms.map(s => `<span class="symptom-tag">${s}</span>`).join('')}</div>`);
+    }
+    html += detailSection('Bosqichma-bosqich yordam', steps);
+    html += `<section class="dont-card" role="note">
+        <h2 class="dont-title">${svgIcon('alert-triangle')}<span>Qilmang!</span></h2>
+        <p>${item.prohibited}</p>
+    </section>`;
+    if (item.tips && item.tips.length) {
+        html += detailSection('Foydali maslahatlar', `<ul class="dot-list">${item.tips.map(t => `<li>${t}</li>`).join('')}</ul>`);
+    }
+    if (item.whenToCall103 && item.whenToCall103.length) {
+        html += `<section class="call-card">
+            <h2 class="detail-h">Qachon 103 chaqirish kerak?</h2>
+            <ul class="dot-list">${item.whenToCall103.map(c => `<li>${c}</li>`).join('')}</ul>
+            <a href="tel:103" class="call-btn">${svgIcon('phone')}<span>103 — Tez yordam</span></a>
+        </section>`;
+    }
+
+    const severe = item.urgency === 'critical';
+    showDetail(item.title, chips, html, severe
+        ? { text: "103 ga qo'ng'iroq", color: '#C9343A', textColor: '#FFFFFF', onClick: dial103 }
+        : { text: "AI'dan so'rash", onClick: askAiInBot });
 }
 
 // RENDER DISEASES
@@ -1057,55 +1062,11 @@ function renderDiseases(data) {
 
 // OPEN DISEASE DETAILS
 function openDiseaseDetail(item) {
-    const overlay = document.getElementById('overlay-details');
-    const title = document.getElementById('overlay-title');
-    const body = document.getElementById('overlay-body-content');
-
-    title.innerText = item.name;
-
-    const catColors = {
-        'Infeksiya': '#ff9500', 'Nafas': '#007aff', 'Yurak': '#ff3b30',
-        'Oshqozon': '#34c759', 'Asab': '#af52de', 'Ruhiy': '#af52de',
-        'Teriga': '#ff9500', "Ko'z": '#007aff', 'Tish': '#34c759',
-        'Travma': '#ff3b30', 'Miya': '#ff3b30', 'Buyrak': '#007aff',
-        'Tayanch': '#ff9500', 'Endokrin': '#34c759', 'Jigar': '#ff9500'
-    };
-    const catColor = catColors[item.cat] || '#248bcf';
-
-    body.innerHTML = `
-        <div style="display:inline-flex; align-items:center; gap:8px; background:${catColor}20; color:${catColor}; padding:5px 12px; border-radius:20px; font-size:13px; font-weight:600; margin-bottom:14px;">
-            📁 ${item.cat}
-        </div>
-
-        <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">📋</span> Kasallik tavsifi</div>
-            <p class="detail-desc-text">${item.desc}</p>
-        </div>
-
-        <div class="detail-section">
-            <div class="detail-section-title"><span class="detail-icon">💊</span> Birinchi yordam va chora</div>
-            <div class="aid-card">
-                <p>${item.aid}</p>
-            </div>
-        </div>
-
-        <div class="tip-item" style="margin-top:12px; padding:12px 14px; background:var(--secondary-bg-color); border-radius:10px;">
-            <span>⚠️</span>
-            <span style="font-size:13px; color:var(--hint-color);">Har qanday kasallikda o'z-o'zini davolashdan ko'ra, malakali shifokor ko'rigidan o'tish tavsiya etiladi.</span>
-        </div>
-    `;
-
-    overlay.classList.add('active');
-    body.scrollTop = 0;
-
-    // Push navigation state
-    AppNavigation.push({
-        type: 'disease-detail',
-        close: function () {
-            overlay.classList.remove('active');
-            AppNavigation.pop();
-        }
-    });
+    const chips = `<span class="chip chip--primary">${item.cat}</span>`;
+    let html = detailSection('Kasallik tavsifi', `<p>${item.desc}</p>`);
+    html += detailSection('Birinchi yordam va chora', `<div class="aid-card"><p>${item.aid}</p></div>`);
+    html += `<p class="detail-note">Har qanday kasallikda o'z-o'zini davolashdan ko'ra, malakali shifokor ko'rigidan o'tish tavsiya etiladi.</p>`;
+    showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiInBot });
 }
 
 // SEARCH FUNCTIONALITY
@@ -1142,10 +1103,7 @@ function initOverlay() {
     const closeBtn = document.getElementById('close-overlay-btn');
     const overlay = document.getElementById('overlay-details');
 
-    closeBtn.addEventListener('click', () => {
-        overlay.classList.remove('active');
-        AppNavigation.pop();
-    });
+    closeBtn.addEventListener('click', closeDetail);
 }
 
 // CALCULATORS CONTROL
