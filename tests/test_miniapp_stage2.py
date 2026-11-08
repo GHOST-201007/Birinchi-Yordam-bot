@@ -49,9 +49,9 @@ class StaticChecksTest(unittest.TestCase):
                 self.assertNotIn("�", read(name), f"{name} da buzilgan belgi (U+FFFD) bor")
 
     def test_avatar_built_with_dom_not_innerhtml(self):
+        # G: avatar — foydalanuvchi ismining bosh harflari, faqat textContent (innerHTML yo'q)
         self.assertNotIn("avatarEl.innerHTML", self.js)
-        self.assertIn("avatarEl.replaceChildren(img)", self.js)
-        self.assertIn(".avatar-img", read("style.css"))
+        self.assertIn("avatarEl.textContent = userInitials(user.first_name, user.last_name)", self.js)
 
 
 class ServerTest(unittest.TestCase):

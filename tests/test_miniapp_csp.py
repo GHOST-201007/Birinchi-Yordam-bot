@@ -86,7 +86,7 @@ class CspHeaderE2ETest(MiniAppE2EBase):
         for tab in ("tab-diseases", "tab-health", "tab-ai", "tab-first-aid"):
             page.click(f'nav [data-tab="{tab}"]')
             page.wait_for_selector(f"#{tab}.active")
-        page.click('#first-aid-grid [data-id="kuyish"]')
+        page.click('#home-chips [data-id="kuyish"]')
         page.wait_for_selector("#overlay-details.active")
         page.evaluate("window.__backCb()")
         page.clock.fast_forward(400)
@@ -97,6 +97,7 @@ class CspHeaderE2ETest(MiniAppE2EBase):
         page.click("#btn-open-daily-bonus")
         page.wait_for_selector("#daily-bonus-modal:not(.hidden)")
         page.click("#daily-bonus-close")
+        page.click('nav [data-tab="tab-health"]')
         page.click("#btn-open-premium")
         page.wait_for_selector("#premium-modal:not(.hidden)")
         page.wait_for_timeout(200)

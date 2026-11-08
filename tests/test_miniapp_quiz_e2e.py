@@ -15,7 +15,7 @@ OPTS = "#quiz-options-container .quiz-option-btn"
 class QuizE2ETest(MiniAppE2EBase):
     def open_quiz(self, **kw):
         page, _ = self.open_app({}, **kw)
-        page.click('.qa[data-action="quiz"]')
+        page.click('#home-quiz-row')
         return page
 
     def start(self, page):

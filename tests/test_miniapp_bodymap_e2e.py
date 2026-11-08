@@ -2,7 +2,7 @@
 test_miniapp_bodymap_e2e.py — tana hududi bottom sheet (body_map_data.json).
 G Stage 1: "Tana" tabi olib tashlandi; sheet va a'zo ma'lumoti mantig'i saqlanadi (Stage 2 da bosh ekrandagi
 tana figurasidan ochiladi). Bu yerda sheet openBodyMapModal() orqali ochiladi.
-MainButton "AI konsultant" — tg.sendData oqimi o'zgarmagan.
+MainButton "AI'dan so'rash" — tg.sendData oqimi o'zgarmagan.
 """
 import json
 import unittest

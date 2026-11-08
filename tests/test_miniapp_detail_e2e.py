@@ -45,7 +45,7 @@ TEXT_AUDIT_JS = r"""(sel) => {
 
 class DetailE2ETest(MiniAppE2EBase):
     def open_item(self, page, item_id):
-        page.click(f'#first-aid-grid [data-id="{item_id}"]')
+        page.click(f'#home-chips [data-id="{item_id}"]')
         page.wait_for_selector("#overlay-details.active")
 
     def item(self, page, item_id):
@@ -209,7 +209,7 @@ class DetailE2ETest(MiniAppE2EBase):
 
     def test_keyboard_space_checks_step_and_escape_closes_with_focus_return(self):
         page, _ = self.open_app({})
-        page.focus('#first-aid-grid [data-id="kuyish"]')
+        page.focus('#home-chips [data-id="kuyish"]')
         page.keyboard.press("Enter")
         page.wait_for_selector("#overlay-details.active")
         self.assertEqual(page.evaluate("document.activeElement.id"), "overlay-title")  # fokus detalga o'tdi

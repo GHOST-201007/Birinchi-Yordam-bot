@@ -71,7 +71,7 @@
                 <span>Orqaga</span>
             </button>
             <div class="user-info" id="user-info-container">
-                <div class="avatar" id="user-avatar"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></div>
+                <div class="avatar" id="user-avatar" aria-hidden="true">SH</div>
                 <div class="welcome-text">
                     <span class="username" id="user-name">Salomatlik Himoyachisi</span>
                     <div class="hdr-meta">
@@ -80,7 +80,7 @@
                     </div>
                 </div>
             </div>
-            <a href="tel:103" class="emergency-btn" aria-label="Tez yordam: 103 ga qo'ng'iroq"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span class="tabular">103</span></a>
+            <a href="tel:103" class="emergency-btn" aria-label="103 — tez yordamni chaqirish"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span class="tabular">103</span></a>
         </header>
 
         <!-- MAIN CONTENT AREA -->
@@ -88,62 +88,103 @@
             
             <!-- TAB 1: BIRINCHI YORDAM -->
             <section id="tab-first-aid" class="tab-content active">
-                <!-- 1. Favqulodda holat (SOS) -->
-                <div class="sos-card">
-                    <div class="sos-head"><svg class="icon" aria-hidden="true"><use href="#i-siren"/></svg><h2 class="sos-title">Favqulodda holat?</h2></div>
-                    <p class="sos-text">Hayot xavf ostida bo'lsa, darhol tez yordam chaqiring.</p>
-                    <a href="tel:103" class="sos-call"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>103 ga qo'ng'iroq</span></a>
-                    <button type="button" class="sos-link" data-scroll-to="first-aid-section">
-                        <span>Birinchi yordam yo'riqnomalari</span><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg>
-                    </button>
+                <!-- G bosh ekran: tana-birinchi -->
+                <div class="home-title">
+                    <h1 class="home-h1">Qayeringiz og'riyapti?</h1>
+                    <p class="home-sub">Tana qismini bosing</p>
                 </div>
 
-                <!-- 2. Tezkor harakatlar -->
-                <div class="quick-actions" role="group" aria-label="Tezkor harakatlar">
-                    <button type="button" class="qa" data-action="ai"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span><span class="qa-label">AI maslahat</span></button>
-                    <button type="button" class="qa" data-action="calc"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-calculator"/></svg></span><span class="qa-label">Kalkulyator</span></button>
-                    <button type="button" class="qa" data-action="quiz"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg></span><span class="qa-label">Test</span></button>
-                    <button type="button" class="qa" id="btn-open-wheel"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-wheel"/></svg></span><span class="qa-label">Baraban</span></button>
+                <div class="fig-outer" id="body-figure-outer">
+                    <div class="fig-wrap" id="body-figure" data-view="front">
+                        <svg class="fig" viewBox="0 0 350 340" aria-hidden="true">
+                            <g class="fig-body" transform="translate(83 4) scale(0.92)">
+                                <circle cx="100" cy="34" r="24"/>
+                                <line x1="100" y1="54" x2="100" y2="78" stroke-width="16"/>
+                                <rect x="62" y="74" width="76" height="120" rx="26"/>
+                                <line x1="58" y1="92" x2="36" y2="176" stroke-width="18"/>
+                                <line x1="142" y1="92" x2="164" y2="176" stroke-width="18"/>
+                                <line x1="86" y1="192" x2="80" y2="326" stroke-width="22"/>
+                                <line x1="114" y1="192" x2="120" y2="326" stroke-width="22"/>
+                                <line class="fig-spine" x1="100" y1="80" x2="100" y2="180" stroke-width="2"/>
+                            </g>
+                            <g class="fig-lead">
+                            <line data-slot="1" x1="76" y1="35" x2="175" y2="35"/>
+                            <line data-slot="2" x1="76" y1="146" x2="121" y2="146"/>
+                            <line data-slot="3" x1="274" y1="107" x2="175" y2="107"/>
+                            <line data-slot="4" x1="274" y1="155" x2="175" y2="155"/>
+                            <line data-slot="5" x1="274" y1="271" x2="193" y2="271"/>
+                            </g>
+                            <g class="fig-halo">
+                            <circle data-slot="1" cx="175" cy="35" r="13"/>
+                            <circle data-slot="2" cx="121" cy="146" r="13"/>
+                            <circle data-slot="3" cx="175" cy="107" r="13"/>
+                            <circle data-slot="4" cx="175" cy="155" r="13"/>
+                            <circle data-slot="5" cx="193" cy="271" r="13"/>
+                            </g>
+                            <g class="fig-dot">
+                            <circle data-slot="1" cx="175" cy="35" r="6.5"/>
+                            <circle data-slot="2" cx="121" cy="146" r="6.5"/>
+                            <circle data-slot="3" cx="175" cy="107" r="6.5"/>
+                            <circle data-slot="4" cx="175" cy="155" r="6.5"/>
+                            <circle data-slot="5" cx="193" cy="271" r="6.5"/>
+                            </g>
+                        </svg>
+                        <button type="button" class="fig-label fig-label--1" data-slot="1"></button>
+                        <button type="button" class="fig-label fig-label--2" data-slot="2"></button>
+                        <button type="button" class="fig-label fig-label--3" data-slot="3"></button>
+                        <button type="button" class="fig-label fig-label--4" data-slot="4"></button>
+                        <button type="button" class="fig-label fig-label--5" data-slot="5"></button>
+                    </div>
+                </div>
+                <div class="segmented fig-views" role="group" aria-label="Ko'rinish">
+                    <button type="button" data-view="front" aria-pressed="true">Oldi</button>
+                    <button type="button" data-view="back" aria-pressed="false">Orqa</button>
                 </div>
 
-                <!-- 3. Bugun: kunlik bonus + baraban holati -->
+                <h2 class="section-label">Yoki holatni tanlang</h2>
+                <div class="chip-scroll home-chips" id="home-chips" role="list" aria-label="Birinchi yordam holatlari"></div>
+
                 <h2 class="section-label">Bugun</h2>
-                <div class="inset-group today-card">
-                    <div class="list-row" id="btn-open-daily-bonus" role="button" tabindex="0">
-                        <span class="row-icon row-icon--warning"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg></span>
-                        <span class="row-text">
-                            <span class="row-title">Kunlik bonus</span>
-                            <span class="row-sub tabular" id="today-bonus-sub">Har kuni kirib, ball oling</span>
-                        </span>
-                        <span class="pill" id="today-bonus-pill">Olish</span>
+                <div class="today-grid">
+                    <div class="today-card">
+                        <button type="button" class="today-main" id="btn-open-daily-bonus" aria-label="Kunlik bonus">
+                            <span class="today-icon today-icon--bonus"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg></span>
+                            <span class="today-title">Bonus</span>
+                            <span class="today-sub tabular" id="today-bonus-sub">Kunlik bonus</span>
+                        </button>
+                        <button type="button" class="today-btn" id="today-bonus-claim">Olish</button>
                     </div>
-                    <div class="list-row" id="wheel-promo-card" role="button" tabindex="0">
-                        <span class="row-icon row-icon--primary"><svg class="icon" aria-hidden="true"><use href="#i-wheel"/></svg></span>
-                        <span class="row-text">
-                            <span class="row-title">Omad barabani</span>
-                            <span class="row-sub tabular" id="today-wheel-sub">Har kuni bepul aylantiring</span>
-                        </span>
-                        <span class="pill pill--ghost" id="today-wheel-pill">Ochish</span>
+                    <div class="today-card">
+                        <button type="button" class="today-main" id="wheel-promo-card" aria-label="Omad barabani">
+                            <span class="today-icon"><svg class="icon" aria-hidden="true"><use href="#i-wheel"/></svg></span>
+                            <span class="today-title">Baraban</span>
+                            <span class="today-sub" id="today-wheel-sub">Har kuni bepul</span>
+                        </button>
+                        <button type="button" class="today-btn tabular" id="btn-open-wheel">Aylantirish</button>
                     </div>
                 </div>
 
-                <!-- 4. Premium (premium foydalanuvchiga ko'rsatilmaydi) -->
-                <button type="button" class="premium-banner" id="btn-open-premium">
-                    <svg class="icon premium-banner-icon" aria-hidden="true"><use href="#i-crown"/></svg><span>Premium — cheksiz AI</span><svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+                <button type="button" class="list-row home-test-row" id="home-quiz-row">
+                    <span class="row-icon row-icon--primary"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg></span>
+                    <span class="row-text"><span class="row-title">Test</span><span class="row-sub">Bilimingizni sinang</span></span>
+                    <svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron-right"/></svg>
                 </button>
+            </section>
 
-                <!-- 5. Birinchi yordam ro'yxati -->
-                <div class="list-section" id="first-aid-section">
-                    <h2 class="section-label" id="first-aid-list-title">Birinchi yordam</h2>
-                    <label class="search-field">
-                        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-                        <input type="search" id="first-aid-search" placeholder="Qidirish: kuyish, qon ketishi..." aria-label="Birinchi yordam bo'yicha qidirish" autocomplete="off">
-                    </label>
-                    <div class="inset-group" id="first-aid-grid">
-                        <!-- Qatorlar JS bilan yaratiladi -->
-                    </div>
-                    <p class="list-empty" id="first-aid-empty" hidden>Hech narsa topilmadi</p>
+            <!-- "Hammasi": to'liq birinchi yordam ro'yxati (bosh ekrandagi chiplardan ochiladi, BackButton bilan) -->
+            <section id="tab-first-aid-all" class="tab-content">
+                <div class="screen-head">
+                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-first-aid"/></svg>Birinchi yordam</h1>
+                    <p class="screen-sub">Barcha holatlar bo'yicha yo'riqnomalar</p>
                 </div>
+                <label class="search-field">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+                    <input type="search" id="first-aid-search" placeholder="Qidirish: kuyish, qon ketishi..." aria-label="Birinchi yordam bo'yicha qidirish" autocomplete="off">
+                </label>
+                <div class="inset-group" id="first-aid-grid">
+                    <!-- Qatorlar JS bilan yaratiladi -->
+                </div>
+                <p class="list-empty" id="first-aid-empty" hidden>Hech narsa topilmadi</p>
             </section>
 
             <!-- TAB 2: KASALLIKLAR -->
@@ -175,6 +216,9 @@
 
             <!-- TAB 3: KALKULYATOR -->
             <section id="tab-health" class="tab-content">
+                <button type="button" class="premium-row" id="btn-open-premium">
+                    <svg class="icon" aria-hidden="true"><use href="#i-crown"/></svg><span class="premium-row-text">Premium — kuniga ko'proq AI so'rov</span><svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+                </button>
                 <div class="screen-head">
                     <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-heart-pulse"/></svg>Sog'liq kalkulyatorlari</h1>
                     <p class="screen-sub">Vazningiz va salomatligingiz ko'rsatkichlari</p>
@@ -487,8 +531,8 @@
             <div class="sheet-body">
                 <p class="sheet-sub">Ushbu sohadagi eng ko'p uchraydigan holatlar:</p>
                 <div id="modal-diseases-list" class="sheet-list"></div>
-                <p class="sheet-disclaimer"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Bu umumiy ma'lumot, aniq tashxis emas. Shifokor bilan maslahat qiling.</span></p>
-                <button type="button" id="ai-consult-btn" class="btn-primary inpage-main">AI konsultant</button>
+                <p class="sheet-disclaimer"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Bu ma'lumot tashxis emas. Og'ir holatda 103.</span></p>
+                <button type="button" id="ai-consult-btn" class="btn-primary inpage-main">AI'dan so'rash</button>
             </div>
         </div>
 

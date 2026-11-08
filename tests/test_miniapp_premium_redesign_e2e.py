@@ -40,6 +40,7 @@ class PremiumRedesignE2ETest(MiniAppE2EBase):
     def open_premium(self, **kw):
         page, calls = self.open_app({}, **kw)
         page.emulate_media(reduced_motion="reduce")
+        page.click('nav [data-tab="tab-health"]')
         page.click("#btn-open-premium")
         page.wait_for_selector("#premium-modal:not(.hidden)")
         return page, calls

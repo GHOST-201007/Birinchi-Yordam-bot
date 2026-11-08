@@ -705,13 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (nameEl) nameEl.innerText = `${user.first_name} ${user.last_name || ''}`.trim();
 
                     const avatarEl = document.getElementById('user-avatar');
-                    if (avatarEl && user.photo_url) {
-                        const img = document.createElement('img');
-                        img.src = user.photo_url;
-                        img.alt = '';
-                        img.className = 'avatar-img';
-                        avatarEl.replaceChildren(img);
-                    }
+                    if (avatarEl) avatarEl.textContent = userInitials(user.first_name, user.last_name);
                 }
             }
 
@@ -719,6 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFirstAidGrid();
             initFirstAidSearch();
             initHomeActions();
+            initBodyFigure();
             initSearch();
             initCalculators();
             initOverlay();
@@ -732,7 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // TAB SYSTEM
 // Nav'da yo'q bo'limlar qaysi tab ostida ekani (pastki menyuda shu tab faol ko'rinadi)
-const NAV_PARENT = { 'tab-history': 'tab-health', 'tab-quiz': 'tab-first-aid' };
+const NAV_PARENT = { 'tab-history': 'tab-health', 'tab-quiz': 'tab-first-aid', 'tab-first-aid-all': 'tab-first-aid' };
 
 function showTab(tabId) {
     const section = document.getElementById(tabId);
@@ -751,6 +746,7 @@ function showTab(tabId) {
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
     if (tabId !== 'tab-first-aid') hideBodySheet();      // sheet bosh ekrandagi tana figurasiga tegishli
+    if (tabId === 'tab-first-aid') fitBodyFigure();       // yashirin bo'limda o'lcham 0 edi
     if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
 
@@ -825,11 +821,18 @@ function initFirstAidSearch() {
     });
 }
 
-// ── Bosh ekran: tezkor harakatlar, SOS, "Bugun" kartasi ──
-function openQuizFromHome() {
-    showTab('tab-quiz');
+// ── Bosh ekran (G): Test qatori, "Hammasi" sahifasi, holat chiplari, "Bugun" kartalari ──
+function userInitials(first, last) {
+    const parts = [first, last].map(x => String(x || '').trim()).filter(Boolean);
+    const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] || 'SH').slice(0, 2);
+    return letters.toUpperCase();
+}
+
+// Bosh ekrandan ochiladigan ichki sahifa (Test, "Hammasi"): BackButton bosh ekranga qaytaradi
+function openHomeSubpage(tabId, type) {
+    showTab(tabId);
     AppNavigation.push({
-        type: 'quiz',
+        type: type,
         close: function () {
             showTab('tab-first-aid');
             AppNavigation.pop();
@@ -837,30 +840,51 @@ function openQuizFromHome() {
     });
 }
 
+function openQuizFromHome() { openHomeSubpage('tab-quiz', 'quiz'); }
+function openFirstAidAll() { openHomeSubpage('tab-first-aid-all', 'first-aid-all'); }
+
+// "Yoki holatni tanlang": FIRST_AID_ITEMS tartibida, kritiklari oldinda; oxirida "Hammasi"
+function renderHomeChips() {
+    const bar = document.getElementById('home-chips');
+    if (!bar) return;
+    bar.innerHTML = '';
+    const critical = FIRST_AID_ITEMS.filter(i => i.urgency === 'critical');
+    const rest = FIRST_AID_ITEMS.filter(i => i.urgency !== 'critical');
+    critical.concat(rest).forEach(item => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'home-chip';
+        chip.setAttribute('role', 'listitem');
+        chip.setAttribute('data-id', item.id);
+        chip.innerHTML = `${svgIcon(iconName(item.icon))}<span></span>`;
+        chip.querySelector('span').textContent = displayTitle(item.title);
+        chip.addEventListener('click', () => openFirstAidDetail(item));
+        bar.appendChild(chip);
+    });
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'home-chip home-chip--all';
+    all.setAttribute('role', 'listitem');
+    all.id = 'home-chip-all';
+    all.innerHTML = `<span>Hammasi</span>${svgIcon('chevron-right')}`;
+    all.addEventListener('click', openFirstAidAll);
+    bar.appendChild(all);
+}
+
 function initHomeActions() {
-    const actions = {
-        ai: () => showTab('tab-ai'),
-        calc: () => showTab('tab-health'),
-        quiz: openQuizFromHome,
-    };
-    document.querySelectorAll('.qa[data-action]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
-            const fn = actions[btn.getAttribute('data-action')];
-            if (fn) fn();
-        });
+    renderHomeChips();
+    const quiz = document.getElementById('home-quiz-row');
+    if (quiz) quiz.addEventListener('click', () => {
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+        openQuizFromHome();
     });
-    document.querySelectorAll('[data-scroll-to]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const target = document.getElementById(btn.getAttribute('data-scroll-to'));
-            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-    });
-    // role="button" qatorlar klaviaturadan ham ochiladi
-    document.querySelectorAll('[role="button"][tabindex]').forEach(el => {
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
-        });
+    // "Olish +N": kunlik bonus sheet'idagi bilan bir xil handler (api('bonus/claim') + zaxira deep link).
+    // Handler hali tayyor bo'lmasa (holat yuklanmagan) — bonus sheet ochiladi.
+    const claim = document.getElementById('today-bonus-claim');
+    if (claim) claim.addEventListener('click', () => {
+        const sheetBtn = document.getElementById('btn-claim-daily-bonus');
+        if (sheetBtn && typeof sheetBtn.onclick === 'function') sheetBtn.onclick();
+        else document.getElementById('btn-open-daily-bonus').click();
     });
 }
 
@@ -873,23 +897,24 @@ function formatHMS(totalSeconds) {
     return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
 }
 
-// "Bugun" kartasi /api/state dan (API ishlamasa — URL parametrlaridan, bo'lmasa umumiy matn)
+// "Bugun" kartalari /api/state dan (API ishlamasa — URL parametrlaridan, bo'lmasa umumiy matn)
 function renderTodayCard(s) {
     const bonusSub = document.getElementById('today-bonus-sub');
-    const bonusPill = document.getElementById('today-bonus-pill');
+    const bonusBtn = document.getElementById('today-bonus-claim');
     const wheelSub = document.getElementById('today-wheel-sub');
-    const wheelPill = document.getElementById('today-wheel-pill');
+    const wheelBtn = document.getElementById('btn-open-wheel');
     if (!s || !bonusSub || !wheelSub) return;
 
     const streak = Math.min(7, Math.max(1, Number(s.streak) || 1));
+    bonusSub.textContent = `${streak}-kun seriya`;
     if (s.daily_claimed) {
-        bonusSub.textContent = `Olindi · ${streak}-kun seriya`;
-        bonusPill.textContent = 'Olindi';
-        bonusPill.classList.add('pill--done');
+        bonusBtn.innerHTML = `${svgIcon('check')}<span>Olindi</span>`;
+        bonusBtn.disabled = true;
+        bonusBtn.classList.add('is-done');
     } else {
-        bonusSub.textContent = `${streak}-kun seriya · +${BONUS_REWARDS[streak - 1]} ball`;
-        bonusPill.textContent = 'Olish';
-        bonusPill.classList.remove('pill--done');
+        bonusBtn.textContent = `Olish +${BONUS_REWARDS[streak - 1]}`;
+        bonusBtn.disabled = false;
+        bonusBtn.classList.remove('is-done');
     }
 
     if (todayWheelTimer) { clearInterval(todayWheelTimer); todayWheelTimer = null; }
@@ -898,14 +923,17 @@ function renderTodayCard(s) {
     const tick = () => {
         const left = (endAt - Date.now()) / 1000;
         if (left > 0) {
-            wheelSub.innerHTML = svgIcon('clock') + ' Keyingisi: ' + formatHMS(left);
-            wheelPill.textContent = 'Kutish';
-            wheelPill.classList.add('pill--done');
+            // Kutish: taymer (o'chirilgan ko'rinishda; bosilsa baraban oynasi kutish holati bilan ochiladi)
+            wheelSub.textContent = 'Keyingisi';
+            wheelBtn.textContent = formatHMS(left);
+            wheelBtn.classList.add('is-waiting');
+            wheelBtn.setAttribute('aria-label', `Baraban: keyingisi ${formatHMS(left)} dan keyin`);
         } else {
             if (todayWheelTimer) { clearInterval(todayWheelTimer); todayWheelTimer = null; }
-            wheelSub.textContent = (typeof s.prize === 'number' || s.cooldown_seconds) ? 'Tayyor — bepul aylantiring' : 'Har kuni bepul aylantiring';
-            wheelPill.textContent = 'Ochish';
-            wheelPill.classList.remove('pill--done');
+            wheelSub.textContent = (typeof s.prize === 'number' || s.cooldown_seconds) ? 'Tayyor' : 'Har kuni bepul';
+            wheelBtn.textContent = 'Aylantirish';
+            wheelBtn.classList.remove('is-waiting');
+            wheelBtn.removeAttribute('aria-label');
         }
     };
     tick();
@@ -2342,12 +2370,104 @@ async function initBodyMap() {
         bodyMapData = fallbackBodyParts;
     }
 
+    renderBodyFigure();
+
     const closeBtn = document.getElementById('modal-close');
     if (closeBtn) closeBtn.addEventListener('click', closeBodySheet);
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && isBodySheetOpen()) closeBodySheet();
     });
     // Sahifadagi zaxira tugma (Telegram tashqarisida) — MainButton bilan bir xil yo'l (MainButtonCtl.set ulaydi)
+}
+
+// ── Tana figurasi (bosh ekran, G 2.4). Yorliq -> body_map_data.json hududlari (ma'lumot to'qilmaydi) ──
+const BODY_HOTSPOTS = {
+    front: [
+        { slot: 1, id: 'bosh', label: 'Bosh', keys: ['head', 'neck'] },
+        { slot: 2, id: 'qol', label: "Qo'l", keys: ['arm', 'shoulder', 'hand'] },
+        { slot: 3, id: 'kokrak', label: "Ko'krak", keys: ['chest'] },
+        { slot: 4, id: 'qorin', label: 'Qorin', keys: ['abdomen'] },
+        { slot: 5, id: 'oyoq', label: 'Oyoq', keys: ['foot', 'thigh', 'knee', 'shin'] }
+    ],
+    back: [
+        { slot: 1, id: 'bosh', label: 'Bosh', keys: ['head', 'neck'] },
+        { slot: 2, id: 'qol', label: "Qo'l", keys: ['arm', 'shoulder', 'hand'] },
+        { slot: 3, id: 'orqa', label: 'Orqa', keys: ['back'] },
+        { slot: 4, id: 'bel', label: 'Bel', keys: ['back', 'hip'] },
+        { slot: 5, id: 'oyoq', label: 'Oyoq', keys: ['foot', 'thigh', 'knee', 'shin'] }
+    ]
+};
+let selectedHotspotId = null;
+
+function hotspotKeys(spot) {
+    return spot.keys.filter(k => bodyMapData && bodyMapData[k]);
+}
+
+function renderBodyFigure() {
+    const wrap = document.getElementById('body-figure');
+    if (!wrap) return;
+    wrap.setAttribute('data-view', currentBodyView);
+    BODY_HOTSPOTS[currentBodyView].forEach(spot => {
+        const btn = wrap.querySelector(`.fig-label[data-slot="${spot.slot}"]`);
+        const off = bodyMapData !== null && hotspotKeys(spot).length === 0;     // ma'lumoti yo'q — yashiriladi
+        btn.id = spot.id;
+        btn.textContent = spot.label;
+        btn.setAttribute('aria-label', `${spot.label} — tana qismi`);
+        btn.hidden = off;
+        wrap.querySelectorAll(`[data-slot="${spot.slot}"]:not(.fig-label)`).forEach(el => el.classList.toggle('is-off', off));
+    });
+    markSelectedBodyPart();
+}
+
+function openHotspot(spot) {
+    const keys = hotspotKeys(spot);
+    if (!keys.length) return;
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    // Bir nechta hududning holatlari bitta ro'yxatda (takrorlanmaydi); ma'lumot matni o'zgarmaydi
+    const seen = new Set();
+    const diseases = [];
+    keys.forEach(k => (bodyMapData[k].diseases || []).forEach(d => {
+        if (!seen.has(d.name)) { seen.add(d.name); diseases.push(d); }
+    }));
+    selectedHotspotId = spot.id;
+    selectedBodyPartKey = keys[0];          // "AI'dan so'rash" zaxirasi (tg.sendData / ?start=ai_consult_<kalit>) uchun
+    _openFullModal(keys[0], { name: spot.label, diseases: diseases });
+}
+
+// Tor ekranlarda (<350px) butun blok bir tekis kichrayadi
+function fitBodyFigure() {
+    const outer = document.getElementById('body-figure-outer');
+    const wrap = document.getElementById('body-figure');
+    if (!outer || !wrap || !outer.clientWidth) return;
+    const scale = Math.min(1, outer.clientWidth / 350);
+    wrap.style.transform = scale < 1 ? `scale(${scale})` : '';
+    outer.style.height = `${Math.round(340 * scale)}px`;
+}
+
+function initBodyFigure() {
+    const wrap = document.getElementById('body-figure');
+    if (!wrap) return;
+    wrap.querySelectorAll('.fig-label').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const spot = BODY_HOTSPOTS[currentBodyView].find(s => String(s.slot) === btn.getAttribute('data-slot'));
+            if (spot) openHotspot(spot);
+        });
+    });
+    document.querySelectorAll('.fig-views [data-view]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const view = btn.getAttribute('data-view');
+            if (view === currentBodyView) return;
+            currentBodyView = view;
+            document.querySelectorAll('.fig-views [data-view]').forEach(b =>
+                b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+            hideBodySheet();
+            renderBodyFigure();
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        });
+    });
+    renderBodyFigure();
+    fitBodyFigure();
+    window.addEventListener('resize', fitBodyFigure);
 }
 
 function isBodySheetOpen() {
@@ -2363,6 +2483,7 @@ function hideBodySheet() {
     document.body.classList.remove('sheet-open');
     if (MainButtonCtl.owner === 'body') MainButtonCtl.clear();
     selectedBodyPartKey = null;
+    selectedHotspotId = null;
     markSelectedBodyPart();
 }
 
@@ -2413,10 +2534,10 @@ function bodyPartName(partKey) {
 }
 
 function markSelectedBodyPart() {
-    document.querySelectorAll('#body-map-container .body-part').forEach(g => {
-        const on = g.getAttribute('data-part') === selectedBodyPartKey;
-        g.classList.toggle('selected', on);
-        g.setAttribute('aria-pressed', on ? 'true' : 'false');
+    document.querySelectorAll('#body-figure .fig-label').forEach(btn => {
+        const on = !!selectedHotspotId && btn.id === selectedHotspotId;
+        btn.classList.toggle('selected', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
 }
 
@@ -2526,7 +2647,7 @@ function _openFullModal(partKey, data) {
         sheet.scrollTop = 0;
         document.body.classList.add('sheet-open');
         markSelectedBodyPart();
-        MainButtonCtl.set({ text: 'AI konsultant', owner: 'body', onClick: aiConsultForBodyPart },
+        MainButtonCtl.set({ text: "AI'dan so'rash", owner: 'body', onClick: aiConsultForBodyPart },
                           document.getElementById('ai-consult-btn'));
         // Boshqa a'zo bosilganda sheet yangilanadi — navigatsiya stekiga qayta qo'shilmaydi
         if (!wasOpen) AppNavigation.push({ type: 'body-map-modal', close: closeBodySheet });
