@@ -3736,23 +3736,73 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Premium Modal Logic
+// Tarif imkoniyatlari — avvalgi kartalardagi matnlar. AI limitlari database.py dagi PRO/PLUS/ULTRA_AI_DAILY_LIMIT
+// bilan mos: 15 / 30 / 100 (avval Ultra'da "100+" deyilgan edi, limit esa 100)
+const PREMIUM_FEATURES = {
+    buy_pro_7: ["Kuniga 15 AI so'rov", "Ovozli xabar", "Barcha funksiyalar"],
+    buy_plus_30: ["Kuniga 30 AI so'rov", "Ustunlik", "Barcha imkoniyatlar"],
+    buy_ultra_30: ["Kuniga 100 AI so'rov", "VIP xizmat", "Cheksiz imkoniyatlar"]
+};
+
+function selectedPremiumPlan() {
+    const r = document.querySelector('#premium-modal input[name="premium-plan"]:checked');
+    return r ? { plan: r.value, price: r.getAttribute('data-price') } : { plan: 'buy_plus_30', price: '150' };
+}
+
+function renderPremiumFeatures() {
+    const list = document.getElementById('premium-features');
+    if (!list) return;
+    const { plan } = selectedPremiumPlan();
+    list.innerHTML = '';
+    (PREMIUM_FEATURES[plan] || []).forEach(text => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="pm-check" aria-hidden="true">${svgIcon('check')}</span><span></span>`;
+        li.lastChild.textContent = text;
+        list.appendChild(li);
+    });
+}
+
+// "★ 150 — Davom etish": Telegram ichida MainButton, tashqarida sahifadagi tugma. Ikkalasi ham buyPremium(plan)
+function syncPremiumMainButton() {
+    const modal = document.getElementById('premium-modal');
+    const open = modal && !modal.classList.contains('hidden');
+    if (!open) {
+        if (MainButtonCtl.owner === 'premium') MainButtonCtl.clear();
+        return;
+    }
+    const { plan, price } = selectedPremiumPlan();
+    MainButtonCtl.set({ text: `★ ${price} — Davom etish`, owner: 'premium', onClick: () => buyPremium(plan) },
+                      document.getElementById('premium-continue'));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const btnOpenPremium = document.getElementById('btn-open-premium');
     const premiumModal = document.getElementById('premium-modal');
     const premiumModalClose = document.getElementById('premium-modal-close');
 
     if (btnOpenPremium && premiumModal) {
+        premiumModal.querySelectorAll('input[name="premium-plan"]').forEach(r => {
+            r.addEventListener('change', () => {
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+                renderPremiumFeatures();
+                syncPremiumMainButton();
+            });
+        });
+        renderPremiumFeatures();
+
         btnOpenPremium.addEventListener('click', () => {
             premiumModal.classList.remove('hidden');
             premiumModal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
-            
+            syncPremiumMainButton();
+
             AppNavigation.push({
                 type: 'premium-modal',
                 close: () => {
                     premiumModal.classList.add('hidden');
                     premiumModal.style.display = 'none';
                     document.body.style.overflow = 'auto';
+                    syncPremiumMainButton();
                     AppNavigation.pop();
                 }
             });
@@ -3763,7 +3813,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 AppNavigation.back();
             });
         }
-        
+
         premiumModal.addEventListener('click', (e) => {
             if (e.target === premiumModal) {
                 AppNavigation.back();

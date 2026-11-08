@@ -561,64 +561,51 @@
         </div>
     </div>
 
-    <!-- PREMIUM MODAL -->
-    <div id="premium-modal" class="modal hidden">
+    <!-- PREMIUM — bottom sheet -->
+    <div id="premium-modal" class="modal premium-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="premium-title">
         <div class="pm-sheet">
-            <button class="pm-close" id="premium-modal-close" aria-label="Yopish">
-                <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
-            </button>
-            <div class="pm-crown">👑</div>
-            <h2 class="pm-title">Premium Tariflar</h2>
-            <p class="pm-subtitle">Telegram Stars orqali oson xarid qiling va cheksiz imkoniyatlarga ega bo'ling!</p>
-
-            <!-- PRO 7 DAYS -->
-            <div class="pm-card pm-card--blue">
-                <div class="pm-card-info">
-                    <div class="pm-card-header">
-                        <span class="pm-icon">⭐</span>
-                        <span class="pm-name">Premium Pro</span>
-                        <span class="pm-badge pm-badge--blue">7 kun</span>
-                    </div>
-                    <p class="pm-desc">Kuniga 15 AI so'rov &bull; Ovozli xabar &bull; Barcha funksiyalar</p>
-                </div>
-                <button class="pm-btn pm-btn--blue" onclick="buyPremium('buy_pro_7')">
-                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-                    <span>50</span>
-                </button>
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <button type="button" class="sheet-close pm-close" id="premium-modal-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+            <div class="pm-head">
+                <div class="pm-crown"><svg class="icon" aria-hidden="true"><use href="#i-crown"/></svg></div>
+                <h2 class="pm-title" id="premium-title">Premium</h2>
+                <p class="pm-subtitle">Telegram Stars orqali oson xarid qiling va cheksiz imkoniyatlarga ega bo'ling!</p>
             </div>
 
-            <!-- PLUS 30 DAYS -->
-            <div class="pm-card pm-card--gold">
-                <div class="pm-card-info">
-                    <div class="pm-card-header">
-                        <span class="pm-icon">💎</span>
-                        <span class="pm-name">Premium Plus</span>
-                        <span class="pm-badge pm-badge--gold">30 kun</span>
-                    </div>
-                    <p class="pm-desc">Kuniga 30 AI so'rov &bull; Ustunlik &bull; Barcha imkoniyatlar</p>
-                </div>
-                <button class="pm-btn pm-btn--gold" onclick="buyPremium('buy_plus_30')">
-                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-                    <span>150</span>
-                </button>
+            <div class="plan-list" role="radiogroup" aria-label="Tarifni tanlang">
+                <label class="plan-card">
+                    <input type="radio" name="premium-plan" value="buy_pro_7" data-price="50">
+                    <span class="plan-radio" aria-hidden="true"></span>
+                    <span class="plan-info">
+                        <span class="plan-name">Premium Pro</span>
+                        <span class="plan-days">7 kun</span>
+                    </span>
+                    <span class="plan-price tabular">★ 50</span>
+                </label>
+                <label class="plan-card">
+                    <input type="radio" name="premium-plan" value="buy_plus_30" data-price="150" checked>
+                    <span class="plan-radio" aria-hidden="true"></span>
+                    <span class="plan-info">
+                        <span class="plan-name">Premium Plus<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
+                        <span class="plan-days">30 kun</span>
+                    </span>
+                    <span class="plan-price tabular">★ 150</span>
+                </label>
+                <label class="plan-card">
+                    <input type="radio" name="premium-plan" value="buy_ultra_30" data-price="300">
+                    <span class="plan-radio" aria-hidden="true"></span>
+                    <span class="plan-info">
+                        <span class="plan-name">Premium Ultra</span>
+                        <span class="plan-days">30 kun</span>
+                    </span>
+                    <span class="plan-price tabular">★ 300</span>
+                </label>
             </div>
 
-            <!-- ULTRA 30 DAYS -->
-            <div class="pm-card pm-card--purple">
-                <span class="pm-best-badge">ENG ZO'R</span>
-                <div class="pm-card-info">
-                    <div class="pm-card-header">
-                        <span class="pm-icon">👑</span>
-                        <span class="pm-name">Premium Ultra</span>
-                        <span class="pm-badge pm-badge--purple">30 kun</span>
-                    </div>
-                    <p class="pm-desc">100+ AI so'rov &bull; VIP xizmat &bull; Cheksiz imkoniyatlar</p>
-                </div>
-                <button class="pm-btn pm-btn--purple" onclick="buyPremium('buy_ultra_30')">
-                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-                    <span>300</span>
-                </button>
-            </div>
+            <h3 class="section-label">Imkoniyatlar</h3>
+            <ul class="pm-features" id="premium-features" aria-live="polite"></ul>
+
+            <button type="button" class="btn-primary inpage-main" id="premium-continue">★ 150 — Davom etish</button>
         </div>
     </div>
 
