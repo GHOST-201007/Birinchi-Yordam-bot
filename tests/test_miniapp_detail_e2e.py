@@ -79,6 +79,32 @@ class DetailE2ETest(MiniAppE2EBase):
         page.click("#close-overlay-btn")
         page.wait_for_selector("#overlay-details:not(.active)", state="attached")
 
+    def test_main_button_fallback_outside_telegram(self):
+        # initData bo'sh (brauzer): MainButton ishlatilmaydi, sahifada oddiy tugma bor va ishlaydi
+        page, _ = self.open_app({}, init_data="")
+        self.open_item(page, "qon_ketishi")
+        self.assertFalse(self.tg(page)["mainVisible"])
+        self.assertTrue(page.is_visible("#detail-main-fallback"))
+        self.assertEqual(page.inner_text("#detail-main-fallback"), "103 ga qo'ng'iroq")
+        page.click("#close-overlay-btn") if page.is_visible("#close-overlay-btn") else page.evaluate("closeDetail()")
+        page.wait_for_selector("#overlay-details:not(.active)", state="attached")
+        page.clock.fast_forward(400)
+        self.open_item(page, "kuyish")
+        self.assertEqual(page.inner_text("#detail-main-fallback"), "AI'dan so'rash")
+        page.click("#detail-main-fallback")
+        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
+
+    def test_inside_telegram_fallback_hidden_and_bottom_padding(self):
+        page, _ = self.open_app({})
+        self.open_item(page, "kuyish")
+        self.assertFalse(page.is_visible("#detail-main-fallback"))
+        self.assertTrue(page.evaluate("document.body.classList.contains('tg-main-on')"))
+        pad = page.evaluate("parseFloat(getComputedStyle(document.querySelector('.overlay-inner')).paddingBottom)")
+        self.assertGreaterEqual(pad, 100)                                           # MainButton kontentni yopmaydi
+        page.evaluate("window.__backCb()")
+        page.wait_for_selector("#overlay-details:not(.active)", state="attached")
+        self.assertFalse(page.evaluate("document.body.classList.contains('tg-main-on')"))
+
     def test_disease_detail(self):
         page, _ = self.open_app({})
         page.click('nav [data-tab="tab-diseases"]')

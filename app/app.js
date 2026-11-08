@@ -748,6 +748,7 @@ function showTab(tabId) {
     });
     const content = document.querySelector('.app-content');
     if (content) content.scrollTop = 0;
+    syncCalcMainButton();
 }
 
 function initTabs() {
@@ -925,31 +926,78 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // OPEN FIRST AID DETAILS
-// ── Telegram MainButton (detal sahifada: 103 yoki AI). Telegram tashqarisida — hech narsa (kontentda tugmalar bor). ──
+// ── Telegram MainButton ──
+// Telegram ichida (initData bor) — tg.MainButton. Tashqarida (initData bo'sh) — sahifadagi zaxira tugma (.inpage-main).
+// MainButton ko'rinib turganda body.tg-main-on: kontent pastidan qo'shimcha joy (tugma hech narsani yopmaydi).
 const MainButtonCtl = {
     handler: null,
-    set(opts) {
-        if (!tg || !tg.MainButton) return false;
+    owner: null,
+    opts: null,
+    fallback: null,
+    available() {
+        return !!(tg && tg.initData && tg.MainButton);
+    },
+    colors(active) {
+        const cs = getComputedStyle(document.body);
+        const pick = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
+        if (!active) return { color: pick('--text-2', '#5E6B7E'), text_color: pick('--on-primary', '#FFFFFF') };
+        return {
+            color: (this.opts && this.opts.color) || pick('--primary-strong', '#0872AB'),
+            text_color: (this.opts && this.opts.textColor) || pick('--on-primary', '#FFFFFF')
+        };
+    },
+    set(opts, fallbackEl) {
         this.clear();
+        this.opts = opts;
+        this.owner = opts.owner || null;
+        const useTg = this.available();
+        document.body.classList.toggle('tg-main', useTg);
+        if (fallbackEl) {
+            this.fallback = fallbackEl;
+            fallbackEl.textContent = opts.text;
+            fallbackEl.disabled = false;
+            fallbackEl.onclick = () => { if (this.opts) this.opts.onClick(); };
+        }
+        if (!useTg) return false;
         const mb = tg.MainButton;
         try {
             mb.setText(opts.text);
             if (mb.setParams) {
-                const cs = getComputedStyle(document.body);
-                const color = opts.color || cs.getPropertyValue('--primary-strong').trim();
-                const textColor = opts.textColor || cs.getPropertyValue('--on-primary').trim() || '#FFFFFF';
-                if (/^#[0-9a-f]{6}$/i.test(color)) mb.setParams({ color: color, text_color: textColor });
+                const c = this.colors(true);
+                if (/^#[0-9a-f]{6}$/i.test(c.color)) mb.setParams({ color: c.color, text_color: c.text_color });
             }
-            this.handler = () => opts.onClick();
+            if (mb.enable) mb.enable();
+            this.handler = () => { if (this.opts) this.opts.onClick(); };
             mb.onClick(this.handler);
             mb.show();
+            document.body.classList.add('tg-main-on');
             return true;
         } catch (e) {
             console.warn('MainButton ishlamadi:', e);
+            document.body.classList.remove('tg-main');      // sahifadagi tugma ko'rinadi
             return false;
         }
     },
+    // Input to'g'ri bo'lsagina tugma faol (4.4-E)
+    setActive(on) {
+        if (this.fallback) this.fallback.disabled = !on;
+        if (!this.handler || !this.available()) return;
+        const mb = tg.MainButton;
+        try {
+            if (on && mb.enable) mb.enable();
+            if (!on && mb.disable) mb.disable();
+            if (mb.setParams) {
+                const c = this.colors(on);
+                if (/^#[0-9a-f]{6}$/i.test(c.color)) mb.setParams({ color: c.color, text_color: c.text_color, is_active: !!on });
+            }
+        } catch (e) { /* eski klient */ }
+    },
     clear() {
+        if (this.fallback) this.fallback.onclick = null;
+        this.fallback = null;
+        this.opts = null;
+        this.owner = null;
+        document.body.classList.remove('tg-main-on');
         if (!tg || !tg.MainButton) return;
         try {
             if (this.handler && tg.MainButton.offClick) tg.MainButton.offClick(this.handler);
@@ -981,7 +1029,10 @@ function detailSection(title, inner) {
 function closeDetail() {
     document.getElementById('overlay-details').classList.remove('active');
     MainButtonCtl.clear();
+    const fb = document.getElementById('detail-main-fallback');
+    if (fb) fb.hidden = true;
     AppNavigation.pop();
+    syncCalcMainButton();
 }
 
 // Detal sahifani ochadi (birinchi yordam va kasallik uchun umumiy)
@@ -992,7 +1043,9 @@ function showDetail(titleText, chipsHtml, bodyHtml, mainButton) {
     document.getElementById('overlay-body-content').innerHTML = bodyHtml;
     overlay.classList.add('active');
     overlay.scrollTop = 0;
-    if (mainButton) MainButtonCtl.set(mainButton); else MainButtonCtl.clear();
+    const fb = document.getElementById('detail-main-fallback');
+    if (fb) fb.hidden = !mainButton;
+    if (mainButton) MainButtonCtl.set(Object.assign({ owner: 'detail' }, mainButton), fb); else MainButtonCtl.clear();
     AppNavigation.push({ type: 'detail', close: closeDetail });
 }
 
@@ -1147,144 +1200,195 @@ function initOverlay() {
     closeBtn.addEventListener('click', closeDetail);
 }
 
-// CALCULATORS CONTROL
-function switchCalc(type) {
-    const btns = document.querySelectorAll('.calc-tab-btn');
-    const sections = document.querySelectorAll('.calc-section');
+// CALCULATORS (4.4-E). Formulalar o'zgarmagan; "Hisoblash" — MainButton (Telegram) yoki sahifadagi tugma.
+let currentCalc = 'bmi';
+const CALC_FIELDS = {
+    bmi: ['bmi-weight', 'bmi-height'],
+    water: ['water-weight'],
+    calorie: ['calorie-weight', 'calorie-height', 'calorie-age']
+};
 
-    btns.forEach(b => b.classList.remove('active'));
-    sections.forEach(s => s.classList.remove('active'));
+function calcInputValid(type) {
+    return CALC_FIELDS[type].every(id => {
+        const el = document.getElementById(id);
+        const v = id === 'calorie-age' ? parseInt(el.value) : parseFloat(el.value);
+        return v > 0;
+    });
+}
 
-    if (type === 'bmi') {
-        btns[0].classList.add('active');
-        document.getElementById('calc-bmi-section').classList.add('active');
-    } else if (type === 'water') {
-        btns[1].classList.add('active');
-        document.getElementById('calc-water-section').classList.add('active');
-    } else {
-        btns[2].classList.add('active');
-        document.getElementById('calc-calorie-section').classList.add('active');
+function runCalc() {
+    const fn = { bmi: calcBmi, water: calcWater, calorie: calcCalorie }[currentCalc];
+    if (fn) fn();
+}
+
+// Sog'liq (kalkulyator) ekrani ochiq va detal yopiq bo'lsa — "Hisoblash" tugmasi; aks holda o'zimiznikini olib tashlaymiz
+function syncCalcMainButton() {
+    const tab = document.getElementById('tab-health');
+    const overlay = document.getElementById('overlay-details');
+    const onCalc = tab && tab.classList.contains('active') && !(overlay && overlay.classList.contains('active'));
+    if (!onCalc) {
+        if (MainButtonCtl.owner === 'calc') MainButtonCtl.clear();
+        return;
     }
+    MainButtonCtl.set({ text: 'Hisoblash', owner: 'calc', onClick: runCalc }, document.getElementById('btn-calculate-' + currentCalc));
+    MainButtonCtl.setActive(calcInputValid(currentCalc));
+}
+
+function switchCalc(type) {
+    if (!CALC_FIELDS[type]) return;
+    currentCalc = type;
+    document.querySelectorAll('[data-calc]').forEach(b => {
+        b.setAttribute('aria-selected', b.getAttribute('data-calc') === type ? 'true' : 'false');
+    });
+    document.querySelectorAll('.calc-section').forEach(s => s.classList.toggle('active', s.id === 'calc-' + type + '-section'));
+    document.querySelectorAll('[data-calc-result]').forEach(r => {
+        if (r.getAttribute('data-calc-result') !== type) r.hidden = true;
+    });
+    syncCalcMainButton();
+}
+
+function showCalcResult(id) {
+    const card = document.getElementById(id);
+    card.hidden = false;
+    try { card.scrollIntoView({ block: 'nearest' }); } catch (e) { /* eski brauzer */ }
+}
+
+const BMI_CHIP = { low: 'chip--warning', ok: 'chip--teal', over: 'chip--warning', obese: 'chip--danger' };
+
+function calcBmi() {
+    const weight = parseFloat(document.getElementById('bmi-weight').value);
+    const height = parseFloat(document.getElementById('bmi-height').value);
+
+    if (!weight || !height || weight <= 0 || height <= 0) {
+        if (tg) tg.showAlert("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
+        else notify("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
+        return;
+    }
+
+    const heightM = height / 100;
+    const bmi = weight / (heightM * heightM);
+
+    document.getElementById('bmi-number').innerText = bmi.toFixed(1);
+
+    // Normal vazn diapazonini hisoblash
+    const minW = 18.5 * (heightM * heightM);
+    const maxW = 24.9 * (heightM * heightM);
+    document.getElementById('bmi-ideal-range').innerText = `${minW.toFixed(1)} - ${maxW.toFixed(1)} kg`;
+
+    let status = '';
+    let desc = '';
+    let level = 'ok';
+    let pointerPos = 0; // % from left
+
+    if (bmi < 18.5) {
+        status = "Kam vazn";
+        desc = "Sizning tana vazningiz me'yordan past. Sog'lom va to'yimli ovqatlanishga harakat qiling.";
+        level = 'low';
+        pointerPos = 15;
+    } else if (bmi >= 18.5 && bmi < 25) {
+        status = "Normal vazn";
+        desc = "Sizning vazningiz mutlaqo me'yorda! Faol bo'ling va to'g'ri ovqatlanishda davom eting.";
+        level = 'ok';
+        pointerPos = 40;
+    } else if (bmi >= 25 && bmi < 30) {
+        status = "Ortiqcha vazn";
+        desc = "Tana vazningiz me'yordan bir oz yuqori. Jismoniy mashqlar va shirinliklarni kamaytirish tavsiya etiladi.";
+        level = 'over';
+        pointerPos = 65;
+    } else {
+        status = "Semizlik";
+        desc = "Sizda semizlik darajasi aniqlandi. Sog'lig'ingiz uchun shifokor-dietolog bilan maslahatlashishni tavsiya qilamiz.";
+        level = 'obese';
+        pointerPos = 90;
+    }
+
+    const chip = document.getElementById('bmi-status');
+    chip.innerText = status;
+    chip.className = 'chip ' + BMI_CHIP[level];
+    document.getElementById('bmi-description').innerText = desc;
+    document.getElementById('bmi-gauge-pointer').style.left = `${pointerPos}%`;
+    showCalcResult('bmi-result-card');
+
+    // BMI tarixiga saqlash
+    saveHistory('bmi', { bmi: bmi.toFixed(1), weight, height, status: status.replace(/[^a-zA-Z\s']/g, '').trim() });
+    renderHistoryLog();
+}
+
+function calcWater() {
+    const weight = parseFloat(document.getElementById('water-weight').value);
+
+    if (!weight || weight <= 0) {
+        if (tg) tg.showAlert("Iltimos, vazningizni to'g'ri kiriting!");
+        else notify("Iltimos, vazningizni to'g'ri kiriting!");
+        return;
+    }
+
+    const minWater = weight * 30; // ml
+    const sportWater = minWater + 500;
+    const summerWater = minWater + 300;
+
+    document.getElementById('water-value').innerText = `${(minWater / 1000).toFixed(1)} Litr`;
+    document.getElementById('water-sport').innerText = `${(sportWater / 1000).toFixed(1)} L`;
+    document.getElementById('water-summer').innerText = `${(summerWater / 1000).toFixed(1)} L`;
+
+    showCalcResult('water-result-card');
+
+    // Suv tarixiga saqlash
+    saveHistory('water', { liters: (minWater / 1000).toFixed(1), weight });
+    renderHistoryLog();
+}
+
+function calcCalorie() {
+    const gender = document.getElementById('calorie-gender').value;
+    const weight = parseFloat(document.getElementById('calorie-weight').value);
+    const height = parseFloat(document.getElementById('calorie-height').value);
+    const age = parseInt(document.getElementById('calorie-age').value);
+    const activity = document.getElementById('calorie-activity').value;
+
+    if (!weight || !height || !age || weight <= 0 || height <= 0 || age <= 0) {
+        if (tg) tg.showAlert("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
+        else notify("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
+        return;
+    }
+
+    // Mifflin-St Jeor formula
+    let bmr = 0;
+    if (gender === 'male') {
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+    } else {
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+    }
+
+    // TDEE (Total Daily Energy Expenditure)
+    let factor = 1.2;
+    if (activity === 'moderate') factor = 1.55;
+    else if (activity === 'high') factor = 1.9;
+
+    const tdee = bmr * factor;
+    const lose = tdee - 500;
+    const gain = tdee + 500;
+
+    document.getElementById('calorie-value').innerText = `${Math.round(tdee)} kkal`;
+    document.getElementById('calorie-lose').innerText = `${Math.round(lose)} kkal`;
+    document.getElementById('calorie-gain').innerText = `${Math.round(gain)} kkal`;
+
+    showCalcResult('calorie-result-card');
 }
 
 function initCalculators() {
-    // BMI
-    const btnBmi = document.getElementById('btn-calculate-bmi');
-    btnBmi.addEventListener('click', () => {
-        const weight = parseFloat(document.getElementById('bmi-weight').value);
-        const height = parseFloat(document.getElementById('bmi-height').value);
-
-        if (!weight || !height || weight <= 0 || height <= 0) {
-            if (tg) tg.showAlert("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
-            else notify("Iltimos, vazn va bo'y qiymatlarini to'g'ri kiriting!");
-            return;
-        }
-
-        const heightM = height / 100;
-        const bmi = weight / (heightM * heightM);
-
-        document.getElementById('bmi-number').innerText = bmi.toFixed(1);
-
-        // Normal vazn diapazonini hisoblash
-        const minW = 18.5 * (heightM * heightM);
-        const maxW = 24.9 * (heightM * heightM);
-        document.getElementById('bmi-ideal-range').innerText = `${minW.toFixed(1)} - ${maxW.toFixed(1)} kg`;
-
-        let status = '';
-        let desc = '';
-        let pointerPos = 0; // % from left
-
-        if (bmi < 18.5) {
-            status = "Kam vazn ⚠️";
-            desc = "Sizning tana vazningiz me'yordan past. Sog'lom va to'yimli ovqatlanishga harakat qiling.";
-            pointerPos = 15;
-        } else if (bmi >= 18.5 && bmi < 25) {
-            status = "Normal vazn ✅";
-            desc = "Sizning vazningiz mutlaqo me'yorda! Faol bo'ling va to'g'ri ovqatlanishda davom eting.";
-            pointerPos = 40;
-        } else if (bmi >= 25 && bmi < 30) {
-            status = "Ortiqcha vazn ⚠️";
-            desc = "Tana vazningiz me'yordan bir oz yuqori. Jismoniy mashqlar va shirinliklarni kamaytirish tavsiya etiladi.";
-            pointerPos = 65;
-        } else {
-            status = "Semizlik 🚨";
-            desc = "Sizda semizlik darajasi aniqlandi. Sog'lig'ingiz uchun shifokor-dietolog bilan maslahatlashishni tavsiya qilamiz.";
-            pointerPos = 90;
-        }
-
-        document.getElementById('bmi-status').innerText = status;
-        document.getElementById('bmi-description').innerText = desc;
-        document.getElementById('bmi-gauge-pointer').style.left = `${pointerPos}%`;
-        document.getElementById('bmi-result-card').style.display = 'flex';
-
-        // BMI tarixiga saqlash
-        saveHistory('bmi', { bmi: bmi.toFixed(1), weight, height, status: status.replace(/[^a-zA-Z\s']/g, '').trim() });
-        renderHistoryLog();
+    document.body.classList.toggle('tg-main', MainButtonCtl.available());
+    document.querySelectorAll('[data-calc]').forEach(btn => {
+        btn.addEventListener('click', () => switchCalc(btn.getAttribute('data-calc')));
     });
-
-    // Water
-    const btnWater = document.getElementById('btn-calculate-water');
-    btnWater.addEventListener('click', () => {
-        const weight = parseFloat(document.getElementById('water-weight').value);
-
-        if (!weight || weight <= 0) {
-            if (tg) tg.showAlert("Iltimos, vazningizni to'g'ri kiriting!");
-            else notify("Iltimos, vazningizni to'g'ri kiriting!");
-            return;
-        }
-
-        const minWater = weight * 30; // ml
-        const sportWater = minWater + 500;
-        const summerWater = minWater + 300;
-
-        document.getElementById('water-value').innerText = `${(minWater / 1000).toFixed(1)} Litr`;
-        document.getElementById('water-sport').innerText = `${(sportWater / 1000).toFixed(1)} L`;
-        document.getElementById('water-summer').innerText = `${(summerWater / 1000).toFixed(1)} L`;
-
-        document.getElementById('water-result-card').style.display = 'flex';
-
-        // Suv tarixiga saqlash
-        saveHistory('water', { liters: (minWater / 1000).toFixed(1), weight });
-        renderHistoryLog();
-    });
-
-    // Calorie
-    const btnCalorie = document.getElementById('btn-calculate-calorie');
-    btnCalorie.addEventListener('click', () => {
-        const gender = document.getElementById('calorie-gender').value;
-        const weight = parseFloat(document.getElementById('calorie-weight').value);
-        const height = parseFloat(document.getElementById('calorie-height').value);
-        const age = parseInt(document.getElementById('calorie-age').value);
-        const activity = document.getElementById('calorie-activity').value;
-
-        if (!weight || !height || !age || weight <= 0 || height <= 0 || age <= 0) {
-            if (tg) tg.showAlert("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
-            else notify("Iltimos, barcha maydonlarni to'g'ri to'ldiring!");
-            return;
-        }
-
-        // Mifflin-St Jeor formula
-        let bmr = 0;
-        if (gender === 'male') {
-            bmr = 10 * weight + 6.25 * height - 5 * age + 5;
-        } else {
-            bmr = 10 * weight + 6.25 * height - 5 * age - 161;
-        }
-
-        // TDEE (Total Daily Energy Expenditure)
-        let factor = 1.2;
-        if (activity === 'moderate') factor = 1.55;
-        else if (activity === 'high') factor = 1.9;
-
-        const tdee = bmr * factor;
-        const lose = tdee - 500;
-        const gain = tdee + 500;
-
-        document.getElementById('calorie-value').innerText = `${Math.round(tdee)} kkal`;
-        document.getElementById('calorie-lose').innerText = `${Math.round(lose)} kkal`;
-        document.getElementById('calorie-gain').innerText = `${Math.round(gain)} kkal`;
-
-        document.getElementById('calorie-result-card').style.display = 'flex';
+    Object.keys(CALC_FIELDS).forEach(type => {
+        CALC_FIELDS[type].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if (type === currentCalc && MainButtonCtl.owner === 'calc') MainButtonCtl.setActive(calcInputValid(type));
+            });
+        });
+        // Sahifadagi tugma (brauzer zaxirasi) — MainButton bilan bir xil yo'l
+        const btn = document.getElementById('btn-calculate-' + type);
+        btn.addEventListener('click', () => { if (!btn.onclick) { currentCalc = type; runCalc(); } });
     });
 }
 

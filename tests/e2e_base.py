@@ -28,7 +28,7 @@ INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000
 FAKE_TELEGRAM = """
 (() => {
   const state = { closed: 0, links: [], alerts: [], invoices: [], backVisible: false, headerColors: [], bgColors: [],
-                  mainVisible: false, mainText: null, mainParams: null };
+                  mainVisible: false, mainText: null, mainParams: null, mainActive: true };
   window.__tg = state;
   const noop = () => {};
   window.Telegram = { WebApp: {
@@ -54,12 +54,32 @@ FAKE_TELEGRAM = """
                   onClick: (cb) => { window.__backCb = cb; }, offClick: noop },
     MainButton: {
       show: () => { state.mainVisible = true; }, hide: () => { state.mainVisible = false; },
-      setText: (t) => { state.mainText = t; }, setParams: (p) => { state.mainParams = p; },
+      setText: (t) => { state.mainText = t; },
+      setParams: (p) => { state.mainParams = p; if ('is_active' in p) state.mainActive = p.is_active; },
+      enable: () => { state.mainActive = true; }, disable: () => { state.mainActive = false; },
       onClick: (cb) => { window.__mainCb = cb; }, offClick: (cb) => { if (window.__mainCb === cb) window.__mainCb = null; }
     }
   } };
 })();
 """
+
+# Elementning matn rangi va foni orasidagi WCAG kontrasti (fon shaffof bo'lsa — ota elementlardan olinadi)
+CONTRAST_JS = r"""(sel) => {
+    const parse = c => c.match(/[\d.]+/g).map(Number);
+    const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+                                  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const el = document.querySelector(sel);
+    let bgEl = el, bg = null;
+    while (bgEl) {
+        const c = parse(getComputedStyle(bgEl).backgroundColor);
+        if (c.length < 4 || c[3] > 0.99) { bg = c; break; }
+        bgEl = bgEl.parentElement;
+    }
+    bg = bg || [255, 255, 255];
+    const a = lum(parse(getComputedStyle(el).color)), b = lum(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}"""
+
 
 def sequence(*specs):
     """Har bir chaqiruvga ketma-ket bittadan javob beradi (oxirgisi takrorlanadi).
