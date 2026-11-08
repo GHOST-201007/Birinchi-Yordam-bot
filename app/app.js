@@ -175,11 +175,13 @@ function canUseApi() {
     return !!(tg && tg.initData);
 }
 
-async function api(path, extra) {
+// opts (ixtiyoriy): timeoutMs — standart 8 s; withStatus — xato holatida ham {status, data, retryAfter} qaytaradi
+async function api(path, extra, opts) {
+    const o = opts || {};
     const initData = (tg && tg.initData) || '';
     if (!initData) throw new Error('no-initdata');
     const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), o.timeoutMs || 8000) : null;
     try {
         const r = await fetch('/api/' + path, {
             method: 'POST',
@@ -187,6 +189,12 @@ async function api(path, extra) {
             body: JSON.stringify(Object.assign({ init_data: initData }, extra || {})),
             signal: ctrl ? ctrl.signal : undefined
         });
+        if (o.withStatus) {
+            let data = null;
+            try { data = await r.json(); } catch (e) { data = null; }      // JSON emas (masalan nginx 502)
+            const ra = parseInt(r.headers.get('Retry-After') || '', 10);
+            return { status: r.status, data: data, retryAfter: Number.isFinite(ra) ? ra : null };
+        }
         if (!r.ok) throw new Error('http-' + r.status);
         return await r.json();
     } finally {
@@ -828,7 +836,9 @@ function showTab(tabId) {
     const content = document.querySelector('.app-content');
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
+    document.body.classList.toggle('ai-tab-on', tabId === 'tab-ai');     // suhbat: xabarlar skroll, yozish paneli pastda
     if (tabId !== 'tab-first-aid') hideBodySheet();      // sheet bosh ekrandagi tana figurasiga tegishli
+    if (tabId === 'tab-ai') onAiTabShown();
     if (tabId === 'tab-first-aid') fitBodyFigure();       // yashirin bo'limda o'lcham 0 edi (strelkalar ham)
     if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
@@ -1034,7 +1044,7 @@ function todayStateFromUrl() {
     };
 }
 
-onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); renderAiOffer(s); });
+onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); renderAiOffer(s); renderAiQuota(s); });
 document.addEventListener('DOMContentLoaded', () => {
     getAppState(60000).then((s) => renderTodayCard(s || todayStateFromUrl()));
 });
@@ -2481,6 +2491,7 @@ const BODY_HOTSPOTS = {
     ]
 };
 let selectedHotspotId = null;
+let bodySheetHotspot = null;           // sheet yorliq/strelkadan ochilgan bo'lsa — hudud id (AI konteksti: "kokrak")
 let selectedPartKeys = new Set();      // ajratilgan maneken qismlari (data-part)
 const FIG_MAN = { x: 87.89, y: 2, s: 0.6222 };   // maneken -> figura koordinatalari (index.html dagi transform bilan bir xil)
 const FIG_LABEL_Y = { 1: 35, 2: 146, 3: 107, 4: 155, 5: 271 };   // yorliq markazi (G 2.4)
@@ -2585,7 +2596,8 @@ function openHotspot(spot) {
     selectedHotspotId = spot.id;
     selectedPartKeys = new Set(viewParts().map(p => p.getAttribute('data-part'))
         .filter(k => spot.keys.includes(partBaseKey(k))));          // hududning maneken qismlari ham ajratiladi
-    selectedBodyPartKey = keys[0];          // "AI'dan so'rash" zaxirasi (tg.sendData / ?start=ai_consult_<kalit>) uchun
+    selectedBodyPartKey = keys[0];          // "Botda davom etish" zaxirasi (tg.sendData / ?start=ai_consult_<kalit>) uchun
+    bodySheetHotspot = spot.id;
     _openFullModal(keys[0], { name: spot.label, diseases: diseases });
 }
 
@@ -2645,6 +2657,7 @@ function hideBodySheet() {
     if (MainButtonCtl.owner === 'body') MainButtonCtl.clear();
     selectedBodyPartKey = null;
     selectedHotspotId = null;
+    bodySheetHotspot = null;
     selectedPartKeys = new Set();
     markSelectedBodyPart();
 }
@@ -2655,34 +2668,35 @@ function closeBodySheet() {
     AppNavigation.pop();
 }
 
-// AI konsultant: oqim o'zgarmagan — sendData, keyin botga havola va mini app yopiladi (Telegram tashqarisida — xabar)
-function aiConsultForBodyPart() {
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-    const fb = document.getElementById('ai-consult-btn');
-    if (fb) fb.disabled = true;
-    try { if (MainButtonCtl.owner === 'body' && tg && tg.MainButton && tg.MainButton.showProgress) tg.MainButton.showProgress(); } catch (e) { /* eski klient */ }
+// Sheet'dagi "AI'dan so'rash": AI tabi ochiladi, kontekst chipi qo'yiladi, yozish maydoniga fokus. Xabar YUBORILMAYDI.
+function openAiChatFromBodySheet() {
+    const partKey = selectedBodyPartKey;
+    const key = bodySheetHotspot || partBaseKey(partKey);          // server ruxsat etgan kalit: hudud id yoki a'zo kaliti
+    const titleEl = document.getElementById('modal-title');
+    const label = (titleEl && titleEl.textContent.trim()) || bodyConsultTitle(partKey);
+    closeBodySheet();
+    openAiChat(key ? { type: 'body_part', key: key, label: label, partKey: partKey } : null);
+}
 
-    setTimeout(() => {
-        if (fb) fb.disabled = false;
-        try { if (tg && tg.MainButton && tg.MainButton.hideProgress) tg.MainButton.hideProgress(); } catch (e) { /* eski klient */ }
-        const partKey = selectedBodyPartKey;
-        const partData = bodyMapData && partKey ? bodyMapData[partKey.replace('left_', '').replace('right_', '')] : null;
-        const partLabel = partData ? partData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (partKey || 'bosh');
-        if (tg && tg.sendData) {
-            try { tg.sendData(JSON.stringify({ action: "ai_consult", title: partLabel })); } catch (e) {}
-        }
+// Eski "AI konsultant" sarlavhasi (body_map_data.json dagi nom, emoji'siz) — botga yuboriladigan title
+function bodyConsultTitle(partKey) {
+    const partData = bodyMapData && partKey ? bodyMapData[partBaseKey(partKey)] : null;
+    return partData ? partData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (partKey || 'bosh');
+}
 
-        // Avval sheet yopiladi
-        hideBodySheet();
-
-        if (tg) {
-            const url = `https://t.me/${BOT_USERNAME}?start=ai_consult_${partKey || 'head'}`;
-            tg.openTelegramLink(url);
-            tg.close();
-        } else {
-            notify(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
-        }
-    }, 300);
+// ESKI yo'l (o'zgarmagan): tg.sendData({action:"ai_consult"}), botga havola va mini app yopiladi.
+// Endi faqat zaxira: AI suhbat API'si ishlamasa "Botda davom etish" tugmasi shuni chaqiradi.
+function sendAiConsultToBot(title, startKey) {
+    if (tg && tg.sendData) {
+        try { tg.sendData(JSON.stringify({ action: "ai_consult", title: title })); } catch (e) {}
+    }
+    if (tg) {
+        const url = startKey ? `https://t.me/${BOT_USERNAME}?start=ai_consult_${startKey}` : `https://t.me/${BOT_USERNAME}`;
+        tg.openTelegramLink(url);
+        tg.close();
+    } else {
+        notify(`AI konsultant: ${title}\n\nTelegram ilovasi orqali kiring!`);
+    }
 }
 
 // A'zo nomi (chap/o'ng bilan) — aria-label va sarlavha uchun
@@ -2712,6 +2726,7 @@ function markSelectedBodyPart() {
 function openBodyMapModal(partKey) {
     try {
         selectedBodyPartKey = partKey;
+        bodySheetHotspot = null;
         if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
         console.log("MODAL OCHISHGA URINISH:", partKey);
@@ -2814,7 +2829,7 @@ function _openFullModal(partKey, data) {
         sheet.scrollTop = 0;
         document.body.classList.add('sheet-open');
         markSelectedBodyPart();
-        MainButtonCtl.set({ text: "AI'dan so'rash", owner: 'body', onClick: aiConsultForBodyPart },
+        MainButtonCtl.set({ text: "AI'dan so'rash", owner: 'body', onClick: openAiChatFromBodySheet },
                           document.getElementById('ai-consult-btn'));
         // Boshqa a'zo bosilganda sheet yangilanadi — navigatsiya stekiga qayta qo'shilmaydi
         if (!wasOpen) AppNavigation.push({ type: 'body-map-modal', close: closeBodySheet });
@@ -3800,6 +3815,479 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// AI SUHBAT TABI (G 4-bosqich): savol shu yerda yoziladi, javob shu yerda chiqadi (/api/ai/chat).
+// Tarix faqat xotirada (oxirgi 6 ta), serverda saqlanmaydi. Foydalanuvchi va AI matni FAQAT textContent va DOM
+// tugunlari orqali chiziladi — HTML satri bilan render bu bo'limda ATAYLAB yo'q (tests/test_miniapp_ai_chat_e2e.py).
+// ═══════════════════════════════════════════════════════════════════
+const AI_MSG_MAX = 1000;                 // server bilan bir xil (bot.py: AI_MSG_MAX)
+const AI_HISTORY_MAX = 6;                // server: AI_HISTORY_MAX
+const AI_TIMEOUT_MS = 45000;             // server AI kutishi 40 s + zaxira
+const AI_INFLIGHT_WAIT_S = 5;            // 409 (boshqa oynada javob kutilmoqda) — shuncha soniya kutiladi
+const AI_QUICK_TOPICS = ['qon_ketishi', 'kuyish', 'bogilish', 'yurak_xuruji'];     // FIRST_AID_ITEMS kritik mavzulari
+const AI_TEXT = {
+    busy: "Hozir band, qayta urinib ko'ring.",
+    network: "Aloqa yo'q. Internetni tekshirib, qayta urinib ko'ring.",
+    forbidden: "Mini appni Telegram ichida oching.",
+    server: "Xatolik yuz berdi. Qayta urinib ko'ring.",
+    badRequest: "Xabar 1–1000 belgidan iborat bo'lsin.",
+    limitPremium: "Bugungi limit tugadi. Yangi so'rovlar ertaga soat 00:00 dan (Toshkent vaqti) beriladi.",
+    placeholder: "Holatni yozing…",
+    placeholderLocked: "Bepul savolingiz ishlatildi"
+};
+const aiChat = {
+    history: [],          // [{role: 'user' | 'ai', text}] — faqat muvaffaqiyatli almashinuvlar
+    sending: false,       // javob kutilmoqda: yuborish o'chiq (ikki marta bosib bo'lmaydi)
+    waitUntil: 0,         // "Juda tez yozyapsiz": shu vaqtgacha yuborish o'chiq (ms)
+    waitTimer: null,
+    context: null,        // { type: 'body_part', key, label, partKey } — birinchi yuborishda uzatiladi
+    pending: null,        // javobsiz qolgan oxirgi xabar { text } — "Qayta urinish" uchun
+    quota: null,          // { remaining, limit } — /api/state yuklanmagan bo'lsa
+    offerShown: false,    // bepul savol ishlatilgan: Premium taklif kartasi, yozish o'chiq
+    epoch: 0              // "Yangi suhbat" — eski javob yangi suhbatga tushmaydi
+};
+
+function aiEl(tag, cls, text) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text !== undefined && text !== null) el.textContent = text;
+    return el;
+}
+
+function aiIcon(name) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const use = document.createElementNS(NS, 'use');
+    use.setAttribute('href', '#i-' + name);
+    svg.appendChild(use);
+    return svg;
+}
+
+// Qator ichi: **qalin** / __qalin__ -> <strong>; qolgan * va ` belgilari ekranda xom ko'rinmaydi
+function aiStripMarks(text) {
+    return String(text).replace(/\*+/g, '').replace(/`+/g, '');
+}
+
+function aiAppendInline(parent, text) {
+    String(text).split(/(\*\*[^*]+?\*\*|__[^_]+?__)/).forEach((part, i) => {
+        if (!part) return;
+        if (i % 2 === 1) {
+            parent.appendChild(aiEl('strong', null, aiStripMarks(part.slice(2, -2))));
+        } else {
+            const t = aiStripMarks(part);
+            if (t) parent.appendChild(document.createTextNode(t));
+        }
+    });
+}
+
+// AI javobi (oddiy matn) -> DOM: ## sarlavha, "- " / "* " / "1." ro'yxat, bo'sh qator — yangi xatboshi
+function aiRenderReply(container, text) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    let para = null;
+    let list = null;
+    lines.forEach(raw => {
+        const line = raw.trim();
+        if (!line || /^([-*_])(\s*\1){2,}$/.test(line)) { para = null; list = null; return; }   // bo'sh qator / ---
+        let m = line.match(/^#{1,6}\s*(.*)$/);
+        if (m) {
+            para = null; list = null;
+            const h = aiEl('p', 'ai-h');
+            aiAppendInline(h, m[1].replace(/\s*#+\s*$/, ''));
+            container.appendChild(h);
+            return;
+        }
+        m = line.match(/^(?:[-*•+]|(\d{1,2})[.)])\s+(.*)$/);
+        if (m) {
+            const tag = m[1] ? 'ol' : 'ul';
+            para = null;
+            if (!list || list.tagName.toLowerCase() !== tag) {
+                list = aiEl(tag, 'ai-list');
+                const start = m[1] ? parseInt(m[1], 10) : 1;
+                if (start > 1) list.start = start;
+                container.appendChild(list);
+            }
+            const li = aiEl('li');
+            aiAppendInline(li, m[2]);
+            list.appendChild(li);
+            return;
+        }
+        list = null;
+        if (para) para.appendChild(document.createElement('br'));
+        else { para = aiEl('p'); container.appendChild(para); }
+        aiAppendInline(para, line.replace(/^>\s?/, ''));
+    });
+    if (!container.childNodes.length) container.appendChild(aiEl('p', null, String(text || '')));
+}
+
+function aiThread() { return document.getElementById('ai-thread'); }
+function aiLog() { return document.getElementById('ai-log'); }
+
+function aiHasMessages() {
+    const thread = aiThread();
+    return !!thread && thread.querySelectorAll('.ai-msg:not(.ai-greeting):not(.ai-typing)').length > 0;
+}
+
+function aiAddMessage(role, who, build, extraCls) {
+    const msg = aiEl('div', 'ai-msg ai-msg--' + role + (extraCls ? ' ' + extraCls : ''));
+    msg.appendChild(aiEl('span', 'sr-only', who));
+    const bubble = aiEl('div', 'ai-bubble');
+    build(bubble);
+    msg.appendChild(bubble);
+    aiThread().appendChild(msg);
+    return msg;
+}
+
+function aiAddUser(text) {
+    return aiAddMessage('user', 'Siz:', b => b.appendChild(aiEl('p', 'ai-user-text', text)));
+}
+
+function aiAddReply(text) {
+    return aiAddMessage('ai', 'AI:', b => aiRenderReply(b, text));
+}
+
+// Xato / limit / "juda tez" — AI pufagi ichida, kerak bo'lsa tugmalar bilan
+function aiAddNotice(text, actions) {
+    return aiAddMessage('ai', 'AI:', b => {
+        b.appendChild(aiEl('p', 'ai-notice-text', text));
+        if (!actions || !actions.length) return;
+        const row = aiEl('div', 'ai-actions');
+        actions.forEach(a => {
+            const btn = aiEl('button', 'ai-action' + (a.primary ? ' ai-action--primary' : ''));
+            btn.type = 'button';
+            btn.setAttribute('data-ai-action', a.id);
+            if (a.icon) btn.appendChild(aiIcon(a.icon));
+            btn.appendChild(aiEl('span', null, a.label));
+            btn.addEventListener('click', () => a.onClick(btn));
+            row.appendChild(btn);
+        });
+        b.appendChild(row);
+    }, 'ai-msg--notice');
+}
+
+function aiShowTyping() {
+    const msg = aiEl('div', 'ai-msg ai-msg--ai ai-typing');
+    msg.setAttribute('role', 'status');
+    const bubble = aiEl('div', 'ai-bubble');
+    bubble.appendChild(aiEl('span', 'sr-only', 'AI javob yozmoqda'));
+    for (let i = 0; i < 3; i++) {
+        const dot = aiEl('span', 'ai-dot');
+        dot.setAttribute('aria-hidden', 'true');
+        bubble.appendChild(dot);
+    }
+    msg.appendChild(bubble);
+    aiThread().appendChild(msg);
+    return msg;
+}
+
+function aiScrollBottom() {
+    const log = aiLog();
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+// Uzun javob boshidan o'qiladi: element yuqori chetiga suriladi (mumkin bo'lgancha)
+function aiScrollTo(el) {
+    const log = aiLog();
+    if (!log || !el) return;
+    log.scrollTop += el.getBoundingClientRect().top - log.getBoundingClientRect().top - 8;
+}
+
+function aiIsWaiting() { return aiChat.waitUntil > Date.now(); }
+function aiCanSend() { return !aiChat.sending && !aiIsWaiting() && !aiChat.offerShown; }
+
+// Yuborish tugmasi, tezkor chiplar, "Qayta urinish", "Yangi suhbat" holati — bitta joyda
+function aiSync() {
+    const input = document.getElementById('ai-input');
+    const send = document.getElementById('ai-send');
+    if (!input || !send) return;
+    const locked = aiChat.offerShown;
+    const blocked = locked || aiChat.sending || aiIsWaiting();
+    input.disabled = locked;
+    input.placeholder = locked ? AI_TEXT.placeholderLocked : AI_TEXT.placeholder;
+    send.disabled = blocked || !input.value.trim();
+    const composer = document.getElementById('ai-composer');
+    if (composer) composer.classList.toggle('is-locked', locked);
+    const quick = document.getElementById('ai-quick');
+    if (quick) {
+        quick.hidden = aiHasMessages();
+        quick.querySelectorAll('button').forEach(b => { b.disabled = blocked; });
+    }
+    document.querySelectorAll('#ai-thread [data-ai-action="retry"]').forEach(b => { b.disabled = blocked; });
+    const fresh = document.getElementById('ai-new-chat');
+    if (fresh) fresh.disabled = aiChat.sending || !aiHasMessages();
+    const thread = aiThread();
+    if (thread) thread.setAttribute('aria-busy', aiChat.sending ? 'true' : 'false');
+}
+
+// Bepul foydalanuvchi: server limiti 1 (jami 1 ta savol). Limit noma'lum bo'lsa — /api/state dagi is_premium
+function aiIsFree(limit) {
+    if (typeof limit === 'number') return !(limit > 1);
+    return AppState.data ? !AppState.data.is_premium : true;
+}
+
+// Sarlavhadagi hisoblagich: bepul — "Bepul savol: 1/1" (jami), Premium — "Bugun: 12/15 so'rov"
+function renderAiQuota(s) {
+    const el = document.getElementById('ai-quota');
+    if (!el) return;
+    let remaining = null, limit = null;
+    if (s && typeof s.ai_remaining === 'number' && typeof s.ai_limit === 'number') {
+        remaining = s.ai_remaining; limit = s.ai_limit;
+    } else if (aiChat.quota) {
+        remaining = aiChat.quota.remaining; limit = aiChat.quota.limit;
+    }
+    if (remaining === null) { el.hidden = true; return; }
+    el.textContent = aiIsFree(limit) ? `Bepul savol: ${remaining}/${limit}` : `Bugun: ${remaining}/${limit} so'rov`;
+    el.hidden = false;
+}
+
+// Javobdagi remaining/limit -> umumiy holat (hisoblagich va Premium taklif kartasi tinglovchilar orqali yangilanadi)
+function aiApplyQuota(remaining, limit) {
+    if (typeof remaining !== 'number' || typeof limit !== 'number') return;
+    aiChat.quota = { remaining: remaining, limit: limit };
+    if (AppState.data) patchAppState({ ai_remaining: remaining, ai_limit: limit });
+    else renderAiQuota(null);
+    if (remaining === 0 && aiIsFree(limit) && !aiChat.offerShown) showAiPremiumOffer();   // holat eskirgan bo'lsa ham
+}
+
+function aiSetContext(ctx) {
+    aiChat.context = ctx || null;
+    const box = document.getElementById('ai-context');
+    const label = document.getElementById('ai-context-label');
+    if (!box || !label) return;
+    label.textContent = ctx ? `Tana qismi: ${ctx.label}` : '';
+    box.hidden = !ctx;
+}
+
+function aiStartWait(seconds) {
+    const s = Math.max(1, Math.min(300, Math.round(seconds) || 1));
+    aiChat.waitUntil = Date.now() + s * 1000;
+    if (aiChat.waitTimer) clearTimeout(aiChat.waitTimer);
+    aiChat.waitTimer = setTimeout(() => { aiChat.waitTimer = null; aiChat.waitUntil = 0; aiSync(); }, s * 1000);
+    return s;
+}
+
+function aiRetryAction() {
+    return { id: 'retry', label: 'Qayta urinish', icon: 'rotate-cw', onClick: aiRetry };
+}
+
+function aiRetry(btn) {
+    if (!aiChat.pending || !aiCanSend()) return;
+    const notice = btn && btn.closest('.ai-msg');
+    if (notice) notice.remove();
+    aiSend(aiChat.pending.text, { retry: true });
+}
+
+// Zaxira: API umuman ishlamasa — eski yo'l (tg.sendData ai_consult), suhbat botda davom etadi
+function aiContinueInBot() {
+    const ctx = aiChat.context;
+    if (ctx && ctx.partKey) {
+        sendAiConsultToBot(bodyConsultTitle(ctx.partKey), ctx.partKey);
+        return;
+    }
+    const text = aiChat.pending ? aiChat.pending.text : '';
+    sendAiConsultToBot(text.slice(0, 100) || 'AI maslahat', null);
+}
+
+function aiOpenPremium() {
+    const btn = document.getElementById('btn-open-premium');          // mavjud Premium oynasi (tarif -> openInvoice)
+    if (btn) btn.click();
+}
+
+function aiHandleResult(message, res, failure) {
+    if (failure === 'forbidden') { aiAddNotice(AI_TEXT.forbidden); return; }
+    const data = res && res.data && typeof res.data === 'object' ? res.data : null;
+    if (failure || !data || (!data.ok && !data.error)) {          // tarmoq / nginx: API umuman javob bermadi
+        const actions = [aiRetryAction()];
+        if (tg && tg.initData) actions.push({ id: 'bot', label: 'Botda davom etish', icon: 'chevron-right', onClick: aiContinueInBot });
+        aiAddNotice(AI_TEXT.network, actions);
+        return;
+    }
+    if (data.ok) {
+        const reply = typeof data.reply === 'string' ? data.reply.trim() : '';
+        if (!reply) { aiAddNotice(AI_TEXT.busy, [aiRetryAction()]); return; }
+        aiChat.history.push({ role: 'user', text: message }, { role: 'ai', text: reply.slice(0, AI_MSG_MAX) });
+        aiChat.history = aiChat.history.slice(-AI_HISTORY_MAX);
+        aiChat.pending = null;
+        if (aiChat.context) aiSetContext(null);               // kontekst birinchi yuborishda uzatildi
+        const el = aiAddReply(reply);
+        aiApplyQuota(data.remaining, data.limit);
+        aiScrollTo(el);
+        return;
+    }
+    const err = data.error;
+    if (err === 'limit') {
+        const limit = typeof data.limit === 'number' ? data.limit : null;
+        if (aiIsFree(limit)) {                                  // bepul savol ishlatilgan: Premium taklif kartasi
+            aiChat.pending = null;
+            aiApplyQuota(0, limit === null ? 1 : limit);
+            aiScrollTo(document.getElementById('ai-premium-offer'));
+            return;
+        }
+        if (typeof data.remaining === 'number' && limit !== null) aiApplyQuota(data.remaining, limit);
+        const actions = data.offer === 'premium'
+            ? [{ id: 'premium', label: 'Premium tariflar', icon: 'crown', primary: true, onClick: aiOpenPremium }] : [];
+        aiAddNotice(AI_TEXT.limitPremium, actions);
+        return;
+    }
+    if (err === 'busy' && (data.reason === 'rate' || data.reason === 'inflight' || res.status === 429)) {
+        const wait = data.reason === 'inflight' ? AI_INFLIGHT_WAIT_S
+            : (Number(data.retry_after) || res.retryAfter || 2);
+        const n = aiStartWait(wait);
+        aiAddNotice(`Juda tez yozyapsiz. ${n} soniyadan so'ng qayta urinib ko'ring.`, [aiRetryAction()]);
+        return;
+    }
+    if (err === 'forbidden') { aiAddNotice(AI_TEXT.forbidden); return; }
+    if (err === 'bad_request') { aiAddNotice(AI_TEXT.badRequest); return; }
+    aiAddNotice(err === 'busy' ? AI_TEXT.busy : AI_TEXT.server, [aiRetryAction()]);
+}
+
+async function aiSend(text, opts) {
+    const o = opts || {};
+    const message = String(text || '').trim().slice(0, AI_MSG_MAX);
+    if (!message || !aiCanSend()) return;
+    const epoch = aiChat.epoch;
+    if (!o.retry) aiAddUser(message);
+    aiChat.pending = { text: message };
+    aiChat.sending = true;
+    aiSync();
+    const typing = aiShowTyping();
+    aiScrollBottom();
+    let res = null;
+    let failure = null;
+    try {
+        const body = { message: message, history: aiChat.history.slice(-AI_HISTORY_MAX) };
+        if (aiChat.context) body.context = { type: aiChat.context.type, key: aiChat.context.key };
+        res = await api('ai/chat', body, { timeoutMs: AI_TIMEOUT_MS, withStatus: true });
+    } catch (e) {
+        failure = (e && e.message === 'no-initdata') ? 'forbidden' : 'network';
+    }
+    typing.remove();
+    aiChat.sending = false;
+    if (epoch === aiChat.epoch) aiHandleResult(message, res, failure);
+    aiSync();
+}
+
+function aiSubmit() {
+    const input = document.getElementById('ai-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text || !aiCanSend()) return;
+    input.value = '';
+    aiAutosize();
+    aiSend(text);
+}
+
+function aiNewChat() {
+    if (aiChat.sending) return;
+    aiChat.epoch++;
+    aiChat.history = [];
+    aiChat.pending = null;
+    aiSetContext(null);
+    aiThread().querySelectorAll('.ai-msg:not(.ai-greeting)').forEach(m => m.remove());
+    aiSync();
+    const log = aiLog();
+    if (log) log.scrollTop = 0;
+}
+
+// textarea: 1–4 qator (CSS max-height), keyin ichida skroll
+function aiAutosize() {
+    const input = document.getElementById('ai-input');
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = (input.scrollHeight + (input.offsetHeight - input.clientHeight)) + 'px';
+}
+
+function onAiTabShown() {
+    aiSync();
+    aiAutosize();
+    aiScrollBottom();
+}
+
+// Bosh ekrandagi tana sheet'idan va boshqa joylardan: AI tabi, kontekst chipi, fokus (avtomatik yuborilmaydi)
+function openAiChat(context) {
+    showTab('tab-ai');
+    if (context) aiSetContext(context);
+    const input = document.getElementById('ai-input');
+    if (input && !input.disabled) {
+        try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    }
+}
+
+// Klaviatura: yozish paneli klaviatura ustida qoladi, pastki nav yashirinadi (visualViewport / viewportChanged)
+function initAiKeyboard() {
+    const input = document.getElementById('ai-input');
+    const container = document.getElementById('app-container');
+    if (!input || !container) return;
+    const vv = window.visualViewport || null;
+    const height = () => (vv ? vv.height : window.innerHeight);
+    let base = height();
+    let width = window.innerWidth;
+    const update = () => {
+        const h = height();
+        if (window.innerWidth !== width) { width = window.innerWidth; base = h; }       // ekran burildi
+        const focused = document.activeElement === input;
+        if (!focused) base = Math.max(base, h);
+        const open = focused && document.body.classList.contains('ai-tab-on') && base - h > 120;
+        const was = document.body.classList.contains('kb-open');
+        document.body.classList.toggle('kb-open', open);
+        container.style.height = open ? Math.round(h) + 'px' : '';
+        if (open && !was) {
+            try { window.scrollTo(0, 0); } catch (e) { /* yo'q */ }
+            aiScrollBottom();
+        }
+    };
+    if (vv) vv.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    if (tg && tg.onEvent) {
+        try { tg.onEvent('viewportChanged', update); } catch (e) { /* eski klient */ }
+    }
+    input.addEventListener('focus', update);
+    input.addEventListener('blur', update);
+}
+
+function initAiChat() {
+    const input = document.getElementById('ai-input');
+    const send = document.getElementById('ai-send');
+    if (!input || !send) return;
+    const quick = document.getElementById('ai-quick');
+    if (quick) {
+        AI_QUICK_TOPICS.forEach(id => {
+            const item = FIRST_AID_ITEMS.find(i => i.id === id);
+            if (!item) return;
+            const label = displayTitle(item.title);
+            const chip = aiEl('button', 'ai-chip');
+            chip.type = 'button';
+            chip.setAttribute('data-topic', id);
+            chip.appendChild(aiIcon(iconName(item.icon)));
+            chip.appendChild(aiEl('span', null, label));
+            chip.addEventListener('click', () => aiSend(label));
+            quick.appendChild(chip);
+        });
+    }
+    input.addEventListener('input', () => { aiAutosize(); aiSync(); });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {        // Ctrl/Cmd+Enter — yuborish
+            e.preventDefault();
+            aiSubmit();
+        }
+    });
+    send.addEventListener('click', aiSubmit);
+    const fresh = document.getElementById('ai-new-chat');
+    if (fresh) fresh.addEventListener('click', aiNewChat);
+    const clear = document.getElementById('ai-context-clear');
+    if (clear) clear.addEventListener('click', () => {
+        aiSetContext(null);
+        if (!input.disabled) input.focus();
+    });
+    initAiKeyboard();
+    aiSync();
+}
+
+document.addEventListener('DOMContentLoaded', initAiChat);
+// ═══ /AI SUHBAT TABI ═══
+
 // ── AI tabi: Premium taklif kartasi (bepul savol ishlatilgach). To'lov — mavjud buyPremium (openInvoice) ──
 function aiOfferPlan() {
     const r = document.querySelector('#ai-premium-offer input[name="ai-offer-plan"]:checked');
@@ -3819,17 +4307,18 @@ function renderAiOfferFeatures() {
 }
 
 // Ko'rsatiladi: bepul foydalanuvchi va AI kvotasi 0 (bepul savol ishlatilgan). Premium bo'lsa — yo'q.
+// Karta ko'rinsa suhbatdagi yozish paneli o'chiriladi (aiSync).
 function renderAiOffer(s) {
     const card = document.getElementById('ai-premium-offer');
-    const soon = document.getElementById('ai-soon');
     if (!card) return;
-    const show = !!s && !s.is_premium && s.ai_remaining === 0;
+    const show = !!s && !s.is_premium && s.ai_remaining === 0 && !(s.ai_limit > 1);    // limit > 1 — Premium tarif
     card.hidden = !show;
-    if (soon) soon.hidden = show;
+    aiChat.offerShown = show;
     if (show) renderAiOfferFeatures();
+    aiSync();
 }
 
-function showAiPremiumOffer() {       // 4-bosqichda: /api/ai/chat "limit" javobida ham shu karta
+function showAiPremiumOffer() {       // /api/ai/chat "limit" javobida (holat yuklanmagan bo'lsa ham) shu karta
     renderAiOffer({ is_premium: false, ai_remaining: 0 });
 }
 

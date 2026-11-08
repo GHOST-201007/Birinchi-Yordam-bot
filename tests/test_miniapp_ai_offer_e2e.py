@@ -26,12 +26,13 @@ class AiOfferE2ETest(MiniAppE2EBase):
     def test_hidden_while_free_question_available(self):
         page, _ = self.open_ai({**FREE_USED, "ai_remaining": 1})
         self.assertFalse(page.is_visible("#ai-premium-offer"))
-        self.assertTrue(page.is_visible("#ai-soon"))
+        self.assertTrue(page.is_enabled("#ai-input"))                                    # suhbat ochiq
 
     def test_shown_after_free_question_used(self):
         page, _ = self.open_ai(FREE_USED)
         page.wait_for_selector("#ai-premium-offer:not([hidden])")
-        self.assertFalse(page.is_visible("#ai-soon"))
+        self.assertTrue(page.is_disabled("#ai-input"))                                   # yozish paneli o'chiq
+        self.assertTrue(page.is_disabled("#ai-send"))
         self.assertEqual(page.inner_text("#ai-offer-title"), "Bepul savolingiz ishlatildi")
         self.assertEqual(page.get_attribute("#ai-premium-offer .ai-offer-badge use", "href"), "#i-crown")
         prices = page.evaluate("[...document.querySelectorAll('#ai-premium-offer .plan-price')].map(e => e.textContent)")

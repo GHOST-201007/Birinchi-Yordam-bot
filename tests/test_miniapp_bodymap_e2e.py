@@ -2,7 +2,8 @@
 test_miniapp_bodymap_e2e.py — tana hududi bottom sheet (body_map_data.json).
 G Stage 1: "Tana" tabi olib tashlandi; sheet va a'zo ma'lumoti mantig'i saqlanadi (Stage 2 da bosh ekrandagi
 tana figurasidan ochiladi). Bu yerda sheet openBodyMapModal() orqali ochiladi.
-MainButton "AI'dan so'rash" — tg.sendData oqimi o'zgarmagan.
+MainButton "AI'dan so'rash" — 4-bosqichdan: AI tabini kontekst chipi bilan ochadi (xabar yuborilmaydi).
+Eski tg.sendData oqimi — AI tabidagi "Botda davom etish" zaxirasi (test_miniapp_ai_chat_e2e.py).
 """
 import json
 import unittest
@@ -48,17 +49,18 @@ class BodySheetE2ETest(MiniAppE2EBase):
         items.nth(1).click()
         page.wait_for_function("document.querySelectorAll('#modal-diseases-list details[open]').length === 1")
 
-    def test_main_button_ai_consult_flow_unchanged(self):
+    def test_main_button_opens_ai_chat_with_context(self):
         page = self.open_sheet("left_knee")
         tg = self.tg(page)
         self.assertTrue(tg["mainVisible"])
         self.assertFalse(page.is_visible("#ai-consult-btn"))                           # Telegram ichida — MainButton
         page.evaluate("window.__mainCb()")
-        page.clock.fast_forward(400)
-        self.assertEqual([json.loads(s) for s in self.tg(page)["sent"]], [{"action": "ai_consult", "title": "Tizza"}])
+        page.wait_for_selector("#tab-ai.active")
+        self.assertFalse(page.is_visible("#body-map-modal"))
+        self.assertEqual(page.inner_text("#ai-context-label"), "Tana qismi: Chap tizza")
         tg = self.tg(page)
-        self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=ai_consult_left_knee"])
-        self.assertEqual(tg["closed"], 1)
+        self.assertEqual([json.loads(s) for s in tg["sent"]], [])                       # botga chiqmaydi
+        self.assertEqual((tg["links"], tg["closed"], tg["mainVisible"]), ([], 0, False))
 
     def test_close_by_button_back_escape_and_tab_change(self):
         page = self.open_sheet()

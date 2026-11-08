@@ -50,12 +50,16 @@ class BotUsernameLinksE2ETest(MiniAppE2EBase):
         self.assertEqual(tg["closed"], 1)
 
     def test_body_map_ai_consult_link(self):
-        page, _ = self.open_app({}, query="", init_data="")
+        # 4-bosqich: sheet -> AI tabi; API ishlamasa "Botda davom etish" eski havolani ochadi
+        page, _ = self.open_app({"ai/chat": "abort"}, query="")
         page.wait_for_function("bodyMapData !== null")
         page.evaluate("openBodyMapModal('head')")
         page.wait_for_selector("#body-map-modal:not([hidden])")
-        page.click("#ai-consult-btn")
-        page.clock.fast_forward(400)
+        page.evaluate("window.__mainCb()")
+        page.wait_for_selector("#tab-ai.active")
+        page.fill("#ai-input", "Boshim og'riyapti")
+        page.click("#ai-send")
+        page.click('[data-ai-action="bot"]')
         page.wait_for_function("window.__tg.links.length === 1")
         tg = self.tg(page)
         self.assertEqual(tg["links"], [f"https://t.me/{BOT}?start=ai_consult_head"])

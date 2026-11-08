@@ -199,13 +199,15 @@ class HomeE2ETest(MiniAppE2EBase):
         self.assertEqual(names, expected)
         self.assertEqual(page.get_attribute("#kokrak", "aria-pressed"), "false")
 
-    def test_ai_button_falls_back_to_send_data(self):
+    def test_ai_button_opens_ai_tab_with_region_context(self):
+        # 4-bosqich: botga chiqmaydi — AI tabi, "Tana qismi: Ko'krak" chipi (zaxira: test_miniapp_ai_chat_e2e.py)
         page, _ = self.open_app({})
         self.ready(page)
         page.click("#kokrak")
         page.evaluate("window.__mainCb()")
-        page.clock.fast_forward(400)
-        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=ai_consult_chest"])
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Tana qismi: Ko'krak")
+        self.assertEqual(self.tg(page)["links"], [])
 
     def test_narrow_screen_scales_figure(self):
         page, _ = self.open_app({})

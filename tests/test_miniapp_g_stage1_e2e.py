@@ -69,11 +69,14 @@ class Stage1E2ETest(MiniAppE2EBase):
         self.assertEqual(idle, ["rgb(79, 107, 110)", "700"])
         self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.nav-btn .icon')).width"), "24px")
 
-    def test_ai_tab_placeholder(self):
+    def test_ai_tab_is_chat(self):
+        # 4-bosqich: "Tez orada" o'rniga suhbat (batafsil: test_miniapp_ai_chat_e2e.py)
         page, _ = self.open_app({})
         page.click('nav [data-tab="tab-ai"]')
         page.wait_for_selector("#tab-ai.active")
-        self.assertIn("Tez orada", page.inner_text("#tab-ai"))
+        self.assertNotIn("Tez orada", page.inner_text("#tab-ai"))
+        self.assertIn("Salom! Nima bo'ldi?", page.inner_text("#tab-ai"))
+        self.assertTrue(page.is_visible("#ai-input"))
         self.assertEqual(page.get_attribute('nav [data-tab="tab-ai"]', "aria-current"), "page")
 
 
