@@ -951,7 +951,7 @@ function todayStateFromUrl() {
     };
 }
 
-onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); });
+onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); renderAiOffer(s); });
 document.addEventListener('DOMContentLoaded', () => {
     getAppState(60000).then((s) => renderTodayCard(s || todayStateFromUrl()));
 });
@@ -3715,6 +3715,53 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+});
+
+// ── AI tabi: Premium taklif kartasi (bepul savol ishlatilgach). To'lov — mavjud buyPremium (openInvoice) ──
+function aiOfferPlan() {
+    const r = document.querySelector('#ai-premium-offer input[name="ai-offer-plan"]:checked');
+    return r ? r.value : 'buy_plus_30';
+}
+
+function renderAiOfferFeatures() {
+    const list = document.getElementById('ai-offer-features');
+    if (!list) return;
+    list.innerHTML = '';
+    (PREMIUM_FEATURES[aiOfferPlan()] || []).forEach(text => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="pm-check" aria-hidden="true">${svgIcon('check')}</span><span></span>`;
+        li.lastChild.textContent = text;
+        list.appendChild(li);
+    });
+}
+
+// Ko'rsatiladi: bepul foydalanuvchi va AI kvotasi 0 (bepul savol ishlatilgan). Premium bo'lsa — yo'q.
+function renderAiOffer(s) {
+    const card = document.getElementById('ai-premium-offer');
+    const soon = document.getElementById('ai-soon');
+    if (!card) return;
+    const show = !!s && !s.is_premium && s.ai_remaining === 0;
+    card.hidden = !show;
+    if (soon) soon.hidden = show;
+    if (show) renderAiOfferFeatures();
+}
+
+function showAiPremiumOffer() {       // 4-bosqichda: /api/ai/chat "limit" javobida ham shu karta
+    renderAiOffer({ is_premium: false, ai_remaining: 0 });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const card = document.getElementById('ai-premium-offer');
+    if (!card) return;
+    card.querySelectorAll('input[name="ai-offer-plan"]').forEach(r => r.addEventListener('change', () => {
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+        renderAiOfferFeatures();
+    }));
+    document.getElementById('ai-offer-buy').addEventListener('click', () => {
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        buyPremium(aiOfferPlan());
+    });
+    renderAiOfferFeatures();
 });
 
 // ZAXIRA yo'l: Premium'ni bot orqali (deep link) sotib olish — eski mantiq o'zgarmagan

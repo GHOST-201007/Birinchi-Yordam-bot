@@ -1478,7 +1478,7 @@ body.has-tg-back .close-overlay-btn { display: none; }
 .chip--danger { background: var(--danger-soft); color: #B4232A; }       /* AA: oq/och fonda */
 body.dark-mode .chip--danger { color: var(--danger); }
 .chip--warning { background: var(--warning-soft); color: #9A5B00; }
-.chip--primary { background: var(--primary-soft); color: #065A88; }
+.chip--primary { background: var(--primary-soft); color: #0A5F57; }   /* G: to'q teal (AA) */
 body.dark-mode .chip--primary { color: var(--primary); }
 body.dark-mode .chip--warning { color: var(--warning); }
 .detail-lead { margin: 0 0 var(--s-5); font-size: var(--fs-body); line-height: 1.5; color: var(--text); }
@@ -3079,3 +3079,44 @@ body.dark-mode .fig-views button[aria-pressed="true"] { background: var(--surfac
 @media (prefers-reduced-motion: reduce) {
     .fig-label { transition: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   G — AI tabi: Premium taklif kartasi (bepul savol ishlatilgach)
+   ═══════════════════════════════════════════════════════════════════ */
+.ai-soon[hidden], .ai-offer[hidden] { display: none; }
+.ai-offer {
+    overflow: hidden;
+    margin-bottom: var(--s-4);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.ai-offer-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--s-6) var(--s-5) var(--s-5);
+    background: var(--primary);
+    color: var(--on-primary);
+    text-align: center;
+}
+.ai-offer-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: var(--s-3);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--primary);
+}
+.ai-offer-badge .icon { width: 28px; height: 28px; }
+.ai-offer-title { margin: 0 0 6px; font-size: 21px; font-weight: 800; line-height: 1.25; color: var(--on-primary); }
+.ai-offer-text { max-width: 290px; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.45; color: var(--on-primary); }
+.ai-offer-body { padding: var(--s-4); }
+.ai-offer .plan-list { margin-bottom: var(--s-3); }
+.ai-offer .pm-features { margin-bottom: var(--s-3); }
+.ai-offer-buy { font-weight: 800; }
+.ai-offer-note { margin: var(--s-2) 0 0; font-size: 13px; font-weight: 600; color: var(--text-2); text-align: center; }

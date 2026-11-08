@@ -649,7 +649,49 @@
                 <div class="screen-head">
                     <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>AI maslahat</h1>
                 </div>
-                <div class="ai-soon">
+                <!-- Bepul savol ishlatilgach: Premium taklifi (app.js renderAiOffer) -->
+                <section class="ai-offer" id="ai-premium-offer" aria-labelledby="ai-offer-title" hidden>
+                    <div class="ai-offer-hero">
+                        <div class="ai-offer-badge"><svg class="icon" aria-hidden="true"><use href="#i-crown"/></svg></div>
+                        <h2 class="ai-offer-title" id="ai-offer-title">Bepul savolingiz ishlatildi</h2>
+                        <p class="ai-offer-text">AI maslahatni davom ettirish uchun Premium tarifini tanlang</p>
+                    </div>
+                    <div class="ai-offer-body">
+                        <div class="plan-list" role="radiogroup" aria-label="Tarifni tanlang">
+                        <label class="plan-card">
+                            <input type="radio" name="ai-offer-plan" value="buy_pro_7">
+                            <span class="plan-radio" aria-hidden="true"></span>
+                            <span class="plan-info">
+                                <span class="plan-name">Premium Pro</span>
+                                <span class="plan-days">7 kun · kuniga 15 AI so'rov</span>
+                            </span>
+                            <span class="plan-price tabular">★ 50</span>
+                        </label>
+                        <label class="plan-card">
+                            <input type="radio" name="ai-offer-plan" value="buy_plus_30" checked>
+                            <span class="plan-radio" aria-hidden="true"></span>
+                            <span class="plan-info">
+                                <span class="plan-name">Premium Plus<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
+                                <span class="plan-days">30 kun · kuniga 30 AI so'rov</span>
+                            </span>
+                            <span class="plan-price tabular">★ 150</span>
+                        </label>
+                        <label class="plan-card">
+                            <input type="radio" name="ai-offer-plan" value="buy_ultra_30">
+                            <span class="plan-radio" aria-hidden="true"></span>
+                            <span class="plan-info">
+                                <span class="plan-name">Premium Ultra</span>
+                                <span class="plan-days">30 kun · kuniga 100 AI so'rov</span>
+                            </span>
+                            <span class="plan-price tabular">★ 300</span>
+                        </label>
+                        </div>
+                        <ul class="pm-features" id="ai-offer-features" aria-live="polite"></ul>
+                        <button type="button" class="btn-primary ai-offer-buy" id="ai-offer-buy">★ Premium olish</button>
+                        <p class="ai-offer-note">To'lov — Telegram Stars orqali</p>
+                    </div>
+                </section>
+                <div class="ai-soon" id="ai-soon">
                     <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></div>
                     <h2>Tez orada</h2>
                     <p>Bu yerda savolingizni yozib, birinchi yordam bo'yicha AI maslahatini shu yerning o'zida olasiz.</p>
