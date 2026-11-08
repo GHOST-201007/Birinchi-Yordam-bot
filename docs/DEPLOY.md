@@ -165,6 +165,12 @@ CSS yoki JS ni o'zgartirgandan keyin:
 `app_server.py` fayl o'zgartirish vaqtini avtomatik versiya sifatida ishlatadi.
 Foydalanuvchi keyingi safar Mini Appni ochganda yangi versiyani yuklab oladi.
 
+### Content-Security-Policy
+`app_server.py` har bir javobga `Content-Security-Policy` sarlavhasini qo'shadi (`CSP` o'zgaruvchisi): skriptlar faqat
+o'zimizdan va `https://telegram.org` (WebApp SDK), inline style/script yo'q, `/api/` bir xil manbada.
+Nginx o'zi alohida CSP qo'shmasligi kerak (ikki siyosat birlashib, qattiqroq bo'lib qoladi).
+Yangi tashqi manba (CDN, rasm domeni) qo'shilsa — `CSP` ga ham qo'shing, aks holda brauzer uni bloklaydi.
+
 ---
 
 ## Telegram komanda menyusini yangilash

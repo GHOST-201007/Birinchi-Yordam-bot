@@ -274,8 +274,9 @@ class DetailE2ETest(MiniAppE2EBase):
                     page.wait_for_function("getComputedStyle(document.getElementById('overlay-details')).opacity === '1'")
                     self.assertEqual(page.evaluate(TEXT_AUDIT_JS, "#overlay-details"), [])
                     # Tekshiruvning o'zi ishlashini tasdiqlash: ataylab yomon matn qo'shamiz
-                    page.evaluate("""document.getElementById('overlay-body-content').insertAdjacentHTML('beforeend',
-                        '<p id="bad" style="color:#B0B0B0;font-size:12px">past kontrast</p>')""")
+                    page.evaluate("""() => { const p = document.createElement('p');      // CSSOM (CSP inline atributni bloklaydi)
+                        p.id = 'bad'; p.textContent = 'past kontrast'; p.style.color = '#B0B0B0'; p.style.fontSize = '12px';
+                        document.getElementById('overlay-body-content').appendChild(p); }""")
                     self.assertEqual(len(page.evaluate(TEXT_AUDIT_JS, "#overlay-details")), 1)
 
     def test_disease_detail_has_share_and_no_safety_row(self):

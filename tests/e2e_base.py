@@ -122,16 +122,21 @@ class MiniAppE2EBase(unittest.TestCase):
         cls.server.server_close()
 
     # ---- yordamchilar -------------------------------------------------------
-    def open_app(self, routes, query="", init_data=INIT_DATA, init_script=""):
+    def open_app(self, routes, query="", init_data=INIT_DATA, init_script="", enforce_csp=False):
         """routes: {'state': (status, json) | 'abort' | 'hang' | callable(body) -> shulardan biri, ...}.
         Qaytaradi: (page, calls)."""
-        ctx = self.browser.new_context(viewport={"width": 390, "height": 844})
+        # Playwright wait_for_function sahifada eval ishlatadi — qat'iy CSP uni bloklaydi. Shuning uchun oddiy testlar
+        # CSP'ni chetlab o'tadi; siyosatning o'zi test_miniapp_csp.py da enforce_csp=True bilan tekshiriladi.
+        ctx = self.browser.new_context(viewport={"width": 390, "height": 844}, bypass_csp=not enforce_csp)
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         self.page_for_wait = page
         calls = []
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
+        # CSP buzilishi ham xato hisoblanadi (inline style/script, ruxsatsiz manba)
+        page.on("console", lambda m: errors.append("CSP: " + m.text)
+                if m.type == "error" and "Content Security Policy" in m.text else None)
         self.addCleanup(lambda: self.assertEqual(errors, [], f"sahifada xato: {errors}"))
 
         def handle(route):

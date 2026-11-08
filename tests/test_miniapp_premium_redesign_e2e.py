@@ -26,6 +26,7 @@ class PremiumStaticTest(unittest.TestCase):
             line = re.search(rf"{plan}: \[(.*)\]", block).group(1)
             self.assertIn(f"Kuniga {limits[key]} AI so'rov", line, plan)
         self.assertNotIn("100+", block)
+        self.assertNotIn("Cheksiz imkoniyatlar", block)                     # limitga zid va'da (egasi tasdiqlaguncha)
 
     def test_no_inline_handlers(self):
         with open(os.path.join(ROOT, "app", "index.html"), encoding="utf-8") as f:

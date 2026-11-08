@@ -15,8 +15,29 @@ def get_file_version(filepath):
     except OSError:
         return "1"
 
+# Content-Security-Policy: faqat kerakli manbalar.
+# - script: o'zimiz + Telegram WebApp SDK (telegram.org); inline script va eval yo'q
+# - style: faqat style.css (inline style atributlari yo'q; JS dagi element.style — CSSOM, ruxsat etilgan)
+# - img: o'zimiz, data: (SVG/canvas), Telegram profil rasmi (t.me)
+# - connect: o'zimiz (/api/..., body_map_data.json)
+# - frame-ancestors: Telegram Web (web.telegram.org va boshqa *.telegram.org) iframe'da ochadi
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' https://telegram.org",
+    "style-src 'self'",
+    "img-src 'self' data: https://t.me https://*.telegram.org",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+])
+
+
 class MiniAppHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
+        self.send_header("Content-Security-Policy", CSP)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         path = self.path.split("?")[0]

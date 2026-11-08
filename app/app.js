@@ -3737,11 +3737,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Premium Modal Logic
 // Tarif imkoniyatlari — avvalgi kartalardagi matnlar. AI limitlari database.py dagi PRO/PLUS/ULTRA_AI_DAILY_LIMIT
-// bilan mos: 15 / 30 / 100 (avval Ultra'da "100+" deyilgan edi, limit esa 100)
+// bilan mos: 15 / 30 / 100. Ultra'dagi "Cheksiz imkoniyatlar" limitga zid — egasi tasdiqlaguncha olib tashlangan
+// ("Kuniga 100 AI so'rov" allaqachon birinchi bandda, takrorlanmaydi)
 const PREMIUM_FEATURES = {
     buy_pro_7: ["Kuniga 15 AI so'rov", "Ovozli xabar", "Barcha funksiyalar"],
     buy_plus_30: ["Kuniga 30 AI so'rov", "Ustunlik", "Barcha imkoniyatlar"],
-    buy_ultra_30: ["Kuniga 100 AI so'rov", "VIP xizmat", "Cheksiz imkoniyatlar"]
+    buy_ultra_30: ["Kuniga 100 AI so'rov", "VIP xizmat"]
 };
 
 function selectedPremiumPlan() {
