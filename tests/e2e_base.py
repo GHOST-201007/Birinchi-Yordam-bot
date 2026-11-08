@@ -178,11 +178,23 @@ class MiniAppE2EBase(unittest.TestCase):
     def spin_and_finish(self, page):
         page.click("#btn-spin-wheel")
         page.clock.fast_forward(6000)       # 5.3 soniyalik animatsiya taymerini ishga tushiradi
-        page.wait_for_selector("#btn-confirm-spin")
+        page.wait_for_selector("#btn-confirm-spin", state="attached")
 
     def spin_and_confirm(self, page):
         self.spin_and_finish(page)
-        page.click("#btn-confirm-spin")
+        self.press_main(page, "#btn-confirm-spin")
+
+    def press_main(self, page, selector):
+        """Asosiy amal: Telegram ichida MainButton (matni sahifadagi tugma bilan bir xil bo'lishi shart),
+        Telegram tashqarisida — sahifadagi tugma."""
+        page.wait_for_selector(selector, state="attached")
+        tg = self.tg(page)
+        if tg["mainVisible"]:
+            self.assertEqual(tg["mainText"], page.text_content(selector).strip())
+            self.assertFalse(page.is_visible(selector))                 # ikki marta ko'rinmaydi
+            page.evaluate("window.__mainCb()")
+        else:
+            page.click(selector)
 
     def tg(self, page):
         return page.evaluate("window.__tg")

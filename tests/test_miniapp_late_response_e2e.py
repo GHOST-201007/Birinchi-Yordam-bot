@@ -25,7 +25,7 @@ class LateSpinClaimE2ETest(MiniAppE2EBase):
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.spin_and_finish(page)
-        page.click("#btn-confirm-spin")
+        self.press_main(page, "#btn-confirm-spin")
         self.wait_for_call(calls, "spin/claim")
         return page, calls
 
@@ -82,7 +82,7 @@ class LateSpinClaimE2ETest(MiniAppE2EBase):
         page.clock.fast_forward(9000)
         page.wait_for_selector("#wheel-result-msg .result-title:has-text('Ulanishda xatolik')")
         self.assertEqual(self.tg(page)["links"], [])                  # botga otilmadi
-        page.click("#wheel-result-msg .result-confirm-btn")           # "Qayta urinish"
+        self.press_main(page, "#wheel-result-msg .result-confirm-btn")           # "Qayta urinish"
         page.wait_for_selector("#wheel-result-msg .result-title:has-text('+5 ball yutdingiz!')")
         self.assertEqual(page.inner_text("#global-score-val"), "12")
         self.assertEqual(self.tg(page)["links"], [])

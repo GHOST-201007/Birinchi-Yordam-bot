@@ -44,7 +44,7 @@ class BotUsernameLinksE2ETest(MiniAppE2EBase):
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         page.click("#btn-spin-wheel")
-        page.click("#btn-open-bot-wheel")
+        self.press_main(page, "#btn-open-bot-wheel")
         tg = self.tg(page)
         self.assertEqual(tg["links"], [f"https://t.me/{BOT}?start=wheel"])
         self.assertEqual(tg["closed"], 1)

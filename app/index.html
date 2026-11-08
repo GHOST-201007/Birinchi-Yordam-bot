@@ -501,47 +501,30 @@
         </div>
 
 
-        <!-- WHEEL OF FORTUNE MODAL — Premium Full-Screen -->
-        <div id="wheel-modal" class="modal wheel-fullscreen-modal hidden" style="display: none;">
-            <canvas id="wheel-confetti-canvas" class="wheel-confetti-canvas"></canvas>
+        <!-- OMAD BARABANI — bottom sheet (~85%) -->
+        <div id="wheel-modal" class="modal wheel-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="wheel-title" style="display: none;">
+            <canvas id="wheel-confetti-canvas" class="wheel-confetti-canvas" aria-hidden="true"></canvas>
             <div class="wheel-modal-inner">
-                <button class="wheel-close-btn" id="wheel-modal-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
-                
-                <div class="wheel-modal-header">
-                    <div class="wheel-header-badge">
-                        <span class="badge-dot"></span> KUNLIK BONUS
+                <div class="sheet-handle" aria-hidden="true"></div>
+                <div class="wheel-head">
+                    <div>
+                        <h2 class="sheet-title" id="wheel-title">Omad barabani</h2>
+                        <p class="sheet-sub">Kuniga bir marta bepul aylantiring — ball yoki Premium chegirma</p>
                     </div>
-                    <h2>Omad Barabani</h2>
-                    <p>Bepul Premium va qimmatli ballarni yutib oling!</p>
+                    <button type="button" class="sheet-close" id="wheel-modal-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
                 </div>
 
                 <div class="wheel-stage">
-                    <div class="wheel-outer-ring">
-                        <!-- LED Lights Perimeter -->
-                        <div class="wheel-led-lights" id="wheel-led-lights"></div>
-                        
-                        <!-- Top Pointer Arrow -->
-                        <div class="wheel-pointer-wrap">
-                            <div class="wheel-pointer-arrow"></div>
-                            <div class="wheel-pointer-gem"></div>
-                        </div>
-
-                        <!-- Rotating Wheel Canvas -->
-                        <div class="wheel-canvas-wrap">
-                            <canvas id="wheel-canvas" width="300" height="300"></canvas>
-                        </div>
-
-                        <!-- Glowing Central Spin Button -->
-                        <button class="wheel-center-btn" id="btn-spin-wheel">
-                            <div class="wheel-center-btn-inner">
-                                <svg class="icon spin-icon-center" aria-hidden="true"><use href="#i-rotate-cw"/></svg>
-                                <span class="wheel-center-text">AYLANTIR</span>
-                            </div>
-                        </button>
+                    <div class="wheel-pointer" aria-hidden="true"></div>
+                    <div class="wheel-canvas-wrap">
+                        <canvas id="wheel-canvas" width="600" height="600" role="img" aria-label="Baraban: 1, 3, 5, 10 ball va SUPER priz"></canvas>
                     </div>
+                    <button type="button" class="wheel-center-btn" id="btn-spin-wheel" aria-label="Barabanni aylantirish">
+                        <span class="wheel-center-text">AYLANTIR</span>
+                    </button>
                 </div>
 
-                <div id="wheel-result-msg" class="wheel-result-card hidden"></div>
+                <div id="wheel-result-msg" class="wheel-result-card hidden" role="status" aria-live="polite"></div>
             </div>
         </div>
     </div>

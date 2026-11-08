@@ -2887,6 +2887,16 @@ document.addEventListener('DOMContentLoaded', () => {
 let isSpinning = false;
 let hasSpunThisSession = false;
 
+// Kutish holati: katta tabular taymer (id o'zgarmagan — taymer mantig'i shu elementga yozadi)
+function wheelWaitingMarkup() {
+    return `<div class="result-icon">${svgIcon('clock')}</div><p class="result-title">Urinish tugadi</p>` +
+        `<p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p>` +
+        `<div class="wheel-countdown tabular" id="wheel-countdown-timer" role="timer">23:59:59</div>`;
+}
+
+// Natija kartasidagi emoji o'rniga SVG ikonka
+const WHEEL_CARD_ICONS = { '🏆': 'crown', '⏳': 'loader', '✅': 'circle-check', '⚠️': 'alert-triangle', 'ℹ️': 'info', '🎉': 'sparkles' };
+
 function initWheelOfFortune() {
     const openBtn = document.getElementById('btn-open-wheel');
     const closeBtn = document.getElementById('wheel-modal-close');
@@ -2896,8 +2906,6 @@ function initWheelOfFortune() {
     const canvas = document.getElementById('wheel-canvas');
 
     if (!openBtn || !closeBtn || !modal || !spinBtn || !canvas) return;
-
-    generateLedLights();
 
     const urlParams = new URLSearchParams(window.location.search);
     const lastSpin = urlParams.get('last_spin');
@@ -2977,7 +2985,7 @@ function initWheelOfFortune() {
     if (remainingTimeMs > 0) {
         spinBtn.disabled = true;
         if (centerText) centerText.textContent = "KUTISH";
-        resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+        resultMsg.innerHTML = wheelWaitingMarkup();
         resultMsg.classList.remove('hidden');
         startCountdown(remainingTimeMs);
     }
@@ -2995,7 +3003,7 @@ function initWheelOfFortune() {
                         remainingTimeMs = remaining;
                         spinBtn.disabled = true;
                         if (centerText) centerText.textContent = "KUTISH";
-                        resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+                        resultMsg.innerHTML = wheelWaitingMarkup();
                         resultMsg.classList.remove('hidden');
                         startCountdown(remaining);
                     }
@@ -3004,7 +3012,7 @@ function initWheelOfFortune() {
         });
     }
 
-    const WHEEL_WAITING_HTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+    const WHEEL_WAITING_HTML = wheelWaitingMarkup();
 
     function showWheelWaiting(ms) {
         spinBtn.disabled = true;
@@ -3064,7 +3072,7 @@ function initWheelOfFortune() {
         if (remainingTimeMs > 0 || hasSpunThisSession) {
             spinBtn.disabled = true;
             if (centerText) centerText.textContent = "KUTISH";
-            resultMsg.innerHTML = '<div class="result-icon">🕒</div><p class="result-title">Urinish tugadi</p><p class="result-desc">Keyingi bepul aylantirishgacha qolgan vaqt:</p><div class="wheel-countdown" id="wheel-countdown-timer" style="font-size: 24px; font-weight: 800; color: #fde047; margin: 10px 0; letter-spacing: 1px;">23:59:59</div>';
+            resultMsg.innerHTML = wheelWaitingMarkup();
             resultMsg.classList.remove('hidden');
             const timeToUse = remainingTimeMs > 0 ? remainingTimeMs : 24 * 60 * 60 * 1000;
             startCountdown(timeToUse);
@@ -3125,125 +3133,70 @@ function initWheelOfFortune() {
         }
     };
 
-    // Segments — vibrant luxury palette
+    // Segmentlar — server bilan bir xil qiymatlar va tartib (database.py: 1, 3, 5, 10, 0 = SUPER)
     const segments = [
-        { text: "+1", label: "ball", points: 1, bg: "#0d9488", emoji: "💊" },
-        { text: "+3", label: "ball", points: 3, bg: "#0284c7", emoji: "💉" },
-        { text: "+5", label: "ball", points: 5, bg: "#0f766e", emoji: "🩺" },
-        { text: "+1", label: "ball", points: 1, bg: "#10b981", emoji: "🧬" },
-        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "⭐" },
-        { text: "SUPER", label: "PRIZ", points: 0, bg: "#dc2626", emoji: "🏆" },
-        { text: "+1", label: "ball", points: 1, bg: "#0284c7", emoji: "💊" },
-        { text: "+3", label: "ball", points: 3, bg: "#10b981", emoji: "💉" },
-        { text: "+5", label: "ball", points: 5, bg: "#0d9488", emoji: "🩺" },
-        { text: "+10", label: "ball", points: 10, bg: "#d97706", emoji: "⭐" }
+        { text: "+1", label: "ball", points: 1, tone: 'primary' },
+        { text: "+3", label: "ball", points: 3, tone: 'teal' },
+        { text: "+5", label: "ball", points: 5, tone: 'neutral' },
+        { text: "+10", label: "ball", points: 10, tone: 'primary2' },
+        { text: "SUPER", label: "priz", points: 0, tone: 'warning' }
     ];
+
+    // Ranglar mavzuga qarab (matn kontrasti >= 4.5:1)
+    function segmentColors(tone) {
+        const dark = document.body.classList.contains('dark-mode');
+        const map = dark ? {
+            primary: ['#1F6FA3', '#FFFFFF'], teal: ['#0F7D75', '#FFFFFF'], neutral: ['#2A3441', '#E8EEF5'],
+            primary2: ['#3FA9E8', '#06121C'], warning: ['#F5A524', '#1A1200']
+        } : {
+            primary: ['#0872AB', '#FFFFFF'], teal: ['#0B746D', '#FFFFFF'], neutral: ['#E9EEF4', '#0F1B2D'],
+            primary2: ['#2B8FCB', '#06121C'], warning: ['#F5A524', '#1A1200']
+        };
+        return map[tone];
+    }
 
     function drawWheel() {
         const ctx = canvas.getContext('2d');
         const size = canvas.width;
         const r = size / 2;
         const arc = (Math.PI * 2) / segments.length;
+        const font = getComputedStyle(document.body).getPropertyValue('--font').trim() || 'sans-serif';
 
         ctx.clearRect(0, 0, size, size);
-
         for (let i = 0; i < segments.length; i++) {
             const startAngle = i * arc;
-            const endAngle = startAngle + arc;
             const seg = segments[i];
-
-            // Segment fill with radial gradient
-            const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-            grad.addColorStop(0, lightenColor(seg.bg, 25));
-            grad.addColorStop(0.85, seg.bg);
-            grad.addColorStop(1, darkenColor(seg.bg, 20));
+            const [bg, fg] = segmentColors(seg.tone);
 
             ctx.beginPath();
             ctx.moveTo(r, r);
-            ctx.arc(r, r, r - 2, startAngle, endAngle);
+            ctx.arc(r, r, r - 4, startAngle, startAngle + arc);
             ctx.closePath();
-            ctx.fillStyle = grad;
+            ctx.fillStyle = bg;
             ctx.fill();
-
-            // Segment borders
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-            ctx.lineWidth = 2;
+            // Ingichka oq ajratgich
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 4;
             ctx.stroke();
 
-            // Text and emoji inside segment
             ctx.save();
             ctx.translate(r, r);
             ctx.rotate(startAngle + arc / 2);
-
-            // Emoji
-            ctx.font = '20px serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(seg.emoji, r * 0.65, 0);
-
-            // Points text
-            ctx.font = "bold 16px 'Outfit', sans-serif";
-            ctx.fillStyle = '#ffffff';
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4;
-            ctx.textAlign = 'center';
-            ctx.fillText(seg.text, r * 0.40, -5);
-
-            // Label text
-            ctx.font = "600 9px 'Outfit', sans-serif";
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.fillText(seg.label, r * 0.40, 9);
-
+            ctx.fillStyle = fg;
+            ctx.font = `800 ${seg.points === 0 ? 40 : 52}px ${font}`;
+            ctx.fillText(seg.text, r * 0.62, -10);
+            ctx.font = `600 26px ${font}`;
+            ctx.fillText(seg.label, r * 0.62, 30);
             ctx.restore();
         }
-
-        // Center shadow ring
-        ctx.save();
+        // Tashqi chiziq
         ctx.beginPath();
-        ctx.arc(r, r, 42, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fill();
-        ctx.restore();
-    }
-
-    function lightenColor(hex, percent) {
-        const num = parseInt(hex.replace('#', ''), 16);
-        const amt = Math.round(2.55 * percent);
-        const R = Math.min(255, (num >> 16) + amt);
-        const G = Math.min(255, ((num >> 8) & 0x00FF) + amt);
-        const B = Math.min(255, (num & 0x0000FF) + amt);
-        return `rgb(${R},${G},${B})`;
-    }
-
-    function darkenColor(hex, percent) {
-        const num = parseInt(hex.replace('#', ''), 16);
-        const amt = Math.round(2.55 * percent);
-        const R = Math.max(0, (num >> 16) - amt);
-        const G = Math.max(0, ((num >> 8) & 0x00FF) - amt);
-        const B = Math.max(0, (num & 0x0000FF) - amt);
-        return `rgb(${R},${G},${B})`;
-    }
-
-    function generateLedLights() {
-        const container = document.getElementById('wheel-led-lights');
-        if (!container || container.children.length > 0) return;
-
-        const count = 16;
-        const radius = 146; // px from center
-        const center = 152;
-
-        for (let i = 0; i < count; i++) {
-            const angle = (i * 360 / count) * (Math.PI / 180);
-            const x = center + radius * Math.cos(angle);
-            const y = center + radius * Math.sin(angle);
-
-            const led = document.createElement('div');
-            led.className = 'wheel-led';
-            led.style.left = `${x}px`;
-            led.style.top = `${y}px`;
-            led.style.animationDelay = `${(i % 2) * 0.6}s`;
-            container.appendChild(led);
-        }
+        ctx.arc(r, r, r - 4, 0, Math.PI * 2);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 6;
+        ctx.stroke();
     }
 
     // Animatsiya tugagach ko'rsatiladigan karta. Tugma bosilganda: API ishlayotgan bo'lsa serverda hisobga qo'shiladi,
@@ -3251,22 +3204,22 @@ function initWheelOfFortune() {
     function renderSpinConfirmCard(winningPoints) {
         let icon, title, desc, btnText;
         if (winningPoints === 0) {
-            icon = "🏆";
+            icon = svgIcon('crown');
             title = "SUPER PRIZ!";
             desc = "Siz <b>Super Priz</b> — 30 kunlik Premium Plus uchun <b>50% chegirma</b> yutib oldingiz!";
-            btnText = "Prizni Tasdiqlash 🎁";
+            btnText = "Mukofotni olish";
         } else {
-            icon = "🎉";
+            icon = svgIcon('sparkles');
             title = `+${winningPoints} ball yutdingiz!`;
             desc = "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang.";
-            btnText = "Hisobga qo'shish ✅";
+            btnText = "Mukofotni olish";
         }
 
         resultMsg.innerHTML = `
-            <div class="result-icon">${icon}</div>
+            <div class="result-icon${winningPoints === 0 ? ' result-icon--super' : ''}">${icon}</div>
             <p class="result-title">${title}</p>
             <p class="result-desc">${desc}</p>
-            <button class="result-confirm-btn" id="btn-confirm-spin">${btnText}</button>
+            <button type="button" class="result-confirm-btn" id="btn-confirm-spin">${btnText}</button>
         `;
         resultMsg.classList.remove('hidden');
 
@@ -3297,7 +3250,7 @@ function initWheelOfFortune() {
         resultMsg.replaceChildren();
         const iconEl = document.createElement('div');
         iconEl.className = 'result-icon';
-        iconEl.textContent = icon;
+        iconEl.innerHTML = svgIcon(WHEEL_CARD_ICONS[icon] || 'info', icon === '⏳' ? 'icon-spin' : '');
         const titleEl = document.createElement('p');
         titleEl.className = 'result-title';
         titleEl.textContent = title;
@@ -3307,6 +3260,7 @@ function initWheelOfFortune() {
         resultMsg.append(iconEl, titleEl, descEl);
         if (btnText && onBtn) {
             const btn = document.createElement('button');
+            btn.type = 'button';
             btn.className = 'result-confirm-btn';
             btn.textContent = btnText;
             btn.onclick = onBtn;
@@ -3398,7 +3352,7 @@ function initWheelOfFortune() {
             isSpinning = false;
             spinBtn.disabled = false;
             if (centerText) centerText.textContent = "AYLANTIR";
-            resultMsg.innerHTML = '<div class="result-icon">🎁</div><p class="result-title">Bot orqali kiring</p><p class="result-desc">Omad g‘ildiragini aylantirish uchun botdagi maxsus havola orqali kiring.</p><button class="result-confirm-btn" id="btn-open-bot-wheel" style="margin-top:12px;">🎡 Bot orqali ochish</button>';
+            resultMsg.innerHTML = `<div class="result-icon">${svgIcon('gift')}</div><p class="result-title">Bot orqali kiring</p><p class="result-desc">Omad g‘ildiragini aylantirish uchun botdagi maxsus havola orqali kiring.</p><button type="button" class="result-confirm-btn" id="btn-open-bot-wheel">Bot orqali ochish</button>`;
             resultMsg.classList.remove('hidden');
             const btnBotWheel = document.getElementById('btn-open-bot-wheel');
             if (btnBotWheel) {
@@ -3424,7 +3378,7 @@ function initWheelOfFortune() {
             isSpinning = false;
             spinBtn.disabled = false;
             if (centerText) centerText.textContent = "AYLANTIR";
-            resultMsg.innerHTML = `<div class="result-icon">⚠️</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
+            resultMsg.innerHTML = `<div class="result-icon">${svgIcon('alert-triangle')}</div><p class="result-title">Texnik xatolik</p><p class="result-desc">Mukofotni olish uchun botga /start yuboring.</p>`;
             resultMsg.classList.remove('hidden');
             return;
         }
@@ -3434,7 +3388,8 @@ function initWheelOfFortune() {
         const target = 270 - (winIdx * segArc + segArc / 2);
         const finalAngle = 8 * 360 + target;
 
-        canvas.style.transition = 'transform 5.2s cubic-bezier(0.12, 0.7, 0.1, 1)';
+        const spinMs = prefersReducedMotion() ? 600 : 4000;
+        canvas.style.transition = `transform ${spinMs}ms cubic-bezier(.2, .8, .2, 1)`;
         canvas.style.transform = `rotate(${finalAngle}deg)`;
 
         // Periodic click haptic while spinning
@@ -3442,7 +3397,7 @@ function initWheelOfFortune() {
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
         }, 300);
 
-        setTimeout(() => clearInterval(spinHapticInterval), 4000);
+        setTimeout(() => clearInterval(spinHapticInterval), Math.max(0, spinMs - 400));
 
         setTimeout(() => {
             isSpinning = false;
@@ -3457,12 +3412,28 @@ function initWheelOfFortune() {
 
             if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-            // Fire Confetti!
-            fireConfetti();
+            // Confetti — faqat SUPER priz'da
+            if (winningPoints === 0) fireConfetti();
 
             renderSpinConfirmCard(winningPoints);
-        }, 5300);
+        }, spinMs + 100);
     };
+
+    // Karta yoki oyna o'zgarganda MainButton kartadagi tugmaga moslanadi (bir xil matn va bir xil handler)
+    function syncWheelMainButton() {
+        const visible = !modal.classList.contains('hidden') && modal.style.display !== 'none';
+        const btn = visible && !resultMsg.classList.contains('hidden') ? resultMsg.querySelector('.result-confirm-btn') : null;
+        if (!btn || !btn.onclick) {
+            if (MainButtonCtl.owner === 'wheel') MainButtonCtl.clear();
+            return;
+        }
+        if (MainButtonCtl.owner === 'wheel' && MainButtonCtl.fallback === btn) return;
+        const handler = btn.onclick;
+        MainButtonCtl.set({ text: btn.textContent.trim(), owner: 'wheel', onClick: () => handler.call(btn) }, btn);
+    }
+    new MutationObserver(syncWheelMainButton).observe(modal, {
+        subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style']
+    });
 
     // Auto-open wheel if specified in URL params or start_param
     const page = urlParams.get('page') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param);
@@ -3482,9 +3453,9 @@ function fireConfetti() {
     canvas.height = window.innerHeight;
 
     const particles = [];
-    const colors = ['#fde047', '#14b8a6', '#38bdf8', '#f43f5e', '#a855f7', '#22c55e', '#ffffff'];
+    const colors = ['#F5A524', '#14A39A', '#0A84C6', '#FFFFFF'];
 
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 40; i++) {
         particles.push({
             x: canvas.width / 2,
             y: canvas.height * 0.45,

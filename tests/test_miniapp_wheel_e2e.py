@@ -16,7 +16,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.assertFalse(page.is_disabled("#btn-spin-wheel"))
         self.spin_and_finish(page)
         self.assertEqual([c[0] for c in calls], ["state"])           # tugma bosilguncha ball qo'shilmaydi
-        page.click("#btn-confirm-spin")
+        self.press_main(page, "#btn-confirm-spin")
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '12'")
 
         self.assertIn("+5 ball yutdingiz!", self.card_text(page))             # score farqi: 12 - 7
@@ -48,7 +48,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         page.wait_for_selector("#wheel-result-msg .result-desc:has-text('50% chegirma faollashtirildi')")
         self.assertEqual(self.tg(page)["closed"], 0)
         self.assertEqual(self.tg(page)["links"], [])
-        page.click("#wheel-result-msg .result-confirm-btn")            # "Premium olish"
+        self.press_main(page, "#wheel-result-msg .result-confirm-btn")            # "Premium olish"
         # /api/invoice mock'da yo'q (404) -> ZAXIRA yo'l: avvalgi deep link (invoice yo'li test_miniapp_invoice_e2e.py da)
         page.wait_for_function("window.__tg.links.length === 1")
         tg = self.tg(page)
@@ -142,7 +142,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.assertEqual(page.inner_text("#global-score-val"), "3")     # URL'dagi ball
         self.spin_and_finish(page)
         self.assertEqual({c[0] for c in calls}, {"state"})               # claim chaqirilmadi (state xatoda qayta uriniladi)
-        page.click("#btn-confirm-spin")
+        self.press_main(page, "#btn-confirm-spin")
         tg = self.tg(page)
         self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=spin_5"])
         self.assertEqual(tg["closed"], 1)
@@ -152,7 +152,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.spin_and_finish(page)
-        page.click("#btn-confirm-spin")
+        self.press_main(page, "#btn-confirm-spin")
         self.assertEqual(calls, [])
         self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=spin_3"])
 
@@ -161,7 +161,7 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         page.click("#btn-spin-wheel")
-        page.wait_for_selector("#btn-open-bot-wheel")
+        page.wait_for_selector("#btn-open-bot-wheel", state="attached")
         self.assertIn("Bot orqali kiring", self.card_text(page))
 
     def test_claim_network_failure_and_state_unavailable_falls_back_to_deep_link(self):

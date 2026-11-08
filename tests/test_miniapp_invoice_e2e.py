@@ -197,7 +197,7 @@ class InvoiceE2ETest(MiniAppE2EBase):
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
         self.spin_and_confirm(page)
         page.wait_for_selector("#wheel-result-msg .result-desc:has-text('50% chegirma faollashtirildi')")
-        page.click("#wheel-result-msg .result-confirm-btn")           # "Premium olish"
+        self.press_main(page, "#wheel-result-msg .result-confirm-btn")   # "Premium olish"
         self.wait_invoice(page)
         tg = self.tg(page)
         self.assertEqual(tg["invoices"], [INVOICE_URL])
