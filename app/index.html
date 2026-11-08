@@ -81,65 +81,61 @@
             
             <!-- TAB 1: BIRINCHI YORDAM -->
             <section id="tab-first-aid" class="tab-content active">
-                <div class="section-title">
-                    <h2>🚨 Birinchi Yordam</h2>
-                    <p>Favqulodda vaziyatda tezkor ko'rsatmalar</p>
-                </div>
-                
-                <!-- Omad Barabani Card - Premium Design -->
-                <div class="wheel-promo-card" id="wheel-promo-card">
-                    <div class="wheel-promo-left">
-                        <div class="wheel-promo-mini">
-                            🎡
-                        </div>
-                    </div>
-                    <div class="wheel-promo-info">
-                        <h3>Omad Barabani</h3>
-                        <p>Har kuni 1 marta barabanni bepul aylantirib ball yuting!</p>
-                    </div>
-                    <button class="wheel-promo-btn" id="btn-open-wheel">
-                        <span>Ochish</span>
-                        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+                <!-- 1. Favqulodda holat (SOS) -->
+                <div class="sos-card">
+                    <div class="sos-head"><svg class="icon" aria-hidden="true"><use href="#i-siren"/></svg><h2 class="sos-title">Favqulodda holat?</h2></div>
+                    <p class="sos-text">Hayot xavf ostida bo'lsa, darhol tez yordam chaqiring.</p>
+                    <a href="tel:103" class="sos-call"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>103 ga qo'ng'iroq</span></a>
+                    <button type="button" class="sos-link" data-scroll-to="first-aid-section">
+                        <span>Birinchi yordam yo'riqnomalari</span><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg>
                     </button>
                 </div>
-                
-                <!-- Daily Bonus Promo Card -->
-                <div class="wheel-promo-card daily-bonus-promo" id="btn-open-daily-bonus">
-                    <div class="wheel-promo-left">
-                        <div class="wheel-promo-mini" style="background: rgba(255,255,255,0.2);">
-                            🎁
-                        </div>
-                    </div>
-                    <div class="wheel-promo-info">
-                        <h3>Kunlik bonus</h3>
-                        <p>Har kuni kirib, ball oling!</p>
-                    </div>
-                    <button class="wheel-promo-btn">
-                        <span>Ochish</span>
-                        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
-                    </button>
+
+                <!-- 2. Tezkor harakatlar -->
+                <div class="quick-actions" role="group" aria-label="Tezkor harakatlar">
+                    <button type="button" class="qa" data-action="ai"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span><span class="qa-label">AI maslahat</span></button>
+                    <button type="button" class="qa" data-action="calc"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-calculator"/></svg></span><span class="qa-label">Kalkulyator</span></button>
+                    <button type="button" class="qa" data-action="quiz"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg></span><span class="qa-label">Test</span></button>
+                    <button type="button" class="qa" id="btn-open-wheel"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg></span><span class="qa-label">Baraban</span></button>
                 </div>
-                
-                <!-- Premium Upgrade Card -->
-                <div class="wheel-promo-card premium-promo" id="btn-open-premium">
-                    <div class="wheel-promo-left">
-                        <div class="wheel-promo-mini" style="background: rgba(255,255,255,0.2);">
-                            👑
-                        </div>
+
+                <!-- 3. Bugun: kunlik bonus + baraban holati -->
+                <h2 class="section-label">Bugun</h2>
+                <div class="inset-group today-card">
+                    <div class="list-row" id="btn-open-daily-bonus" role="button" tabindex="0">
+                        <span class="row-icon row-icon--warning"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg></span>
+                        <span class="row-text">
+                            <span class="row-title">Kunlik bonus</span>
+                            <span class="row-sub tabular" id="today-bonus-sub">Har kuni kirib, ball oling</span>
+                        </span>
+                        <span class="pill" id="today-bonus-pill">Olish</span>
                     </div>
-                    <div class="wheel-promo-info">
-                        <h3>Premium Olish</h3>
-                        <p>Cheksiz AI va maxsus imkoniyatlar!</p>
+                    <div class="list-row" id="wheel-promo-card" role="button" tabindex="0">
+                        <span class="row-icon row-icon--primary"><svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg></span>
+                        <span class="row-text">
+                            <span class="row-title">Omad barabani</span>
+                            <span class="row-sub tabular" id="today-wheel-sub">Har kuni bepul aylantiring</span>
+                        </span>
+                        <span class="pill pill--ghost" id="today-wheel-pill">Ochish</span>
                     </div>
-                    <button class="wheel-promo-btn" style="background: rgba(251, 191, 36, 0.25); color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">
-                        <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-                        <span>VIP</span>
-                    </button>
                 </div>
-                
-                <!-- Fast Aid Grid -->
-                <div class="first-aid-grid" id="first-aid-grid">
-                    <!-- Cards will be dynamically generated by JS -->
+
+                <!-- 4. Premium (premium foydalanuvchiga ko'rsatilmaydi) -->
+                <button type="button" class="premium-banner" id="btn-open-premium">
+                    <svg class="icon premium-banner-icon" aria-hidden="true"><use href="#i-crown"/></svg><span>Premium — cheksiz AI</span><svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+                </button>
+
+                <!-- 5. Birinchi yordam ro'yxati -->
+                <div class="list-section" id="first-aid-section">
+                    <h2 class="section-label" id="first-aid-list-title">Birinchi yordam</h2>
+                    <label class="search-field">
+                        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+                        <input type="search" id="first-aid-search" placeholder="Qidirish: kuyish, qon ketishi..." aria-label="Birinchi yordam bo'yicha qidirish" autocomplete="off">
+                    </label>
+                    <div class="inset-group" id="first-aid-grid">
+                        <!-- Qatorlar JS bilan yaratiladi -->
+                    </div>
+                    <p class="list-empty" id="first-aid-empty" hidden>Hech narsa topilmadi</p>
                 </div>
             </section>
 

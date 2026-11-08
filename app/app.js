@@ -158,7 +158,17 @@ async function api(path, extra) {
 
 // /api/state natijasi — butun ilova uchun BITTA nusxa (header, kunlik bonus, baraban).
 // Bir vaqtda bir nechta so'rov bo'lsa ham tarmoqqa bitta so'rov ketadi.
-const AppState = { data: null, ts: 0, inflight: null };
+const AppState = { data: null, ts: 0, inflight: null, listeners: [] };
+
+// Holat yangilanganda (serverdan olinganda yoki claim'dan keyin) chaqiriladi
+function onAppStateChange(fn) {
+    AppState.listeners.push(fn);
+}
+function notifyAppState() {
+    AppState.listeners.forEach((fn) => {
+        try { fn(AppState.data); } catch (e) { console.warn('[state] tinglovchi xatosi:', e); }
+    });
+}
 
 // Holatni qaytaradi (hech qachon istisno tashlamaydi). API ishlamasa null — chaqiruvchi URL zaxira yo'liga o'tadi.
 // maxAgeMs dan yangi natija keshdan beriladi, aks holda qayta so'raladi.
@@ -170,6 +180,7 @@ function getAppState(maxAgeMs) {
         if (!s || s.ok !== true) throw new Error('bad-state');
         AppState.data = s;
         AppState.ts = Date.now();
+        notifyAppState();
         return s;
     }).catch((err) => {
         console.warn("[state] /api/state ishlamadi, URL zaxira yo'li ishlatiladi:", err);
@@ -185,6 +196,7 @@ function patchAppState(patch) {
     if (AppState.data) {
         Object.assign(AppState.data, patch);
         AppState.ts = Date.now();
+        notifyAppState();
     }
 }
 
@@ -222,6 +234,8 @@ function setPremiumBadge(s) {
     } else {
         el.hidden = true;
     }
+    const banner = document.getElementById('btn-open-premium');
+    if (banner) banner.hidden = !!(s && s.is_premium);
 }
 
 // Mini app ochilganda (menyu tugmasidan ham — URL'da hech narsa bo'lmaydi) ball serverdan olinadi
@@ -700,6 +714,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             initTabs();
             renderFirstAidGrid();
+            initFirstAidSearch();
+            initHomeActions();
             renderDiseases(DISEASES_DATA);
             initSearch();
             initCalculators();
@@ -747,31 +763,165 @@ function initTabs() {
     });
 }
 
-// RENDER FIRST AID CARDS
+// Boshidagi emoji faqat ro'yxat qatorida ko'rsatilmaydi (qatorda o'z ikonkasi bor). Ma'lumot o'zgarmaydi.
+function displayTitle(text) {
+    const t = String(text || '');
+    const stripped = t.replace(/^[^\p{L}\p{N}]+/u, '').trim();
+    return stripped || t;
+}
+
+// Qidiruv: katta-kichik harf va apostroflar (o', g', ' ‘ ’ ʻ) farqi e'tiborga olinmaydi: "bogilish" = "bo'g'ilish"
+function normalizeSearch(text) {
+    return String(text || '').toLowerCase().replace(/['ʻʼ‘’`´]/g, '');
+}
+
+// BIRINCHI YORDAM RO'YXATI (inset grouped, 4.4-B)
 function renderFirstAidGrid() {
-    const grid = document.getElementById('first-aid-grid');
-    grid.innerHTML = '';
+    const list = document.getElementById('first-aid-grid');
+    if (!list) return;
+    list.innerHTML = '';
 
     FIRST_AID_ITEMS.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'first-aid-card';
-        card.setAttribute('data-id', item.id);
-
-        card.innerHTML = `
-            <div class="card-icon" style="background-color: ${item.bgColor}; color: ${item.color};">
-                ${svgIcon(item.icon)}
-            </div>
-            <h3>${item.title}</h3>
-            <p>${item.desc}</p>
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'list-row';
+        row.setAttribute('data-id', item.id);
+        row.setAttribute('data-search', normalizeSearch(item.title + ' ' + item.desc));
+        const severe = item.urgency === 'critical';
+        row.innerHTML = `
+            <span class="row-icon ${severe ? 'row-icon--danger' : 'row-icon--primary'}">${svgIcon(item.icon)}</span>
+            <span class="row-text"><span class="row-title"></span><span class="row-sub"></span></span>
+            ${svgIcon('chevron-right', 'row-chevron')}
         `;
-
-        card.addEventListener('click', () => {
+        row.querySelector('.row-title').textContent = displayTitle(item.title);
+        row.querySelector('.row-sub').textContent = item.desc;
+        row.addEventListener('click', () => {
             openFirstAidDetail(item);
         });
-
-        grid.appendChild(card);
+        list.appendChild(row);
     });
 }
+
+function initFirstAidSearch() {
+    const input = document.getElementById('first-aid-search');
+    const list = document.getElementById('first-aid-grid');
+    const empty = document.getElementById('first-aid-empty');
+    if (!input || !list) return;
+    input.addEventListener('input', () => {
+        const q = normalizeSearch(input.value.trim());
+        let visible = 0;
+        list.querySelectorAll('.list-row').forEach(row => {
+            const show = !q || row.getAttribute('data-search').includes(q);
+            row.hidden = !show;
+            if (show) visible++;
+        });
+        list.hidden = visible === 0;
+        if (empty) empty.hidden = visible !== 0;
+    });
+}
+
+// ── Bosh ekran: tezkor harakatlar, SOS, "Bugun" kartasi ──
+function openQuizFromHome() {
+    showTab('tab-quiz');
+    AppNavigation.push({
+        type: 'quiz',
+        close: function () {
+            showTab('tab-first-aid');
+            AppNavigation.pop();
+        }
+    });
+}
+
+function initHomeActions() {
+    const actions = {
+        ai: () => showTab('tab-body-map'),
+        calc: () => showTab('tab-health'),
+        quiz: openQuizFromHome,
+    };
+    document.querySelectorAll('.qa[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+            const fn = actions[btn.getAttribute('data-action')];
+            if (fn) fn();
+        });
+    });
+    document.querySelectorAll('[data-scroll-to]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = document.getElementById(btn.getAttribute('data-scroll-to'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    // role="button" qatorlar klaviaturadan ham ochiladi
+    document.querySelectorAll('[role="button"][tabindex]').forEach(el => {
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+        });
+    });
+}
+
+const BONUS_REWARDS = [1, 2, 3, 3, 3, 3, 20];
+let todayWheelTimer = null;
+
+function formatHMS(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+// "Bugun" kartasi /api/state dan (API ishlamasa — URL parametrlaridan, bo'lmasa umumiy matn)
+function renderTodayCard(s) {
+    const bonusSub = document.getElementById('today-bonus-sub');
+    const bonusPill = document.getElementById('today-bonus-pill');
+    const wheelSub = document.getElementById('today-wheel-sub');
+    const wheelPill = document.getElementById('today-wheel-pill');
+    if (!s || !bonusSub || !wheelSub) return;
+
+    const streak = Math.min(7, Math.max(1, Number(s.streak) || 1));
+    if (s.daily_claimed) {
+        bonusSub.textContent = `Olindi · ${streak}-kun seriya`;
+        bonusPill.textContent = 'Olindi';
+        bonusPill.classList.add('pill--done');
+    } else {
+        bonusSub.textContent = `${streak}-kun seriya · +${BONUS_REWARDS[streak - 1]} ball`;
+        bonusPill.textContent = 'Olish';
+        bonusPill.classList.remove('pill--done');
+    }
+
+    if (todayWheelTimer) { clearInterval(todayWheelTimer); todayWheelTimer = null; }
+    const baseTs = s === AppState.data ? AppState.ts : Date.now();
+    const endAt = baseTs + Math.max(0, Number(s.cooldown_seconds) || 0) * 1000;
+    const tick = () => {
+        const left = (endAt - Date.now()) / 1000;
+        if (left > 0) {
+            wheelSub.innerHTML = svgIcon('clock') + ' Keyingisi: ' + formatHMS(left);
+            wheelPill.textContent = 'Kutish';
+            wheelPill.classList.add('pill--done');
+        } else {
+            if (todayWheelTimer) { clearInterval(todayWheelTimer); todayWheelTimer = null; }
+            wheelSub.textContent = (typeof s.prize === 'number' || s.cooldown_seconds) ? 'Tayyor — bepul aylantiring' : 'Har kuni bepul aylantiring';
+            wheelPill.textContent = 'Ochish';
+            wheelPill.classList.remove('pill--done');
+        }
+    };
+    tick();
+    if (endAt > Date.now()) todayWheelTimer = setInterval(tick, 1000);
+}
+
+function todayStateFromUrl() {
+    const p = new URLSearchParams(window.location.search);
+    if (!p.has('streak') && !p.has('prize')) return null;
+    return {
+        streak: parseInt(p.get('streak') || '1', 10),
+        daily_claimed: p.get('daily_claimed') === '1',
+        prize: p.has('prize') ? parseInt(p.get('prize'), 10) : null,
+        cooldown_seconds: 0,
+    };
+}
+
+onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); });
+document.addEventListener('DOMContentLoaded', () => {
+    getAppState(60000).then((s) => renderTodayCard(s || todayStateFromUrl()));
+});
 
 // OPEN FIRST AID DETAILS
 function openFirstAidDetail(item) {

@@ -19,6 +19,10 @@
     --warning:        #F5A524;   /* ball / bonus */
     --warning-soft:   rgba(245, 165, 36, 0.12);
     --on-accent:      #FFFFFF;
+    /* To'ldirilgan tugmalar (oq matn bilan kontrast >= 4.5:1) */
+    --primary-strong: #0872AB;
+    --on-primary:     #FFFFFF;
+    --danger-strong:  #C9343A;
 
     --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
     --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px;
@@ -53,6 +57,8 @@ body.dark-mode {
     --danger-soft: rgba(255, 107, 107, 0.14);
     --warning: #F7B955;
     --warning-soft: rgba(247, 185, 85, 0.14);
+    --primary-strong: #3FA9E8;
+    --on-primary: #06121C;
     --shadow-card: none;
     color-scheme: dark;
 }
@@ -213,48 +219,17 @@ body {
 }
 
 /* FIRST AID GRID */
-.first-aid-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-    gap: 12px;
-}
 
-.first-aid-card {
-    background-color: var(--color-surface);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-    cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.2s;
-    border: 1px solid rgba(0,0,0,0.06);
-    box-shadow: var(--shadow-sm);
-}
-.first-aid-card:hover { box-shadow: var(--shadow-md); }
-.first-aid-card:active { transform: scale(0.96); }
 
-.card-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
 
-.first-aid-card h3 {
-    font-size: 15px;
-    font-weight: 600;
-}
 
-.first-aid-card p {
-    font-size: 11px;
-    color: var(--hint-color);
-    line-height: 1.3;
-}
+
+
+
+
+
+
+
 
 /* SEARCH BOX */
 .search-box {
@@ -1855,101 +1830,27 @@ body.dark-mode .body-disease-modal::before {
 ═══════════════════════════════════════════ */
 
 /* --- Promo Card on Home Screen --- */
-.wheel-promo-card {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
-    box-sizing: border-box;
-    background: linear-gradient(135deg, #042f2e 0%, #0f766e 50%, #0d9488 100%);
-    color: #ffffff;
-    border-radius: 18px;
-    padding: 16px 18px;
-    margin: 8px 0 14px 0;
-    box-shadow: 0 10px 28px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
-    border: 1px solid rgba(45, 212, 191, 0.3);
-    position: relative;
-    overflow: hidden;
-    cursor: pointer;
-}
 
-.wheel-promo-card.daily-bonus-promo {
-    background: linear-gradient(135deg, #064e3b 0%, #047857 50%, #059669 100%);
-    box-shadow: 0 10px 28px rgba(5, 150, 105, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
-    border: 1px solid rgba(52, 211, 153, 0.35);
-}
 
-.wheel-promo-card.premium-promo {
-    background: linear-gradient(135deg, #3b0764 0%, #581c87 50%, #7e22ce 100%);
-    box-shadow: 0 10px 28px rgba(126, 34, 206, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
-    border: 1px solid rgba(192, 132, 252, 0.4);
-}
 
-.wheel-promo-card::after {
-    content: '';
-    position: absolute;
-    top: -50%; right: -30%;
-    width: 200px; height: 200px;
-    background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%);
-    pointer-events: none;
-}
 
-.wheel-promo-left {
-    flex-shrink: 0;
-}
 
-.wheel-promo-mini {
-    width: 48px; height: 48px;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 14px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    backdrop-filter: blur(6px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
 
-.wheel-promo-info {
-    flex: 1;
-    min-width: 0;
-}
 
-.wheel-promo-info h3 {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0 0 2px 0;
-    letter-spacing: -0.2px;
-}
 
-.wheel-promo-info p {
-    font-size: 12px;
-    opacity: 0.9;
-    line-height: 1.35;
-    margin: 0;
-}
 
-.wheel-promo-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.2);
-    backdrop-filter: blur(8px);
-    color: #ffffff;
-    border: 1px solid rgba(255,255,255,0.35);
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: transform 0.15s, background 0.15s;
-    flex-shrink: 0;
-}
 
-.wheel-promo-btn:active {
-    transform: scale(0.95);
-    background: rgba(255,255,255,0.3);
-}
+
+
+
+
+
+
+
+
+
+
+
 
 /* --- Full-Screen Wheel Modal --- */
 .wheel-fullscreen-modal {
@@ -2305,8 +2206,8 @@ body.dark-mode .body-disease-modal::before {
     .quiz-options .quiz-option-btn { padding: 12px; }
     .quiz-start-card { padding: 20px 12px; }
     .quiz-start-card h3 { font-size: 18px; }
-    .wheel-promo-card { flex-direction: column; text-align: center; gap: 10px; }
-    .wheel-promo-btn { width: 100%; justify-content: center; }
+
+
 }
 .daily-bonus-grid {
     display: grid;
@@ -2626,130 +2527,29 @@ html, body {
 }
 
 /* Promo Cards (Solid Gradients like image) */
-.wheel-promo-card {
-    background: linear-gradient(135deg, #18a493, #0f8b7c) !important;
-    border-radius: 20px !important;
-    padding: 16px 20px !important;
-    margin-bottom: 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    border: none !important;
-    box-shadow: 0 6px 16px rgba(15, 139, 124, 0.25) !important;
-}
-.premium-promo {
-    background: linear-gradient(135deg, #17b396, #0e8f77) !important;
-    box-shadow: 0 6px 16px rgba(14, 143, 119, 0.25) !important;
-}
 
-.wheel-promo-mini {
-    width: 46px !important;
-    height: 46px !important;
-    font-size: 24px !important;
-    border-radius: 50% !important;
-    background: rgba(255, 255, 255, 0.15) !important;
-    border: none !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    color: #fff !important;
-}
-.wheel-promo-info h3 {
-    color: #ffffff !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
-    margin-bottom: 2px !important;
-}
-.wheel-promo-info p {
-    color: rgba(255,255,255,0.85) !important;
-    font-size: 12px !important;
-}
 
-.wheel-promo-btn {
-    background: rgba(0, 0, 0, 0.15) !important;
-    color: #ffffff !important;
-    padding: 10px 16px !important;
-    border-radius: 100px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    backdrop-filter: blur(4px);
-    border: none !important;
-    box-shadow: none !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-}
+
+
+
+
+
+
 
 /* First Aid Grid (2 Columns, matching image) */
-.first-aid-grid {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
-    gap: 12px !important;
-    margin-top: 20px !important;
-}
 
-.first-aid-card {
-    background: var(--color-surface) !important;
-    border-radius: 20px !important;
-    padding: 20px 16px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important; 
-    text-align: left !important;
-    border: none !important;
-    box-shadow: var(--shadow-sm) !important;
-    position: relative;
-    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-}
-.first-aid-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--card-shadow) !important;
-}
 
-.card-icon {
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 50% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 22px !important;
-    margin-bottom: 16px !important;
-    border: none !important;
-    /* NO override for background-color/color here so original colorful emojis stay */
-}
+
+
+
+
 
 /* Chevron arrow */
-.first-aid-card::after {
-    /* chevron-right: FontAwesome o'rniga SVG maska (tashqi shrift yo'q) */
-    content: '';
-    position: absolute;
-    top: 24px;
-    right: 16px;
-    width: 12px;
-    height: 12px;
-    background-color: var(--hint-color);
-    opacity: 0.5;
-    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
-    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
-}
 
-.first-aid-card h3 {
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    color: var(--text-color) !important;
-    margin-bottom: 6px !important;
-}
 
-.first-aid-card p {
-    font-size: 12px !important;
-    color: var(--hint-color) !important;
-    line-height: 1.4 !important;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
+
+
+
 
 /* Floating Bottom Navigation matching image */
 
@@ -2888,7 +2688,7 @@ html, body {
     padding: 1px 8px;
     border-radius: 999px;
     background: var(--primary-soft);
-    color: var(--primary);
+    color: var(--primary-strong);
     font-weight: 600;
 }
 .global-score[hidden],
@@ -2902,7 +2702,7 @@ html, body {
     min-width: 44px;
     padding: 0 14px;
     border-radius: 20px;
-    background: var(--danger);
+    background: var(--danger-strong);
     color: #FFFFFF;
     font-size: var(--fs-body);
     font-weight: 700;
@@ -2921,7 +2721,7 @@ html, body {
     border: 0;
     border-radius: var(--r-sm);
     background: transparent;
-    color: var(--primary);
+    color: var(--primary-strong);
     font: 600 var(--fs-body) var(--font);
     cursor: pointer;
     flex-shrink: 0;
@@ -2957,7 +2757,7 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 .nav-btn .icon { font-size: 22px; }
-.nav-btn.active { color: var(--primary); }
+.nav-btn.active { color: var(--primary-strong); }   /* matn: kontrast >= 4.5:1 */
 .nav-btn:active .icon { transform: scale(0.92); }
 
 /* Segmented control (iOS uslubi) */
@@ -2986,3 +2786,212 @@ html, body {
 }
 body.dark-mode .segmented { background: rgba(118, 118, 128, 0.24); }
 body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 255, 255, 0.14); box-shadow: none; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   REDESIGN — BOSH EKRAN (4.4-B)
+   ═══════════════════════════════════════════════════════════════════ */
+/* 1. SOS kartasi. Oq matn kontrasti >= 4.5:1 bo'lishi uchun --danger dan biroz to'qroq gradient */
+.sos-card {
+    padding: var(--s-5);
+    margin-bottom: var(--s-5);
+    border-radius: var(--r-xl);
+    background: linear-gradient(135deg, var(--danger-strong) 0%, #A8262C 100%);
+    color: #FFFFFF;
+}
+.sos-head { display: flex; align-items: center; gap: var(--s-2); }
+.sos-head .icon { font-size: 24px; }
+.sos-title { margin: 0; font-size: var(--fs-h2); font-weight: 700; color: #FFFFFF; }
+.sos-text { margin: var(--s-1) 0 var(--s-4); font-size: 14px; line-height: 1.4; color: #FFFFFF; }
+.sos-call {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    height: 52px;
+    border-radius: var(--r-md);
+    background: #FFFFFF;
+    color: #B42A30;
+    font-size: var(--fs-title);
+    font-weight: 700;
+    text-decoration: none;
+}
+.sos-call .icon { font-size: 20px; }
+.sos-call:active { transform: scale(0.98); }
+.sos-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    margin-top: var(--s-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #FFFFFF;
+    font: 500 14px var(--font);
+    cursor: pointer;
+}
+
+/* 2. Tezkor harakatlar */
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-2);
+    margin-bottom: var(--s-5);
+}
+.qa {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: 500 var(--fs-caption) var(--font);
+    cursor: pointer;
+}
+.qa-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    color: var(--primary);
+    font-size: 22px;
+    box-shadow: var(--shadow-card);
+}
+.qa:active .qa-icon { transform: scale(0.94); }
+
+/* Guruhlangan ro'yxatlar (inset grouped) */
+.section-label {
+    margin: 0 0 var(--s-2) var(--s-1);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+.inset-group {
+    overflow: hidden;
+    margin-bottom: var(--s-5);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.inset-group[hidden] { display: none; }
+.list-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    width: 100%;
+    min-height: 56px;
+    padding: 10px var(--s-4);
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.list-row[hidden] { display: none; }
+.list-row + .list-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: calc(var(--s-4) + 32px + var(--s-3));
+    height: 1px;
+    background: var(--separator);
+}
+.list-row:active { background: var(--separator); }
+.row-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.row-icon--danger { background: var(--danger-soft); color: var(--danger); }
+.row-icon--primary { background: var(--primary-soft); color: var(--primary); }
+.row-icon--warning { background: var(--warning-soft); color: var(--warning); }
+.row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.row-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+.row-sub {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.row-chevron { font-size: 16px; color: var(--text-2); opacity: 0.6; }
+.pill {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--primary-strong);
+    color: var(--on-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+.pill--ghost { background: var(--primary-soft); color: var(--primary-strong); }
+.pill--done { background: var(--teal-soft); color: var(--teal); }
+
+/* 4. Premium banner (bir qator) */
+.premium-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    width: 100%;
+    min-height: 48px;
+    padding: 10px var(--s-4);
+    margin-bottom: var(--s-6);
+    border: 0;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+    color: var(--text);
+    font: 600 var(--fs-body) var(--font);
+    text-align: left;
+    cursor: pointer;
+}
+.premium-banner span { flex: 1; }
+.premium-banner-icon { font-size: 20px; color: var(--warning); }
+.premium-banner[hidden] { display: none; }
+
+/* 5. Qidiruv maydoni */
+.search-field {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    height: 40px;
+    padding: 0 var(--s-3);
+    margin-bottom: var(--s-3);
+    border-radius: var(--r-sm);
+    background: rgba(118, 118, 128, 0.12);
+    color: var(--text-2);
+}
+.search-field input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: 400 var(--fs-body) var(--font);
+}
+.search-field input::placeholder { color: var(--text-2); }
+body.dark-mode .search-field { background: rgba(118, 118, 128, 0.24); }
+.list-empty { padding: var(--s-6) 0; text-align: center; color: var(--text-2); }
+.list-empty[hidden] { display: none; }
