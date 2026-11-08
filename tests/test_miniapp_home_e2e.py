@@ -107,7 +107,7 @@ class HomeE2ETest(MiniAppE2EBase):
             "ok": True, "message": "ok", "points": 3, "streak": 3, "score": 123})})
         page.wait_for_function("document.querySelector('#today-bonus-pill').textContent === 'Olish'")
         page.click("#btn-open-daily-bonus")
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_selector("#daily-bonus-result")
         self.assertEqual(page.inner_text("#today-bonus-pill"), "Olindi")
 

@@ -939,96 +939,22 @@ body.dark-mode .back-btn:hover .back-btn-shape {
 
 
 }
-.daily-bonus-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    margin-bottom: 20px;
-}
-.daily-bonus-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 10px 5px;
-    text-align: center;
-    position: relative;
-    transition: all 0.3s ease;
-}
-.daily-bonus-card.active {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: #10b981;
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
-}
-.daily-bonus-card.claimed .check-icon {
-    display: block;
-}
-.daily-bonus-card .check-icon {
-    display: none;
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    background: #10b981;
-    color: white;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    font-size: 12px;
-    line-height: 20px;
-}
-.daily-bonus-card .day-label {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.6);
-    margin-bottom: 5px;
-}
-.daily-bonus-card.active .day-label {
-    color: #10b981;
-    font-weight: 600;
-}
-.daily-bonus-card .star-icon {
-    color: #f59e0b;
-    font-size: 1.2rem;
-    margin-bottom: 5px;
-}
-.daily-bonus-card .points-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #fff;
-}
-.daily-bonus-card.active .points-label {
-    color: #10b981;
-}
-.daily-bonus-card.day-7 {
-    grid-column: span 2;
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.2) 100%);
-    border-color: #f59e0b;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-.daily-bonus-card.day-7.active {
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
-}
-.daily-bonus-card.day-7 .star-icon {
-    font-size: 1.8rem;
-}
-.daily-bonus-card.day-7 .day-label {
-    color: #f59e0b;
-    font-weight: 600;
-}
-.daily-bonus-card.day-7 .points-label {
-    color: #f59e0b;
-    font-size: 1rem;
-}
-.daily-bonus-card.day-7 .big-bonus-label {
-    background: #f59e0b;
-    color: #fff;
-    font-size: 0.7rem;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-top: 5px;
-    font-weight: 700;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ═══════════════════════════════════════════════════
    PREMIUM MODAL — Full Responsive Design
@@ -1317,12 +1243,7 @@ html, body {
 }
 
 /* Kunlik bonus: mini app ichida olingan natija ("+3 ball, 3-kun") */
-.daily-bonus-result {
-    margin: 0 0 12px;
-    text-align: center;
-    font-weight: 700;
-    color: var(--accent-green);
-}
+
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2956,4 +2877,98 @@ body.tg-main #wheel-result-msg .result-confirm-btn { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
     .wheel-modal-inner { animation: none; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   REDESIGN — KUNLIK BONUS (4.4-J): bottom sheet, tokenlar, suzib turgan tugma tuzatildi
+   ═══════════════════════════════════════════════════════════════════ */
+.bonus-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    background: rgba(15, 27, 45, 0.45);
+}
+.bonus-sheet.hidden { display: none !important; }
+.bonus-sheet-inner {
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 6px var(--s-4) calc(var(--s-6) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    background: var(--surface);
+    color: var(--text);
+    animation: sheet-up .24s var(--ease);
+}
+.bonus-head { display: flex; align-items: center; gap: var(--s-3); }
+.bonus-head-icon { flex-shrink: 0; margin: 0; background: var(--warning-soft); color: #9A5B00; }
+body.dark-mode .bonus-head-icon { color: var(--warning); }
+.bonus-score-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-bottom: var(--s-4);
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--bg);
+    font-size: 15px;
+    color: var(--text);
+}
+.bonus-score-row .icon { width: 20px; height: 20px; color: var(--warning); fill: var(--warning); }
+.bonus-score-row span { flex: 1; }
+.bonus-score-row strong { font-size: 20px; font-weight: 700; color: var(--text); }
+
+/* 7 kunlik qator */
+.bonus-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: var(--s-4); }
+.daily-bonus-card { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.day-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--separator);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--text-2);
+    font-size: 15px;
+    font-weight: 700;
+}
+.day-dot .icon { width: 20px; height: 20px; }
+.day-reward { font-size: 13px; font-weight: 700; color: var(--text-2); }
+.daily-bonus-card.claimed .day-dot { border-color: #0B746D; background: #0B746D; color: #FFFFFF; }
+body.dark-mode .daily-bonus-card.claimed .day-dot { border-color: var(--teal); background: var(--teal); color: #06121C; }
+.daily-bonus-card.claimed .day-dot .icon { stroke-width: 3; }
+.daily-bonus-card.active .day-dot { border: 3px solid var(--primary); background: var(--surface); color: var(--primary-strong); }
+.daily-bonus-card.active .day-reward { color: var(--primary-strong); }
+.daily-bonus-card.day-7:not(.claimed) .day-dot { border-color: var(--warning); color: #9A5B00; background: var(--warning-soft); }
+body.dark-mode .daily-bonus-card.day-7:not(.claimed) .day-dot { color: var(--warning); }
+
+.bonus-note {
+    display: flex;
+    gap: var(--s-2);
+    margin: 0 0 var(--s-4);
+    padding: var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--primary-soft);
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--text);
+}
+.bonus-note .icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; color: var(--primary-strong); }
+.daily-bonus-result { margin: 0 0 var(--s-3); font-size: 16px; font-weight: 700; color: #0B746D; text-align: center; }
+body.dark-mode .daily-bonus-result { color: var(--teal); }
+
+/* Tugma oqim ichida (avval wheel-center-btn klassi tufayli absolute — "suzib" turardi) */
+.bonus-claim { position: static; transform: none; }
+.bonus-claim.is-claimed { background: var(--separator); color: var(--text-2); cursor: default; }
+.bonus-claim.is-claimed:active { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .bonus-sheet-inner { animation: none; }
 }

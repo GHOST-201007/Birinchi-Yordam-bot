@@ -3549,27 +3549,26 @@ document.addEventListener('DOMContentLoaded', () => {
             if(isDay7) classes.push('day-7');
             if(isCurrent && !dailyClaimed) classes.push('active');
             if(isPast) classes.push('claimed');
-            
-            card.className = classes.join(' ');
-            
-            const dayIcon = isDay7 ? 'gift' : 'star';
 
-            card.innerHTML = `
-                ${svgIcon('circle-check', 'check-icon')}
-                <div class="day-label">${i}-kun</div>
-                ${svgIcon(dayIcon, 'star-icon')}
-                <div class="points-label">${rewards[i-1]} ball</div>
-                ${isDay7 ? '<div class="big-bonus-label">Katta bonus!</div>' : ''}
-            `;
+            card.className = classes.join(' ');
+            card.setAttribute('role', 'listitem');
+            const state = isPast ? 'olingan' : (isCurrent && !dailyClaimed) ? 'bugun' : 'kutilmoqda';
+            card.setAttribute('aria-label', `${i}-kun: ${rewards[i-1]} ball, ${state}`);
+            // Belgi: olingan — ✓, 7-kun — sovg'a, qolganlari — kun raqami
+            const mark = isPast ? svgIcon('check') : isDay7 ? svgIcon('gift') : `<span class="tabular">${i}</span>`;
+            card.innerHTML = `<span class="day-dot" aria-hidden="true">${mark}</span>` +
+                             `<span class="day-reward tabular" aria-hidden="true">+${rewards[i-1]}</span>`;
             grid.appendChild(card);
         }
         
         if (dailyClaimed) {
-            btnClaim.style.opacity = '0.5';
-            btnClaim.style.cursor = 'not-allowed';
-            btnClaim.querySelector('.wheel-center-text').textContent = '✅ Bugungi bonus olindi';
+            btnClaim.classList.add('is-claimed');
+            btnClaim.setAttribute('aria-disabled', 'true');
+            btnClaim.querySelector('.bonus-claim-label').textContent = 'Bugungi bonus olindi';
             btnClaim.onclick = null;
         } else {
+            btnClaim.classList.remove('is-claimed');
+            btnClaim.removeAttribute('aria-disabled');
             btnClaim.onclick = () => {
                 if (AppState.data) {
                     claimBonusViaApi();         // API ishlayapti: mini app ichida
@@ -3578,6 +3577,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
         }
+        syncBonusMainButton();
+    }
+
+    // Asosiy amal: Telegram ichida MainButton "Bonusni olish" (kartadagi tugma bilan bir xil handler).
+    // Olingan holatda MainButton yo'q — sahifada "Bugungi bonus olindi" ko'rinadi.
+    function syncBonusMainButton() {
+        const open = !modal.classList.contains('hidden');
+        if (!open || dailyClaimed || !btnClaim.onclick) {
+            btnClaim.classList.remove('inpage-main');
+            if (MainButtonCtl.owner === 'bonus') MainButtonCtl.clear();
+            return;
+        }
+        btnClaim.classList.add('inpage-main');
+        const handler = btnClaim.onclick;
+        // Zaxira tugma o'z onclick'i bilan qoladi (ichidagi yorliq "Kutilmoqda..." uchun kerak) — fallback berilmaydi
+        MainButtonCtl.set({ text: 'Bonusni olish', owner: 'bonus', onClick: () => handler.call(btnClaim) });
+        if (bonusLabelBackup === null) btnClaim.querySelector('.bonus-claim-label').textContent = 'Bonusni olish';
     }
 
     // ZAXIRA yo'l (API yo'q yoki xato): botga deep link orqali olish
@@ -3614,8 +3630,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Javob kutilayotganda tugma matni o'zgaradi (server uzoqda: 8 s gacha kutish mumkin)
     let bonusLabelBackup = null;
     function setBonusBusy(busy) {
-        const label = btnClaim.querySelector('.wheel-center-text');
+        const label = btnClaim.querySelector('.bonus-claim-label');
         if (!label) return;
+        try {
+            if (MainButtonCtl.owner === 'bonus' && tg && tg.MainButton) {
+                if (busy && tg.MainButton.showProgress) tg.MainButton.showProgress();
+                if (!busy && tg.MainButton.hideProgress) tg.MainButton.hideProgress();
+            }
+        } catch (e) { /* eski klient */ }
         if (busy) {
             if (bonusLabelBackup === null) bonusLabelBackup = label.textContent;
             label.textContent = 'Kutilmoqda...';
@@ -3689,8 +3711,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btnOpenDailyBonus.onclick = () => {
-        renderGrid();
         modal.classList.remove('hidden');
+        renderGrid();
         document.body.style.overflow = 'hidden';
         // Umumiy kesh: 60 soniyadan eski bo'lsagina qayta so'raladi
         getAppState(60000).then((s) => { if (s) applyState(s); });
@@ -3702,6 +3724,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnClose.onclick = () => {
         modal.classList.add('hidden');
         document.body.style.overflow = 'auto';
+        syncBonusMainButton();
     };
     
     // Allow clicking outside the modal content to close it

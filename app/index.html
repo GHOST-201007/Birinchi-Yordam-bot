@@ -529,42 +529,35 @@
         </div>
     </div>
 
-    <!-- DAILY BONUS MODAL -->
-    <div id="daily-bonus-modal" class="modal hidden">
-        <div class="modal-content" style="background: #111827; max-width: 400px; padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); overflow: visible;">
-            <div class="modal-header" style="border: none; padding: 0; margin-bottom: 20px;">
-                <span class="close-btn" id="daily-bonus-close" style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.1); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; z-index: 10;"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></span>
-            </div>
-            <div class="modal-body" style="text-align: center; padding: 0;">
-                <div style="font-size: 3rem; margin-top: -50px; text-shadow: 0 10px 20px rgba(0,0,0,0.5);">🎁</div>
-                <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 10px 0 5px;">Kunlik bonus</h2>
-                <p style="color: rgba(255,255,255,0.6); font-size: 0.9rem; margin-bottom: 20px;">Botga har kuni kirib boring va bonus oling!<br>7 kunlik seriya uchun maxsus mukofot sizni kutmoqda.</p>
-                
-                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <svg class="icon" aria-hidden="true" style="color: #f59e0b; font-size: 1.2rem;"><use href="#i-star"/></svg>
-                        <span style="color: rgba(255,255,255,0.8); font-weight: 500;">Sizning hozirgi ballaringiz</span>
+    <!-- Kunlik bonus — bottom sheet -->
+    <div id="daily-bonus-modal" class="modal bonus-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="daily-bonus-title">
+        <div class="bonus-sheet-inner">
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <div class="wheel-head">
+                <div class="bonus-head">
+                    <div class="result-icon bonus-head-icon"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg></div>
+                    <div>
+                        <h2 class="sheet-title" id="daily-bonus-title">Kunlik bonus</h2>
+                        <p class="sheet-sub">Har kuni kiring — 7 kunlik seriya uchun katta mukofot</p>
                     </div>
-                    <span id="daily-bonus-current-score" style="color: #f59e0b; font-size: 1.3rem; font-weight: 700;">0</span>
                 </div>
-                
-                <div style="text-align: left; margin-bottom: 15px;">
-                    <h3 style="font-size: 1rem; color: #fff; font-weight: 600;">Kunlik bonuslar jadvali (7 kunlik seriya)</h3>
-                </div>
-                
-                <div class="daily-bonus-grid" id="daily-bonus-grid">
-                    <!-- Cards injected by JS -->
-                </div>
-                
-                <div style="background: rgba(59, 130, 246, 0.1); border-radius: 12px; padding: 15px; display: flex; align-items: flex-start; gap: 12px; text-align: left; margin-bottom: 20px;">
-                    <svg class="icon" aria-hidden="true" style="color: #3b82f6; margin-top: 3px;"><use href="#i-info"/></svg>
-                    <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; line-height: 1.4; margin: 0;">Seriyani uzib qo'ymang! Har kuni kirganingizda bonus olish imkoniyatingiz bor.</p>
-                </div>
-                
-                <button id="btn-claim-daily-bonus" class="wheel-center-btn" style="width: 100%; border-radius: 12px; padding: 16px; margin: 0;">
-                    <span class="wheel-center-text" style="font-size: 1rem;">🎁 Bonusni olish</span>
-                </button>
+                <button type="button" class="sheet-close" id="daily-bonus-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
             </div>
+
+            <div class="bonus-score-row">
+                <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
+                <span>Sizning hozirgi ballaringiz</span>
+                <strong class="tabular" id="daily-bonus-current-score">0</strong>
+            </div>
+
+            <h3 class="section-label">7 kunlik seriya</h3>
+            <div class="bonus-days" id="daily-bonus-grid" role="list" aria-label="7 kunlik seriya"></div>
+
+            <p class="bonus-note"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Seriyani uzib qo'ymang! Har kuni kirganingizda bonus olish imkoniyatingiz bor.</span></p>
+
+            <button type="button" id="btn-claim-daily-bonus" class="btn-primary bonus-claim">
+                <span class="bonus-claim-label">Bonusni olish</span>
+            </button>
         </div>
     </div>
 

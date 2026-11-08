@@ -42,7 +42,9 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         self.open_bonus(page)
         self.assertIn("bugungi bonus olindi", page.inner_text("#btn-claim-daily-bonus").lower())
         self.assertEqual(page.locator("#daily-bonus-grid .daily-bonus-card.claimed").count(), 3)
-        page.click("#btn-claim-daily-bonus")
+        self.assertEqual(page.get_attribute("#btn-claim-daily-bonus", "aria-disabled"), "true")
+        self.assertFalse(self.tg(page)["mainVisible"])                        # olingan holatda MainButton yo'q
+        page.dispatch_event("#btn-claim-daily-bonus", "click")                # bosilsa ham hech narsa bo'lmaydi
         self.assertEqual([c[0] for c in calls], ["state"])
 
     # ---- bitta umumiy state so'rovi ---------------------------------------------
@@ -75,7 +77,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         page, calls = self.open_app({"state": (200, BONUS_STATE), "bonus/claim": (200, BONUS_OK)})
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_selector("#daily-bonus-result")
         self.assertEqual(page.inner_text("#daily-bonus-result"), "+3 ball, 3-kun")
         self.assertEqual(page.inner_text("#global-score-val"), "10")
@@ -92,7 +94,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         page, calls = self.open_app({"state": (200, BONUS_STATE), "bonus/claim": (200, BONUS_OK)})
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_selector("#daily-bonus-result")
         page.click("#daily-bonus-close")
         self.open_bonus(page)
@@ -103,7 +105,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         page, calls = self.open_app({"state": (200, BONUS_STATE), "bonus/claim": (200, BONUS_OK)})
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
-        page.dblclick("#btn-claim-daily-bonus")
+        page.evaluate("() => { window.__mainCb(); window.__mainCb(); }")       # ikki marta tez bosish
         page.wait_for_selector("#daily-bonus-result")
         self.assertEqual([c[0] for c in calls].count("bonus/claim"), 1)
 
@@ -115,7 +117,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         })
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_function("window.__tg.alerts.length === 1")
         self.assertEqual(self.tg(page)["alerts"], ["Siz bugungi bonusni olib bo'lgansiz."])
         page.wait_for_function("document.querySelectorAll('#daily-bonus-grid .daily-bonus-card.claimed').length >= 2")
@@ -129,7 +131,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         self.open_bonus(page)
         self.assertEqual(page.inner_text("#daily-bonus-current-score"), "4")
         self.assertIn("active", page.locator("#daily-bonus-grid .daily-bonus-card").nth(1).get_attribute("class"))
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         tg = self.tg(page)
         self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=claim_daily"])
         self.assertEqual(tg["closed"], 1)
@@ -138,7 +140,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
     def test_fallback_without_init_data_makes_no_api_calls(self):
         page, calls = self.open_app({}, query="?streak=1&daily_claimed=0&score=0", init_data="")
         self.open_bonus(page)
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         self.assertEqual(calls, [])
         self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=claim_daily"])
 
@@ -147,7 +149,7 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
         page, calls = self.open_app({"state": sequence((200, BONUS_STATE), "abort"), "bonus/claim": "abort"})
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         self.open_bonus(page)
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_function("window.__tg.links.length === 1")
         self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot?start=claim_daily"])
         self.assertEqual(self.tg(page)["closed"], 1)

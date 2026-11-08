@@ -94,7 +94,7 @@ class LateBonusClaimE2ETest(MiniAppE2EBase):
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '7'")
         page.click("#btn-open-daily-bonus")
         page.wait_for_selector("#daily-bonus-modal:not(.hidden)")
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         self.wait_for_call(calls, "bonus/claim")
         return page, calls
 
@@ -135,7 +135,7 @@ class LateBonusClaimE2ETest(MiniAppE2EBase):
         self.assertIn("Ulanishda xatolik", self.tg(page)["alerts"][0])
         self.assertEqual(self.tg(page)["links"], [])
         self.assertNotIn("kutilmoqda", page.inner_text("#btn-claim-daily-bonus").lower())      # tugma qayta faol
-        page.click("#btn-claim-daily-bonus")
+        self.press_main(page, "#btn-claim-daily-bonus")
         page.wait_for_selector("#daily-bonus-result:has-text('+3 ball, 3-kun')")
         self.assertEqual(self.tg(page)["links"], [])
 
