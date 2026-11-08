@@ -28,9 +28,9 @@ class BotUsernameConstantStaticTest(unittest.TestCase):
             self.assertTrue("botUsername" in line or "BOT_USERNAME" in line, f"qattiq yozilgan havola: {line.strip()}")
 
     def test_local_aliases_point_to_constant(self):
+        # Mahalliy nusxalar bo'lsa — faqat konstantaga ishora qiladi (redesign'da ular BOT_USERNAME bilan almashtirilgan)
         aliases = re.findall(r"(?:const|var) botUsername = ([^;]+);", self.js)
-        self.assertGreaterEqual(len(aliases), 5)
-        self.assertEqual(set(aliases), {"BOT_USERNAME"})
+        self.assertTrue(set(aliases) <= {"BOT_USERNAME"}, aliases)
 
 
 class BotUsernameLinksE2ETest(MiniAppE2EBase):
@@ -53,7 +53,7 @@ class BotUsernameLinksE2ETest(MiniAppE2EBase):
         page, _ = self.open_app({}, query="", init_data="")
         page.click('[data-tab="tab-body-map"]')
         page.evaluate("openBodyMapModal('head')")
-        page.wait_for_selector("#body-map-modal:not(.hidden)")
+        page.wait_for_selector("#body-map-modal:not([hidden])")
         page.click("#ai-consult-btn")
         page.clock.fast_forward(400)
         page.wait_for_function("window.__tg.links.length === 1")

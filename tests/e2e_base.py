@@ -28,7 +28,7 @@ INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000
 FAKE_TELEGRAM = """
 (() => {
   const state = { closed: 0, links: [], alerts: [], invoices: [], backVisible: false, headerColors: [], bgColors: [],
-                  mainVisible: false, mainText: null, mainParams: null, mainActive: true, haptics: [], impacts: [] };
+                  mainVisible: false, mainText: null, mainParams: null, mainActive: true, haptics: [], impacts: [], sent: [] };
   window.__tg = state;
   const noop = () => {};
   window.Telegram = { WebApp: {
@@ -38,7 +38,7 @@ FAKE_TELEGRAM = """
     ready: noop, expand: noop, disableVerticalSwipes: noop,
     setHeaderColor: (c) => { state.headerColors.push(c); }, setBackgroundColor: (c) => { state.bgColors.push(c); },
     onEvent: (name, cb) => { (window.__tgEvents = window.__tgEvents || {})[name] = cb; },
-    offEvent: noop, enableClosingConfirmation: noop, sendData: noop,
+    offEvent: noop, enableClosingConfirmation: noop, sendData: (d) => { state.sent.push(d); },
     isVersionAtLeast: () => true,
     close: () => { state.closed++; },
     openTelegramLink: (u) => { state.links.push(u); },

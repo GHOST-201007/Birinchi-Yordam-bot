@@ -750,6 +750,7 @@ function showTab(tabId) {
     const content = document.querySelector('.app-content');
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
+    if (tabId !== 'tab-body-map') hideBodySheet();
     if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
 
@@ -2311,174 +2312,119 @@ let currentBodyView = 'front';
 
 const FRONT_BODY_SVG = `
 <svg viewBox="0 0 280 540" class="human-body-svg">
-    <defs>
-        <filter id="glowPart" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#14b8a6" flood-opacity="0.7"/>
-        </filter>
-        <radialGradient id="organGrad" cx="50%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.35"/>
-            <stop offset="100%" stop-color="#0f766e" stop-opacity="0.15"/>
-        </radialGradient>
-    </defs>
 
     <!-- Head / Bosh -->
-    <g class="body-part" data-part="head" onclick="openBodyMapModal('head')">
-        <rect x="90" y="10" width="100" height="100" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="head" role="button" tabindex="0">
+        <rect x="90" y="10" width="100" height="100" class="fat-hotspot" />
         <path d="M 140 24 C 118 24 106 38 106 62 C 106 82 120 100 134 104 L 146 104 C 160 100 174 82 174 62 C 174 38 162 24 140 24 Z" class="part-shape"/>
-        <circle cx="140" cy="62" r="3.5" fill="#5eead4" class="part-pin"/>
-        <rect x="122" y="54" width="36" height="16" class="part-label-bg"/>
-        <text x="140" y="66" class="part-label">Bosh</text>
     </g>
 
     <!-- Neck / Bo'yin -->
-    <g class="body-part" data-part="neck" onclick="openBodyMapModal('neck')">
-        <rect x="110" y="90" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="neck" role="button" tabindex="0">
+        <rect x="110" y="90" width="60" height="40" class="fat-hotspot" />
         <path d="M 128 104 L 152 104 L 156 122 L 124 122 Z" class="part-shape"/>
-        <circle cx="140" cy="113" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="140" y="116" class="part-label" style="font-size: 8px;">Bo'yin</text>
     </g>
 
     <!-- Left Shoulder / Chap Yelka -->
-    <g class="body-part" data-part="left_shoulder" onclick="openBodyMapModal('left_shoulder')">
-        <rect x="60" y="120" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_shoulder" role="button" tabindex="0">
+        <rect x="60" y="120" width="60" height="40" class="fat-hotspot" />
         <path d="M 124 122 L 96 126 C 86 130 80 140 82 152 L 102 150 C 108 138 116 130 124 128 Z" class="part-shape"/>
-        <circle cx="90" cy="138" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="64" y="142" class="part-label" style="font-size: 8px;">Yelka</text>
     </g>
 
     <!-- Right Shoulder / O'ng Yelka -->
-    <g class="body-part" data-part="right_shoulder" onclick="openBodyMapModal('right_shoulder')">
-        <rect x="160" y="120" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_shoulder" role="button" tabindex="0">
+        <rect x="160" y="120" width="60" height="40" class="fat-hotspot" />
         <path d="M 156 122 L 184 126 C 194 130 200 140 198 152 L 178 150 C 172 138 164 130 156 128 Z" class="part-shape"/>
-        <circle cx="190" cy="138" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="216" y="142" class="part-label" style="font-size: 8px;">Yelka</text>
     </g>
 
     <!-- Chest / Ko'krak -->
-    <g class="body-part" data-part="chest" onclick="openBodyMapModal('chest')">
-        <rect x="90" y="124" width="100" height="65" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="chest" role="button" tabindex="0">
+        <rect x="90" y="124" width="100" height="65" class="fat-hotspot" />
         <path d="M 104 128 C 120 124 160 124 176 128 C 182 144 180 178 174 188 C 158 192 122 192 106 188 C 100 178 98 144 104 128 Z" class="part-shape"/>
-        <circle cx="140" cy="155" r="3.5" fill="#5eead4" class="part-pin"/>
-        <rect x="115" y="146" width="50" height="18" class="part-label-bg"/>
-        <text x="140" y="159" class="part-label">Ko'krak</text>
     </g>
 
     <!-- Left Arm / Chap Qo'l -->
-    <g class="body-part" data-part="left_arm" onclick="openBodyMapModal('left_arm')">
-        <rect x="50" y="150" width="50" height="90" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_arm" role="button" tabindex="0">
+        <rect x="50" y="150" width="50" height="90" class="fat-hotspot" />
         <path d="M 80 154 L 98 152 L 90 236 L 72 232 Z" class="part-shape"/>
-        <circle cx="82" cy="192" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="56" y="196" class="part-label" style="font-size: 8px;">Qo'l</text>
     </g>
 
     <!-- Right Arm / O'ng Qo'l -->
-    <g class="body-part" data-part="right_arm" onclick="openBodyMapModal('right_arm')">
-        <rect x="180" y="150" width="50" height="90" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_arm" role="button" tabindex="0">
+        <rect x="180" y="150" width="50" height="90" class="fat-hotspot" />
         <path d="M 200 154 L 182 152 L 190 236 L 208 232 Z" class="part-shape"/>
-        <circle cx="198" cy="192" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="224" y="196" class="part-label" style="font-size: 8px;">Qo'l</text>
     </g>
 
     <!-- Abdomen / Qorin -->
-    <g class="body-part" data-part="abdomen" onclick="openBodyMapModal('abdomen')">
-        <rect x="100" y="185" width="80" height="70" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="abdomen" role="button" tabindex="0">
+        <rect x="100" y="185" width="80" height="70" class="fat-hotspot" />
         <path d="M 106 190 C 122 194 158 194 174 190 C 176 216 172 242 168 250 C 154 254 126 254 112 250 C 108 242 104 216 106 190 Z" class="part-shape"/>
-        <circle cx="140" cy="218" r="3.5" fill="#5eead4" class="part-pin"/>
-        <rect x="120" y="209" width="40" height="18" class="part-label-bg"/>
-        <text x="140" y="222" class="part-label">Qorin</text>
     </g>
 
     <!-- Left Hand / Chap Kaft -->
-    <g class="body-part" data-part="left_hand" onclick="openBodyMapModal('left_hand')">
-        <rect x="50" y="230" width="45" height="50" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_hand" role="button" tabindex="0">
+        <rect x="50" y="230" width="45" height="50" class="fat-hotspot" />
         <path d="M 70 234 L 88 238 C 88 252 82 268 76 270 C 68 268 64 252 70 234 Z" class="part-shape"/>
-        <circle cx="76" cy="254" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="54" y="258" class="part-label" style="font-size: 8px;">Kaft</text>
     </g>
 
     <!-- Right Hand / O'ng Kaft -->
-    <g class="body-part" data-part="right_hand" onclick="openBodyMapModal('right_hand')">
-        <rect x="185" y="230" width="45" height="50" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_hand" role="button" tabindex="0">
+        <rect x="185" y="230" width="45" height="50" class="fat-hotspot" />
         <path d="M 210 234 L 192 238 C 192 252 198 268 204 270 C 212 268 216 252 210 234 Z" class="part-shape"/>
-        <circle cx="204" cy="254" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="226" y="258" class="part-label" style="font-size: 8px;">Kaft</text>
     </g>
 
     <!-- Pelvis / Chanoq -->
-    <g class="body-part" data-part="hip" onclick="openBodyMapModal('hip')">
-        <rect x="100" y="250" width="80" height="45" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="hip" role="button" tabindex="0">
+        <rect x="100" y="250" width="80" height="45" class="fat-hotspot" />
         <path d="M 112 252 C 126 256 154 256 168 252 C 174 274 168 290 156 294 L 124 294 C 112 290 106 274 112 252 Z" class="part-shape"/>
-        <circle cx="140" cy="272" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="118" y="264" width="44" height="16" class="part-label-bg"/>
-        <text x="140" y="276" class="part-label" style="font-size: 8.5px;">Chanoq</text>
     </g>
 
     <!-- Left Thigh / Chap Son -->
-    <g class="body-part" data-part="left_thigh" onclick="openBodyMapModal('left_thigh')">
-        <rect x="100" y="290" width="40" height="95" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_thigh" role="button" tabindex="0">
+        <rect x="100" y="290" width="40" height="95" class="fat-hotspot" />
         <path d="M 110 296 L 136 296 L 132 376 L 108 376 C 104 350 106 320 110 296 Z" class="part-shape"/>
-        <circle cx="120" cy="336" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="106" y="328" width="28" height="16" class="part-label-bg"/>
-        <text x="120" y="340" class="part-label" style="font-size: 8px;">Son</text>
     </g>
 
     <!-- Right Thigh / O'ng Son -->
-    <g class="body-part" data-part="right_thigh" onclick="openBodyMapModal('right_thigh')">
-        <rect x="140" y="290" width="40" height="95" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_thigh" role="button" tabindex="0">
+        <rect x="140" y="290" width="40" height="95" class="fat-hotspot" />
         <path d="M 144 296 L 170 296 C 174 320 176 350 172 376 L 148 376 L 144 296 Z" class="part-shape"/>
-        <circle cx="160" cy="336" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="146" y="328" width="28" height="16" class="part-label-bg"/>
-        <text x="160" y="340" class="part-label" style="font-size: 8px;">Son</text>
     </g>
 
     <!-- Left Knee / Chap Tizza -->
-    <g class="body-part" data-part="left_knee" onclick="openBodyMapModal('left_knee')">
-        <rect x="100" y="380" width="40" height="30" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_knee" role="button" tabindex="0">
+        <rect x="100" y="380" width="40" height="30" class="fat-hotspot" />
         <ellipse cx="120" cy="392" rx="13" ry="11" class="part-shape"/>
-        <circle cx="120" cy="392" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="120" y="395" class="part-label" style="font-size: 8px;">Tizza</text>
     </g>
 
     <!-- Right Knee / O'ng Tizza -->
-    <g class="body-part" data-part="right_knee" onclick="openBodyMapModal('right_knee')">
-        <rect x="140" y="380" width="40" height="30" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_knee" role="button" tabindex="0">
+        <rect x="140" y="380" width="40" height="30" class="fat-hotspot" />
         <ellipse cx="160" cy="392" rx="13" ry="11" class="part-shape"/>
-        <circle cx="160" cy="392" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="160" y="395" class="part-label" style="font-size: 8px;">Tizza</text>
     </g>
 
     <!-- Left Shin / Chap Boldir -->
-    <g class="body-part" data-part="left_shin" onclick="openBodyMapModal('left_shin')">
-        <rect x="100" y="405" width="40" height="75" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_shin" role="button" tabindex="0">
+        <rect x="100" y="405" width="40" height="75" class="fat-hotspot" />
         <path d="M 108 406 L 132 406 L 126 476 L 112 476 Z" class="part-shape"/>
-        <circle cx="119" cy="440" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="103" y="432" width="32" height="16" class="part-label-bg"/>
-        <text x="119" y="444" class="part-label" style="font-size: 8px;">Boldir</text>
     </g>
 
     <!-- Right Shin / O'ng Boldir -->
-    <g class="body-part" data-part="right_shin" onclick="openBodyMapModal('right_shin')">
-        <rect x="140" y="405" width="40" height="75" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_shin" role="button" tabindex="0">
+        <rect x="140" y="405" width="40" height="75" class="fat-hotspot" />
         <path d="M 148 406 L 172 406 L 168 476 L 154 476 Z" class="part-shape"/>
-        <circle cx="161" cy="440" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="145" y="432" width="32" height="16" class="part-label-bg"/>
-        <text x="161" y="444" class="part-label" style="font-size: 8px;">Boldir</text>
     </g>
 
     <!-- Left Foot / Chap Panja -->
-    <g class="body-part" data-part="left_foot" onclick="openBodyMapModal('left_foot')">
-        <rect x="90" y="475" width="45" height="35" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_foot" role="button" tabindex="0">
+        <rect x="90" y="475" width="45" height="35" class="fat-hotspot" />
         <path d="M 110 478 L 128 478 L 132 506 L 98 506 Z" class="part-shape"/>
-        <circle cx="114" cy="494" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="114" y="497" class="part-label" style="font-size: 8px;">Panja</text>
     </g>
 
     <!-- Right Foot / O'ng Panja -->
-    <g class="body-part" data-part="right_foot" onclick="openBodyMapModal('right_foot')">
-        <rect x="145" y="475" width="45" height="35" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_foot" role="button" tabindex="0">
+        <rect x="145" y="475" width="45" height="35" class="fat-hotspot" />
         <path d="M 152 478 L 170 478 L 182 506 L 148 506 Z" class="part-shape"/>
-        <circle cx="166" cy="494" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="166" y="497" class="part-label" style="font-size: 8px;">Panja</text>
     </g>
 </svg>
 `;
@@ -2487,155 +2433,111 @@ const FRONT_BODY_SVG = `
 const BACK_BODY_SVG = `
 <svg viewBox="0 0 280 540" class="human-body-svg">
     <!-- Head Back / Bosh ensa -->
-    <g class="body-part" data-part="head" onclick="openBodyMapModal('head')">
-        <rect x="90" y="10" width="100" height="100" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="head" role="button" tabindex="0">
+        <rect x="90" y="10" width="100" height="100" class="fat-hotspot" />
         <path d="M 140 24 C 118 24 106 38 106 62 C 106 82 120 100 134 104 L 146 104 C 160 100 174 82 174 62 C 174 38 162 24 140 24 Z" class="part-shape"/>
-        <circle cx="140" cy="62" r="3.5" fill="#5eead4" class="part-pin"/>
-        <rect x="115" y="54" width="50" height="16" class="part-label-bg"/>
-        <text x="140" y="66" class="part-label">Ensa / Bosh</text>
     </g>
 
     <!-- Neck Back / Bo'yin -->
-    <g class="body-part" data-part="neck" onclick="openBodyMapModal('neck')">
-        <rect x="110" y="90" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="neck" role="button" tabindex="0">
+        <rect x="110" y="90" width="60" height="40" class="fat-hotspot" />
         <path d="M 128 104 L 152 104 L 156 122 L 124 122 Z" class="part-shape"/>
-        <circle cx="140" cy="113" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="140" y="116" class="part-label" style="font-size: 8px;">Bo'yin</text>
     </g>
 
     <!-- Left Shoulder Back -->
-    <g class="body-part" data-part="left_shoulder" onclick="openBodyMapModal('left_shoulder')">
-        <rect x="60" y="120" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_shoulder" role="button" tabindex="0">
+        <rect x="60" y="120" width="60" height="40" class="fat-hotspot" />
         <path d="M 124 122 L 96 126 C 86 130 80 140 82 152 L 102 150 C 108 138 116 130 124 128 Z" class="part-shape"/>
-        <circle cx="90" cy="138" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="64" y="142" class="part-label" style="font-size: 8px;">Yelka</text>
     </g>
 
     <!-- Right Shoulder Back -->
-    <g class="body-part" data-part="right_shoulder" onclick="openBodyMapModal('right_shoulder')">
-        <rect x="160" y="120" width="60" height="40" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_shoulder" role="button" tabindex="0">
+        <rect x="160" y="120" width="60" height="40" class="fat-hotspot" />
         <path d="M 156 122 L 184 126 C 194 130 200 140 198 152 L 178 150 C 172 138 164 130 156 128 Z" class="part-shape"/>
-        <circle cx="190" cy="138" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="216" y="142" class="part-label" style="font-size: 8px;">Yelka</text>
     </g>
 
     <!-- Spine / Bel va Orqa -->
-    <g class="body-part" data-part="back" onclick="openBodyMapModal('back')">
-        <rect x="90" y="120" width="100" height="135" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
-        <path d="M 104 128 C 120 124 160 124 176 128 C 182 156 178 220 172 250 C 156 254 124 254 108 250 C 102 220 98 156 104 128 Z" class="part-shape" style="fill: #115e59; stroke: #2dd4bf; stroke-width: 2;"/>
-        <line x1="140" y1="128" x2="140" y2="250" stroke="#5eead4" stroke-width="2" stroke-dasharray="3 3"/>
-        <circle cx="140" cy="180" r="4.5" fill="#fde047" class="part-pin"/>
-        <rect x="110" y="170" width="60" height="20" class="part-label-bg" style="fill: rgba(15,23,42,0.9); stroke: #fde047; stroke-width: 1.5;"/>
-        <text x="140" y="184" class="part-label" style="fill: #fde047; font-size: 11px;">🔙 Bel / Orqa</text>
+    <g class="body-part" data-part="back" role="button" tabindex="0">
+        <rect x="90" y="120" width="100" height="135" class="fat-hotspot" />
+        <path d="M 104 128 C 120 124 160 124 176 128 C 182 156 178 220 172 250 C 156 254 124 254 108 250 C 102 220 98 156 104 128 Z" class="part-shape"/>
     </g>
 
     <!-- Left Arm Back -->
-    <g class="body-part" data-part="left_arm" onclick="openBodyMapModal('left_arm')">
-        <rect x="50" y="150" width="50" height="90" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_arm" role="button" tabindex="0">
+        <rect x="50" y="150" width="50" height="90" class="fat-hotspot" />
         <path d="M 80 154 L 98 152 L 90 236 L 72 232 Z" class="part-shape"/>
-        <circle cx="82" cy="192" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="56" y="196" class="part-label" style="font-size: 8px;">Qo'l</text>
     </g>
 
     <!-- Right Arm Back -->
-    <g class="body-part" data-part="right_arm" onclick="openBodyMapModal('right_arm')">
-        <rect x="180" y="150" width="50" height="90" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_arm" role="button" tabindex="0">
+        <rect x="180" y="150" width="50" height="90" class="fat-hotspot" />
         <path d="M 200 154 L 182 152 L 190 236 L 208 232 Z" class="part-shape"/>
-        <circle cx="198" cy="192" r="3" fill="#5eead4" class="part-pin"/>
-        <text x="224" y="196" class="part-label" style="font-size: 8px;">Qo'l</text>
     </g>
 
     <!-- Left Hand Back -->
-    <g class="body-part" data-part="left_hand" onclick="openBodyMapModal('left_hand')">
-        <rect x="50" y="230" width="45" height="50" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_hand" role="button" tabindex="0">
+        <rect x="50" y="230" width="45" height="50" class="fat-hotspot" />
         <path d="M 70 234 L 88 238 C 88 252 82 268 76 270 C 68 268 64 252 70 234 Z" class="part-shape"/>
-        <circle cx="76" cy="254" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="54" y="258" class="part-label" style="font-size: 8px;">Kaft</text>
     </g>
 
     <!-- Right Hand Back -->
-    <g class="body-part" data-part="right_hand" onclick="openBodyMapModal('right_hand')">
-        <rect x="185" y="230" width="45" height="50" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_hand" role="button" tabindex="0">
+        <rect x="185" y="230" width="45" height="50" class="fat-hotspot" />
         <path d="M 210 234 L 192 238 C 192 252 198 268 204 270 C 212 268 216 252 210 234 Z" class="part-shape"/>
-        <circle cx="204" cy="254" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="226" y="258" class="part-label" style="font-size: 8px;">Kaft</text>
     </g>
 
     <!-- Pelvis / Dumba -->
-    <g class="body-part" data-part="hip" onclick="openBodyMapModal('hip')">
-        <rect x="100" y="250" width="80" height="45" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="hip" role="button" tabindex="0">
+        <rect x="100" y="250" width="80" height="45" class="fat-hotspot" />
         <path d="M 112 252 C 126 256 154 256 168 252 C 174 274 168 290 156 294 L 124 294 C 112 290 106 274 112 252 Z" class="part-shape"/>
-        <circle cx="140" cy="272" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="118" y="264" width="44" height="16" class="part-label-bg"/>
-        <text x="140" y="276" class="part-label" style="font-size: 8.5px;">Dumba</text>
     </g>
 
     <!-- Left Thigh Back -->
-    <g class="body-part" data-part="left_thigh" onclick="openBodyMapModal('left_thigh')">
-        <rect x="100" y="290" width="40" height="95" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_thigh" role="button" tabindex="0">
+        <rect x="100" y="290" width="40" height="95" class="fat-hotspot" />
         <path d="M 110 296 L 136 296 L 132 376 L 108 376 C 104 350 106 320 110 296 Z" class="part-shape"/>
-        <circle cx="120" cy="336" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="106" y="328" width="28" height="16" class="part-label-bg"/>
-        <text x="120" y="340" class="part-label" style="font-size: 8px;">Son</text>
     </g>
 
     <!-- Right Thigh Back -->
-    <g class="body-part" data-part="right_thigh" onclick="openBodyMapModal('right_thigh')">
-        <rect x="140" y="290" width="40" height="95" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_thigh" role="button" tabindex="0">
+        <rect x="140" y="290" width="40" height="95" class="fat-hotspot" />
         <path d="M 144 296 L 170 296 C 174 320 176 350 172 376 L 148 376 L 144 296 Z" class="part-shape"/>
-        <circle cx="160" cy="336" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="146" y="328" width="28" height="16" class="part-label-bg"/>
-        <text x="160" y="340" class="part-label" style="font-size: 8px;">Son</text>
     </g>
 
     <!-- Left Knee Back -->
-    <g class="body-part" data-part="left_knee" onclick="openBodyMapModal('left_knee')">
-        <rect x="100" y="380" width="40" height="30" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_knee" role="button" tabindex="0">
+        <rect x="100" y="380" width="40" height="30" class="fat-hotspot" />
         <ellipse cx="120" cy="392" rx="13" ry="11" class="part-shape"/>
-        <circle cx="120" cy="392" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="120" y="395" class="part-label" style="font-size: 8px;">Tizza</text>
     </g>
 
     <!-- Right Knee Back -->
-    <g class="body-part" data-part="right_knee" onclick="openBodyMapModal('right_knee')">
-        <rect x="140" y="380" width="40" height="30" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_knee" role="button" tabindex="0">
+        <rect x="140" y="380" width="40" height="30" class="fat-hotspot" />
         <ellipse cx="160" cy="392" rx="13" ry="11" class="part-shape"/>
-        <circle cx="160" cy="392" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="160" y="395" class="part-label" style="font-size: 8px;">Tizza</text>
     </g>
 
     <!-- Left Shin Back -->
-    <g class="body-part" data-part="left_shin" onclick="openBodyMapModal('left_shin')">
-        <rect x="100" y="405" width="40" height="75" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_shin" role="button" tabindex="0">
+        <rect x="100" y="405" width="40" height="75" class="fat-hotspot" />
         <path d="M 108 406 L 132 406 L 126 476 L 112 476 Z" class="part-shape"/>
-        <circle cx="119" cy="440" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="103" y="432" width="32" height="16" class="part-label-bg"/>
-        <text x="119" y="444" class="part-label" style="font-size: 8px;">Boldir</text>
     </g>
 
     <!-- Right Shin Back -->
-    <g class="body-part" data-part="right_shin" onclick="openBodyMapModal('right_shin')">
-        <rect x="140" y="405" width="40" height="75" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_shin" role="button" tabindex="0">
+        <rect x="140" y="405" width="40" height="75" class="fat-hotspot" />
         <path d="M 148 406 L 172 406 L 168 476 L 154 476 Z" class="part-shape"/>
-        <circle cx="161" cy="440" r="3" fill="#5eead4" class="part-pin"/>
-        <rect x="145" y="432" width="32" height="16" class="part-label-bg"/>
-        <text x="161" y="444" class="part-label" style="font-size: 8px;">Boldir</text>
     </g>
 
     <!-- Left Foot Back -->
-    <g class="body-part" data-part="left_foot" onclick="openBodyMapModal('left_foot')">
-        <rect x="90" y="475" width="45" height="35" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="left_foot" role="button" tabindex="0">
+        <rect x="90" y="475" width="45" height="35" class="fat-hotspot" />
         <path d="M 110 478 L 128 478 L 132 506 L 98 506 Z" class="part-shape"/>
-        <circle cx="114" cy="494" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="114" y="497" class="part-label" style="font-size: 8px;">Tovon</text>
     </g>
 
     <!-- Right Foot Back -->
-    <g class="body-part" data-part="right_foot" onclick="openBodyMapModal('right_foot')">
-        <rect x="145" y="475" width="45" height="35" fill="transparent" class="fat-hotspot" style="cursor:pointer;" />
+    <g class="body-part" data-part="right_foot" role="button" tabindex="0">
+        <rect x="145" y="475" width="45" height="35" class="fat-hotspot" />
         <path d="M 152 478 L 170 478 L 182 506 L 148 506 Z" class="part-shape"/>
-        <circle cx="166" cy="494" r="2.5" fill="#5eead4" class="part-pin"/>
-        <text x="166" y="497" class="part-label" style="font-size: 8px;">Tovon</text>
     </g>
 </svg>
 `;
@@ -2676,93 +2578,95 @@ async function initBodyMap() {
     renderBodyMap(currentBodyView);
     populateQuickChips();
 
-    // View Switcher Buttons
-    const btnFront = document.getElementById('btn-view-front');
-    const btnBack = document.getElementById('btn-view-back');
-    const hudViewTag = document.getElementById('scanner-current-view');
-
-    if (btnFront && btnBack) {
-        btnFront.onclick = () => {
-            if (currentBodyView === 'front') return;
-            currentBodyView = 'front';
-            btnFront.classList.add('active');
-            btnBack.classList.remove('active');
-            if (hudViewTag) hudViewTag.textContent = "OLDI TARAFI";
-            renderBodyMap('front');
+    // Oldi / Orqa — segmented
+    document.querySelectorAll('#tab-body-map [data-view]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const view = btn.getAttribute('data-view');
+            if (currentBodyView === view) return;
+            currentBodyView = view;
+            document.querySelectorAll('#tab-body-map [data-view]').forEach(b =>
+                b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+            renderBodyMap(view);
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-        };
+        });
+    });
 
-        btnBack.onclick = () => {
-            if (currentBodyView === 'back') return;
-            currentBodyView = 'back';
-            btnBack.classList.add('active');
-            btnFront.classList.remove('active');
-            if (hudViewTag) hudViewTag.textContent = "ORQA TARAFI (BEL)";
-            renderBodyMap('back');
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-        };
-    }
-
-    // Modal Close
     const closeBtn = document.getElementById('modal-close');
-    const modal = document.getElementById('body-map-modal');
-    if (closeBtn && modal) {
-        function closeBodyMapModal() {
-            modal.classList.add('hidden');
-            modal.style.display = 'none';
-            AppNavigation.pop();
+    if (closeBtn) closeBtn.addEventListener('click', closeBodySheet);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isBodySheetOpen()) closeBodySheet();
+    });
+    // Sahifadagi zaxira tugma (Telegram tashqarisida) — MainButton bilan bir xil yo'l (MainButtonCtl.set ulaydi)
+}
+
+function isBodySheetOpen() {
+    const sheet = document.getElementById('body-map-modal');
+    return !!sheet && !sheet.hidden;
+}
+
+// UI ni yashiradi (navigatsiya stekiga tegmaydi)
+function hideBodySheet() {
+    const sheet = document.getElementById('body-map-modal');
+    if (!sheet || sheet.hidden) return;
+    sheet.hidden = true;
+    document.body.classList.remove('sheet-open');
+    if (MainButtonCtl.owner === 'body') MainButtonCtl.clear();
+    selectedBodyPartKey = null;
+    markSelectedBodyPart();
+}
+
+function closeBodySheet() {
+    if (!isBodySheetOpen()) return;
+    hideBodySheet();
+    AppNavigation.pop();
+}
+
+// AI konsultant: oqim o'zgarmagan — sendData, keyin botga havola va mini app yopiladi (Telegram tashqarisida — xabar)
+function aiConsultForBodyPart() {
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+    const fb = document.getElementById('ai-consult-btn');
+    if (fb) fb.disabled = true;
+    try { if (MainButtonCtl.owner === 'body' && tg && tg.MainButton && tg.MainButton.showProgress) tg.MainButton.showProgress(); } catch (e) { /* eski klient */ }
+
+    setTimeout(() => {
+        if (fb) fb.disabled = false;
+        try { if (tg && tg.MainButton && tg.MainButton.hideProgress) tg.MainButton.hideProgress(); } catch (e) { /* eski klient */ }
+        const partKey = selectedBodyPartKey;
+        const partData = bodyMapData && partKey ? bodyMapData[partKey.replace('left_', '').replace('right_', '')] : null;
+        const partLabel = partData ? partData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (partKey || 'bosh');
+        if (tg && tg.sendData) {
+            try { tg.sendData(JSON.stringify({ action: "ai_consult", title: partLabel })); } catch (e) {}
         }
-        closeBtn.onclick = closeBodyMapModal;
-        window.onclick = (e) => {
-            if (e.target === modal) {
-                closeBodyMapModal();
-            }
-        };
-    }
 
-    // AI Consult Button
-    const aiBtn = document.getElementById('ai-consult-btn');
-    if (aiBtn) {
-        aiBtn.onclick = () => {
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        // Avval sheet yopiladi
+        hideBodySheet();
 
-            aiBtn.disabled = true;
-            const originalContent = aiBtn.innerHTML;
-            aiBtn.innerHTML = svgIcon('loader', 'icon-spin') + ' Ulanmoqda...';
+        if (tg) {
+            const url = `https://t.me/${BOT_USERNAME}?start=ai_consult_${partKey || 'head'}`;
+            tg.openTelegramLink(url);
+            tg.close();
+        } else {
+            notify(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
+        }
+    }, 300);
+}
 
-            setTimeout(() => {
-                aiBtn.disabled = false;
-                aiBtn.innerHTML = originalContent;
-                if (tg && tg.sendData) {
-                    try {
-                        const pData = bodyMapData && selectedBodyPartKey ? bodyMapData[selectedBodyPartKey.replace('left_', '').replace('right_', '')] : null;
-                        const pLabel = pData ? pData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (selectedBodyPartKey || 'bosh');
-                        tg.sendData(JSON.stringify({ action: "ai_consult", title: pLabel }));
-                    } catch (e) {}
-                }
+// A'zo nomi (chap/o'ng bilan) — aria-label va sarlavha uchun
+function bodyPartName(partKey) {
+    const mapKey = partKey.replace('left_', '').replace('right_', '');
+    const d = bodyMapData && (bodyMapData[partKey] || bodyMapData[mapKey]);
+    let name = d ? (d.name || (d.title || mapKey).replace(/^[^\w\s\u0400-\u04FF]+/, '').trim()) : mapKey;
+    if (partKey.startsWith('left_')) name = "Chap " + name.toLowerCase();
+    else if (partKey.startsWith('right_')) name = "O'ng " + name.toLowerCase();
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
 
-                // Close modal first
-            const modal = document.getElementById('body-map-modal');
-            if (modal) {
-                modal.classList.add('hidden');
-                modal.style.display = 'none';
-            }
-
-            // Build part label for bot message
-            const partData = bodyMapData && selectedBodyPartKey ? bodyMapData[selectedBodyPartKey.replace('left_', '').replace('right_', '')] : null;
-            const partLabel = partData ? partData.title.replace(/^[^\w\s\u0400-\u04FF]+/, '').trim() : (selectedBodyPartKey || 'bosh');
-
-            if (tg) {
-                const botUsername = BOT_USERNAME;
-                const url = `https://t.me/${botUsername}?start=ai_consult_${selectedBodyPartKey || 'head'}`;
-                tg.openTelegramLink(url);
-                tg.close();
-            } else {
-                notify(`AI konsultant: Tana qismi — ${partLabel}\n\nTelegram ilovasi orqali kiring!`);
-            }
-            }, 300);
-        };
-    }
+function markSelectedBodyPart() {
+    document.querySelectorAll('#body-map-container .body-part').forEach(g => {
+        const on = g.getAttribute('data-part') === selectedBodyPartKey;
+        g.classList.toggle('selected', on);
+        g.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
 }
 
 
@@ -2813,9 +2717,13 @@ function renderBodyMap(view) {
         // Mobile touchend (more responsive on touch screens)
         partEl.addEventListener('touchend', triggerModal, { passive: false });
 
-        // Make cursor pointer visible
-        partEl.style.cursor = 'pointer';
+        // Klaviatura: Enter / Space
+        partEl.setAttribute('aria-label', bodyPartName(partKey));
+        partEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') triggerModal(e);
+        });
     });
+    markSelectedBodyPart();
 }
 
 function populateQuickChips() {
@@ -2823,26 +2731,28 @@ function populateQuickChips() {
     if (!chipsContainer || !bodyMapData) return;
 
     const chipsList = [
-        { key: 'head', icon: '🧠', name: 'Bosh' },
-        { key: 'neck', icon: '🦴', name: "Bo'yin" },
-        { key: 'chest', icon: '🫁', name: "Ko'krak" },
-        { key: 'abdomen', icon: '🫃', name: 'Qorin' },
-        { key: 'back', icon: '🔙', name: 'Bel va Orqa' },
-        { key: 'shoulder', icon: '💪', name: 'Yelka' },
-        { key: 'arm', icon: '🤲', name: "Qo'l" },
-        { key: 'knee', icon: '🦿', name: 'Tizza' },
-        { key: 'foot', icon: '🦶', name: 'Panja' }
+        { key: 'head', name: 'Bosh' },
+        { key: 'neck', name: "Bo'yin" },
+        { key: 'chest', name: "Ko'krak" },
+        { key: 'abdomen', name: 'Qorin' },
+        { key: 'back', name: 'Bel va Orqa' },
+        { key: 'shoulder', name: 'Yelka' },
+        { key: 'arm', name: "Qo'l" },
+        { key: 'knee', name: 'Tizza' },
+        { key: 'foot', name: 'Panja' }
     ];
 
     chipsContainer.innerHTML = '';
     chipsList.forEach(item => {
         const btn = document.createElement('button');
-        btn.className = 'quick-chip';
-        btn.innerHTML = `<span>${item.icon}</span><span>${item.name}</span>`;
-        btn.onclick = () => {
+        btn.type = 'button';
+        btn.className = 'cat-chip';
+        btn.setAttribute('data-part', item.key);
+        btn.textContent = item.name;
+        btn.addEventListener('click', () => {
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             openBodyMapModal(item.key);
-        };
+        });
         chipsContainer.appendChild(btn);
     });
 }
@@ -2899,127 +2809,63 @@ function openBodyMapModal(partKey) {
 
 function _openFullModal(partKey, data) {
     try {
-        const modal = document.getElementById('body-map-modal');
+        const sheet = document.getElementById('body-map-modal');
         const titleEl = document.getElementById('modal-title');
         const listEl = document.getElementById('modal-diseases-list');
-        const iconEl = document.getElementById('modal-organ-icon');
-
-        if (!modal) {
-            reportError('_openFullModal', new Error('#body-map-modal oynasi HTML ichida topilmadi'));
+        if (!sheet) {
+            reportError('_openFullModal', new Error('#body-map-modal HTML ichida topilmadi'));
             return;
         }
 
-        // Set title and icon
-        if (titleEl) titleEl.innerText = data.name || partKey;
-        if (iconEl) iconEl.innerText = data.icon || '🩺';
+        if (titleEl) titleEl.textContent = data.name || partKey;
 
-        // Build disease list with tips and urgent badges
         if (listEl) {
             listEl.innerHTML = '';
-            
-            // 1. Render diseases list (from JSON)
             if (data.diseases && data.diseases.length > 0) {
+                // Holatlar: yig'iladigan ro'yxat (bir vaqtda bittasi ochiq)
                 data.diseases.forEach(d => {
-                    const li = document.createElement('li');
-                    li.className = 'disease-item' + (d.urgent ? ' disease-urgent' : '');
-                    
-                    li.innerHTML = `
-                        <div class="disease-item-header" style="cursor: pointer;">
-                            <strong>${d.name}</strong>
-                            ${d.urgent ? '<span class="urgent-badge">' + svgIcon('alert-triangle') + ' Tezkor</span>' : ''}
-                            ${svgIcon('chevron-down', 'toggle-icon')}
-                        </div>
-                        <div class="disease-details-content" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;">
-                            <p class="disease-desc" style="margin-top: 8px; margin-bottom: 8px;">${d.desc || ''}</p>
-                            ${d.tip ? `
-                            <div class="disease-tip">
-                                <span class="tip-icon">💡</span>
-                                <span>${d.tip}</span>
-                            </div>` : ''}
-                        </div>
-                    `;
-                    
-                    const header = li.querySelector('.disease-item-header');
-                    const content = li.querySelector('.disease-details-content');
-                    const icon = li.querySelector('.toggle-icon');
-                    
-                    header.onclick = (e) => {
-                        e.stopPropagation();
-                        const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== '';
-                        
-                        // Close all other expanded items in the list for a clean accordion look
-                        const allContents = listEl.querySelectorAll('.disease-details-content');
-                        const allIcons = listEl.querySelectorAll('.toggle-icon');
-                        allContents.forEach((c, idx) => {
-                            c.style.maxHeight = '0px';
-                            if (allIcons[idx]) allIcons[idx].style.transform = 'rotate(0deg)';
-                        });
-                        
-                        if (!isExpanded) {
-                            content.style.maxHeight = content.scrollHeight + 'px';
-                            icon.style.transform = 'rotate(180deg)';
-                            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-                        } else {
-                            content.style.maxHeight = '0px';
-                            icon.style.transform = 'rotate(0deg)';
-                            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-                        }
-                    };
-                    
-                    listEl.appendChild(li);
+                    const item = document.createElement('details');
+                    item.className = 'sheet-item' + (d.urgent ? ' is-urgent' : '');
+                    item.innerHTML = `<summary><span class="sheet-item-name"></span>${d.urgent ? `<span class="chip chip--danger">${svgIcon('alert-triangle')}<span>Tezkor</span></span>` : ''}${svgIcon('chevron-down', 'collapse-chevron')}</summary>
+                        <p class="sheet-item-desc"></p>${d.tip ? `<p class="sheet-tip">${svgIcon('info')}<span></span></p>` : ''}`;
+                    item.querySelector('.sheet-item-name').textContent = d.name;
+                    item.querySelector('.sheet-item-desc').textContent = d.desc || '';
+                    if (d.tip) item.querySelector('.sheet-tip span').textContent = d.tip;
+                    item.addEventListener('toggle', () => {
+                        if (!item.open) return;
+                        listEl.querySelectorAll('details[open]').forEach(o => { if (o !== item) o.open = false; });
+                        if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+                    });
+                    listEl.appendChild(item);
                 });
-            }
-            // 2. Fallback to problems list (from old hardcoded dictionary)
-            else if (data.problems && data.problems.length > 0) {
+            } else if (data.problems && data.problems.length > 0) {
+                const ul = document.createElement('ul');
+                ul.className = 'sheet-problems';
                 data.problems.forEach(p => {
                     const li = document.createElement('li');
-                    li.className = 'disease-item';
-                    li.style.padding = '12px 14px';
-                    li.innerHTML = `
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 6px; height: 6px; border-radius: 50%; background: #14b8a6;"></div>
-                            <span style="font-weight: 600; font-size: 14px;">${p}</span>
-                        </div>
-                    `;
-                    listEl.appendChild(li);
+                    li.textContent = p;
+                    ul.appendChild(li);
                 });
+                listEl.appendChild(ul);
             }
-            
-            // 3. Render Tip at the bottom (if not already handled inside individual diseases)
             if (data.tip && (!data.diseases || data.diseases.length === 0)) {
-                const tipLi = document.createElement('li');
-                tipLi.style.listStyle = 'none';
-                tipLi.style.marginTop = '16px';
-                tipLi.innerHTML = `
-                    <div style="font-size: 13px; color: var(--hint-color); margin-bottom: 6px;">Qisqa tavsiya:</div>
-                    <div style="background: rgba(20,184,166,0.1); border-left: 3px solid #14b8a6; padding: 12px; border-radius: 4px 8px 8px 4px; font-size: 14px; line-height: 1.4;">
-                        ${data.tip}
-                    </div>
-                `;
-                listEl.appendChild(tipLi);
+                const tip = document.createElement('p');
+                tip.className = 'sheet-tip';
+                tip.innerHTML = `${svgIcon('info')}<span></span>`;
+                tip.querySelector('span').textContent = data.tip;
+                listEl.appendChild(tip);
             }
         }
 
-        // Animate in
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-        // Trigger reflow for animation
-        const mc = modal.querySelector('.body-disease-modal');
-        if (mc) {
-            mc.style.animation = 'none';
-            mc.offsetHeight; // reflow
-            mc.style.animation = '';
-        }
-
-        // Push navigation state for body map modal
-        AppNavigation.push({
-            type: 'body-map-modal',
-            close: function () {
-                modal.classList.add('hidden');
-                modal.style.display = 'none';
-                AppNavigation.pop();
-            }
-        });
+        const wasOpen = !sheet.hidden;
+        sheet.hidden = false;
+        sheet.scrollTop = 0;
+        document.body.classList.add('sheet-open');
+        markSelectedBodyPart();
+        MainButtonCtl.set({ text: 'AI konsultant', owner: 'body', onClick: aiConsultForBodyPart },
+                          document.getElementById('ai-consult-btn'));
+        // Boshqa a'zo bosilganda sheet yangilanadi — navigatsiya stekiga qayta qo'shilmaydi
+        if (!wasOpen) AppNavigation.push({ type: 'body-map-modal', close: closeBodySheet });
     } catch (err) {
         reportError('_openFullModal', err);
     }

@@ -417,37 +417,22 @@
 
             <!-- TAB 6: BODY MAP -->
             <section id="tab-body-map" class="tab-content">
-                <div class="section-title">
-                    <h2>🧍‍♂️ Interaktiv Tana Xaritasi</h2>
-                    <p>Og'riq yoki bezovtalik mavjud tana a'zosini tanlang</p>
+                <div class="screen-head">
+                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-person-standing"/></svg>Tana xaritasi</h1>
+                    <p class="screen-sub">Og'riq yoki bezovtalik mavjud tana a'zosini tanlang</p>
                 </div>
 
-                <!-- Front / Back View Switcher -->
-                <div class="body-view-controls">
-                    <button class="body-view-btn active" id="btn-view-front" data-view="front">
-                        <svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>
-                        <span>Oldi ko'rinish</span>
-                    </button>
-                    <button class="body-view-btn" id="btn-view-back" data-view="back">
-                        <svg class="icon" aria-hidden="true"><use href="#i-repeat"/></svg>
-                        <span>Orqa ko'rinish (Bel)</span>
-                    </button>
+                <div class="segmented" role="tablist" aria-label="Ko'rinish">
+                    <button type="button" role="tab" aria-selected="true" id="btn-view-front" data-view="front">Oldi</button>
+                    <button type="button" role="tab" aria-selected="false" id="btn-view-back" data-view="back">Orqa</button>
                 </div>
 
                 <div class="body-map-card">
-                    <div class="scanner-grid-bg"></div>
-                    <div class="scanner-laser"></div>
-                    <div class="scanner-hud-tag top-left"><svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg> SCAN 3D</div>
-                    <div class="scanner-hud-tag top-right" id="scanner-current-view">OLDI TARAFI</div>
-                    <div id="body-map-container" class="body-map-svg-wrapper">
-                        <!-- High Quality Anatomical SVG renders here -->
-                    </div>
+                    <div id="body-map-container" class="body-map-svg-wrapper"></div>
                 </div>
 
-                <!-- Quick Organ Chips Selector -->
-                <div class="body-quick-chips" id="body-quick-chips">
-                    <!-- Populated dynamically via JS -->
-                </div>
+                <h2 class="section-label">Tezkor tanlash</h2>
+                <div class="chip-scroll body-quick-chips" id="body-quick-chips" aria-label="Tana a'zolari"></div>
             </section>
 
         </main>
@@ -500,29 +485,18 @@
         </nav>
 
         <!-- MODAL FOR BODY MAP DISEASES -->
-        <div id="body-map-modal" class="modal hidden">
-            <div class="modal-content body-disease-modal">
-                <div class="modal-header">
-                    <div class="modal-title-wrap">
-                        <span class="modal-organ-icon" id="modal-organ-icon">🩺</span>
-                        <h3 id="modal-title">A'zo nomi</h3>
-                    </div>
-                    <span class="close-btn" id="modal-close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></span>
-                </div>
-                <div class="modal-body">
-                    <p class="modal-subtitle">Ushbu sohadagi eng ko'p uchraydigan holatlar:</p>
-                    <ul id="modal-diseases-list" class="body-disease-list"></ul>
-                </div>
-                <div class="modal-disclaimer">
-                    <svg class="icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
-                    <span>Bu umumiy ma'lumot, aniq tashxis emas. Shifokor bilan maslahat qiling.</span>
-                </div>
-                <div class="modal-footer">
-                    <button id="ai-consult-btn" class="primary-btn ai-pulse-btn">
-                        <svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>
-                        🤖 AI konsultantga o'tish
-                    </button>
-                </div>
+        <!-- Tana a'zosi: pastdan chiquvchi bottom sheet (modal emas — xarita ko'rinib, bosilib turadi) -->
+        <div id="body-map-modal" class="sheet" role="dialog" aria-modal="false" aria-labelledby="modal-title" hidden>
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="modal-title">A'zo nomi</h2>
+                <button type="button" class="sheet-close" id="modal-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="sheet-body">
+                <p class="sheet-sub">Ushbu sohadagi eng ko'p uchraydigan holatlar:</p>
+                <div id="modal-diseases-list" class="sheet-list"></div>
+                <p class="sheet-disclaimer"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Bu umumiy ma'lumot, aniq tashxis emas. Shifokor bilan maslahat qiling.</span></p>
+                <button type="button" id="ai-consult-btn" class="btn-primary inpage-main">AI konsultant</button>
             </div>
         </div>
 
