@@ -43,6 +43,27 @@ class HomeE2ETest(MiniAppE2EBase):
         self.assertEqual(self.active_section(page), "tab-first-aid")
         self.assertFalse(self.tg(page)["backVisible"])
 
+    def test_wheel_uses_wheel_icon_not_refresh(self):
+        page, _ = self.open_app({})
+        for sel in ("#btn-open-wheel .qa-icon use", "#wheel-promo-card .row-icon use"):
+            self.assertEqual(page.get_attribute(sel, "href"), "#i-wheel", sel)
+
+    def test_filled_pill_contrast_is_aa_in_both_themes(self):
+        script = r"""(() => {
+            const parse = c => c.match(/[\d.]+/g).slice(0, 3).map(Number);
+            const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+                                          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+            const cs = getComputedStyle(document.querySelector('#today-bonus-pill'));
+            const a = lum(parse(cs.color)), b = lum(parse(cs.backgroundColor));
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        })()"""
+        for scheme in ("light", "dark"):
+            with self.subTest(scheme=scheme):
+                page, _ = self.open_app({"state": (200, STATE)},
+                                        init_script=f"window.Telegram.WebApp.colorScheme = '{scheme}';")
+                page.wait_for_function("document.querySelector('#today-bonus-pill').textContent === 'Olish'")
+                self.assertGreaterEqual(page.evaluate(script), 4.5)
+
     def test_wheel_quick_action_opens_wheel(self):
         page, _ = self.open_app({"state": (200, STATE)})
         self.open_wheel(page)                                               # #btn-open-wheel = "Baraban"

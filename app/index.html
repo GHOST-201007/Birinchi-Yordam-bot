@@ -53,6 +53,7 @@
         <symbol id="i-test-tube" viewBox="0 0 24 24"><path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/><path d="M8.5 2h7"/><path d="M14.5 16h-5"/></symbol>
         <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
         <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></symbol>
+        <symbol id="i-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2v8"/><path d="M12 14v8"/><path d="m3.34 7 6.93 4"/><path d="m13.73 13 6.93 4"/><path d="m3.34 17 6.93-4"/><path d="m13.73 11 6.93-4"/></symbol>
         <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
     </svg>
     <div id="app-container">
@@ -96,7 +97,7 @@
                     <button type="button" class="qa" data-action="ai"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span><span class="qa-label">AI maslahat</span></button>
                     <button type="button" class="qa" data-action="calc"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-calculator"/></svg></span><span class="qa-label">Kalkulyator</span></button>
                     <button type="button" class="qa" data-action="quiz"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg></span><span class="qa-label">Test</span></button>
-                    <button type="button" class="qa" id="btn-open-wheel"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg></span><span class="qa-label">Baraban</span></button>
+                    <button type="button" class="qa" id="btn-open-wheel"><span class="qa-icon"><svg class="icon" aria-hidden="true"><use href="#i-wheel"/></svg></span><span class="qa-label">Baraban</span></button>
                 </div>
 
                 <!-- 3. Bugun: kunlik bonus + baraban holati -->
@@ -111,7 +112,7 @@
                         <span class="pill" id="today-bonus-pill">Olish</span>
                     </div>
                     <div class="list-row" id="wheel-promo-card" role="button" tabindex="0">
-                        <span class="row-icon row-icon--primary"><svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg></span>
+                        <span class="row-icon row-icon--primary"><svg class="icon" aria-hidden="true"><use href="#i-wheel"/></svg></span>
                         <span class="row-text">
                             <span class="row-title">Omad barabani</span>
                             <span class="row-sub tabular" id="today-wheel-sub">Har kuni bepul aylantiring</span>
