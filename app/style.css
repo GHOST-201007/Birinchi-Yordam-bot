@@ -3120,3 +3120,25 @@ body.dark-mode .fig-views button[aria-pressed="true"] { background: var(--surfac
 .ai-offer .pm-features { margin-bottom: var(--s-3); }
 .ai-offer-buy { font-weight: 800; }
 .ai-offer-note { margin: var(--s-2) 0 0; font-size: 13px; font-weight: 600; color: var(--text-2); text-align: center; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   G — Ko'rinish (mavzu): Avto / Kunduzgi / Tungi — Sog'liq tabida
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    margin: var(--s-2) 0 var(--s-4);
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.theme-row-label { display: inline-flex; align-items: center; gap: var(--s-2); font-size: 15px; font-weight: 800; color: var(--text); }
+.theme-row-label .icon { width: 18px; height: 18px; color: var(--primary); }
+.theme-seg { flex: 0 1 260px; margin: 0; padding: 3px; border-radius: var(--r-pill); background: var(--seg-bg); }
+.theme-seg button { min-height: 36px; padding: 0 10px; border-radius: var(--r-pill); font: 800 13px var(--font); color: var(--text-2); }
+.theme-seg button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(15, 42, 46, .12); }
+.theme-seg button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }

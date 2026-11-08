@@ -1,3 +1,41 @@
+// ── Mavzu: saqlangan tanlov BIRINCHI CHIZISHDAN OLDIN qo'llanadi (app.js boshida; body allaqachon bor) ──
+// "auto" — Telegram mavzusiga (tg.colorScheme / themeChanged) ergashadi; "light" / "dark" — qo'lda.
+// Faqat localStorage (try/catch, xato bo'lsa jim o'tadi). CloudStorage ATAYLAB ishlatilmaydi (eski mijozlarda xato).
+const THEME_KEY = 'theme_mode';
+const THEME_MODES = ['auto', 'light', 'dark'];
+let themePrefInSession = null;       // shu oynada tanlangan (localStorage ishlamasa ham eslab qolinadi)
+
+function readThemePref() {
+    if (themePrefInSession !== null) return themePrefInSession;   // shu oynada tanlangan
+    try {
+        const v = window.localStorage.getItem(THEME_KEY);
+        return THEME_MODES.includes(v) ? v : 'auto';
+    } catch (e) {
+        return 'auto';
+    }
+}
+
+function saveThemePref(value) {
+    try { window.localStorage.setItem(THEME_KEY, value); } catch (e) { /* saqlanmasa ham joriy oynada ishlaydi */ }
+}
+
+function autoThemeMode() {
+    const w = window.Telegram && window.Telegram.WebApp;
+    if (w && (w.colorScheme === 'dark' || w.colorScheme === 'light')) return w.colorScheme;
+    try {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    } catch (e) { /* eski brauzer */ }
+    return 'light';
+}
+
+(function bootTheme() {
+    try {
+        const pref = readThemePref();
+        const mode = pref === 'auto' ? autoThemeMode() : pref;
+        if (document.body) document.body.classList.toggle('dark-mode', mode === 'dark');
+    } catch (e) { /* mavzu standart bo'lib qoladi */ }
+})();
+
 // Safe localStorage wrapper with Telegram CloudStorage sync
 const SafeStorage = {
     getItem: function (key) {
@@ -347,14 +385,11 @@ if (userScore !== null) {
 // DARK / LIGHT MODE
 // ═══════════════════════════════════════════════════════════════════
 
-// Mavzu Telegram'ga ergashadi (tg.colorScheme, themeChanged). Telegram tashqarisida — tizim sozlamasi.
-// Qo'lda almashtirish tugmasi olib tashlandi; eski saqlangan 'theme' qiymati hisobga olinmaydi.
+// Mavzu: foydalanuvchi tanlovi (Avto/Kunduzgi/Tungi). Avto — Telegram (tg.colorScheme, themeChanged),
+// Telegram tashqarisida — tizim sozlamasi.
 function currentThemeMode() {
-    if (tg && (tg.colorScheme === 'dark' || tg.colorScheme === 'light')) return tg.colorScheme;
-    try {
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-    } catch (e) { /* eski brauzer */ }
-    return 'light';
+    const pref = readThemePref();
+    return pref === 'auto' ? autoThemeMode() : pref;
 }
 
 function applyTheme(mode) {
@@ -383,13 +418,61 @@ function syncTelegramChrome() {
 
 function initTheme() {
     applyTheme(currentThemeMode());
+    // Qo'lda tanlangan bo'lsa (Kunduzgi/Tungi) Telegram/tizim mavzusi o'zgarishi e'tiborga olinmaydi
+    const followAuto = () => { if (readThemePref() === 'auto') applyTheme(currentThemeMode()); };
     if (tg && tg.onEvent) {
-        try { tg.onEvent('themeChanged', () => applyTheme(currentThemeMode())); } catch (e) { /* eski klient */ }
+        try { tg.onEvent('themeChanged', followAuto); } catch (e) { /* eski klient */ }
     } else if (window.matchMedia) {
         try {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(currentThemeMode()));
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', followAuto);
         } catch (e) { /* eski brauzer */ }
     }
+    initThemePicker();
+}
+
+// "Ko'rinish" — radiogroup (roving tabindex, ←/→/↑/↓, Home/End)
+function renderThemePicker() {
+    const pref = readThemePref();
+    document.querySelectorAll('[data-theme-mode]').forEach(btn => {
+        const on = btn.getAttribute('data-theme-mode') === pref;
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        btn.tabIndex = on ? 0 : -1;
+    });
+}
+
+function setThemePref(value, focus) {
+    if (!THEME_MODES.includes(value)) return;
+    saveThemePref(value);
+    themePrefInSession = value;
+    applyTheme(currentThemeMode());          // setHeaderColor / setBackgroundColor ham shu yerda (syncTelegramChrome)
+    renderThemePicker();
+    if (focus) {
+        const btn = document.querySelector(`[data-theme-mode="${value}"]`);
+        if (btn) btn.focus();
+    }
+    try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (e) { /* yo'q */ }
+}
+
+
+function initThemePicker() {
+    const group = document.querySelector('.theme-seg');
+    if (!group) return;
+    group.querySelectorAll('[data-theme-mode]').forEach(btn => {
+        btn.addEventListener('click', () => setThemePref(btn.getAttribute('data-theme-mode'), false));
+    });
+    group.addEventListener('keydown', (e) => {
+        const order = THEME_MODES;
+        const i = order.indexOf(readThemePref());
+        let j = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % order.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i + order.length - 1) % order.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = order.length - 1;
+        if (j === null) return;
+        e.preventDefault();
+        setThemePref(order[j], true);
+    });
+    renderThemePicker();
 }
 
 
