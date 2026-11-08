@@ -561,6 +561,10 @@ class TestPaymentFixes(unittest.TestCase):
 
         # Ikkinchi savolda try_consume_free_ai rad etadi
         self.assertFalse(database.try_consume_free_ai(uid_free))
+        # Bepul uchun JAMI 1 ta savol: kunlik limit yo'q (bugun ham, ertaga ham)
+        self.assertFalse(database.try_consume_daily_request(uid_free))
+        self.mock.users[uid_free]["last_request_date"] = "2000-01-01"
+        self.assertFalse(database.try_consume_daily_request(uid_free))
 
         # Premium Pro foydalanuvchi: 15 ta limit tekshiriladi
         uid_pro = 10002
@@ -975,7 +979,8 @@ class TestPaymentFixes(unittest.TestCase):
         }
         self.assertTrue(database.try_consume_free_ai(uid_reg))
         database.refund_free_ai(uid_reg)
-        self.assertTrue(database.try_consume_daily_request(uid_reg))
+        # Bepul foydalanuvchida kunlik limit yo'q (jami 1 ta bir martalik savol) — lekin ulanish baribir yopiladi
+        self.assertFalse(database.try_consume_daily_request(uid_reg))
         database.refund_daily_request(uid_reg)
 
         self.assertGreater(len(self.mock.connections), 0)

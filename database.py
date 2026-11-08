@@ -360,9 +360,10 @@ def approve_receipt_and_grant(user_id: int, token: str) -> bool:
 
 def try_consume_daily_request(user_id) -> bool:
     """
-    Foydalanuvchining AI limitsini atomar tarzda tekshiradi va band qiladi.
-    Limitlar: FREE = 5, PRO = 15, ULTRA = 100
-    Qaytaradi: True (ruxsat), False (limit tugagan).
+    Premium foydalanuvchining kunlik AI limitini atomar tarzda tekshiradi va band qiladi.
+    Limitlar: PRO = 15, PLUS = 30, ULTRA = 100 (env: *_AI_DAILY_LIMIT).
+    Bepul foydalanuvchida kunlik limit YO'Q: unga jami 1 ta bir martalik savol try_consume_free_ai() orqali beriladi.
+    Qaytaradi: True (ruxsat), False (limit tugagan yoki bepul foydalanuvchi).
     """
     register_user(user_id)
 
@@ -400,8 +401,7 @@ def try_consume_daily_request(user_id) -> bool:
         # 2. (O'chirildi) Avvalgi cheksiz 24-soat bepul mantiq kreditni tugatardi.
         # Endi faqat 1 ta bepul AI try_consume_free_ai() orqali beriladi.
 
-        # Limitni aniqlaymiz: ULTRA (100), PLUS (30), PRO (15), FREE (1)
-        free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "1"))
+        # Limitni aniqlaymiz: ULTRA (100), PLUS (30), PRO (15). Bepul — 0 (faqat bir martalik bepul savol)
         pro_limit = int(os.environ.get("PRO_AI_DAILY_LIMIT", "15"))
         plus_limit = int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30"))
         ultra_limit = int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100"))
@@ -413,7 +413,7 @@ def try_consume_daily_request(user_id) -> bool:
         elif premium_type == "pro":
             max_requests = pro_limit
         else:
-            max_requests = free_limit
+            max_requests = 0
 
         # 3. Kunlik limitni atomar tekshirish va oshirish
         current_date = now.date().isoformat()
@@ -464,12 +464,10 @@ def refund_daily_request(user_id):
         _safe_close(c, conn)
 
 def get_ai_quota(user_id) -> tuple:
-    """Bugungi AI kvotasi: (qolgan, limit). FAQAT o'qiydi — hech narsa yozmaydi.
+    """AI kvotasi: (qolgan, limit). FAQAT o'qiydi — hech narsa yozmaydi.
     Qoida try_consume_free_ai + try_consume_daily_request bilan bir xil (bot va mini app bitta kvotani ulashadi):
-      * tarif limiti: FREE / PRO / PLUS / ULTRA_AI_DAILY_LIMIT (muddati o'tgan premium — free);
-      * bepul foydalanuvchida ishlatilmagan bitta bepul savol (free_ai_used = 0) limitga qo'shiladi;
-      * daily_requests faqat last_request_date bugun bo'lsa hisoblanadi."""
-    free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "1"))
+      * premium: kunlik tarif limiti PRO / PLUS / ULTRA_AI_DAILY_LIMIT, daily_requests faqat bugungi kun uchun;
+      * bepul (yoki muddati o'tgan premium): jami 1 ta bir martalik savol — 1/1, ishlatilgach 0/1."""
     tier_limits = {
         "pro": int(os.environ.get("PRO_AI_DAILY_LIMIT", "15")),
         "plus": int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30")),
@@ -481,24 +479,20 @@ def get_ai_quota(user_id) -> tuple:
             "FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
     if not row:
-        return free_limit + 1, free_limit + 1          # yangi foydalanuvchi: bepul savol + kunlik limit
+        return 1, 1                                      # yangi foydalanuvchi: bitta bepul savol
 
     is_premium, expires_at, premium_type, daily_requests, last_request_date, free_ai_used = row
     active = bool(is_premium)
     if active and expires_at:
         active = get_uz_now() <= _to_uz_datetime(expires_at)
-    if active:
-        tier = premium_type if premium_type in tier_limits else "ultra"   # muddatsiz premium — ultra (try_consume_daily_request kabi)
-        tier_limit = tier_limits[tier]
-        bonus = 0
-    else:
-        tier_limit = free_limit
-        bonus = 0 if free_ai_used else 1
+    if not active:
+        return (0 if free_ai_used else 1), 1             # bepul: jami 1 ta (bir martalik)
 
+    tier = premium_type if premium_type in tier_limits else "ultra"   # muddatsiz premium — ultra (try_consume_daily_request kabi)
+    tier_limit = tier_limits[tier]
     today = get_uz_now().date().isoformat()
     used = int(daily_requests or 0) if last_request_date == today else 0
-    remaining = max(0, tier_limit - used) + bonus
-    return remaining, tier_limit + bonus
+    return max(0, tier_limit - used), tier_limit
 
 
 def try_consume_free_ai(user_id) -> bool:

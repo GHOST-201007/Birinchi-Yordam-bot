@@ -1376,11 +1376,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
         else:
-            await message.answer(
-                "🚫 <b>Sizning AI so'rovlar limitingiz tugagan!</b>\n\n"
-                "Iltimos, ertaga urining yoki <b>Premium</b> oling.",
-                parse_mode="HTML"
-            )
+            await premium_upsell(message)       # limit tugadi — Premium taklifi (tugma bilan)
             return
             
         await message.answer(
@@ -1881,11 +1877,7 @@ async def process_disease_callback(callback: types.CallbackQuery):
     elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
         consumed_daily = True
     else:
-        await callback.message.edit_text(
-            "🚫 <b>Sizning AI so'rovlar limitingiz tugagan!</b>\n\n"
-            "Iltimos, ertaga urining yoki <b>Premium</b> oling.",
-            parse_mode="HTML"
-        )
+        await premium_upsell(callback)       # limit tugadi — Premium taklifi (tugma bilan)
         return
         
     await callback.message.bot.send_chat_action(chat_id=callback.message.chat.id, action="typing")
@@ -4956,6 +4948,7 @@ AI_ERRORS = {
     "bad_request": (400, "So'rov noto'g'ri. Xabar 1–1000 belgidan iborat bo'lsin."),
     "forbidden": (403, "Mini appni Telegram ichida oching."),
     "limit": (429, "Bugungi AI so'rovlar limiti tugadi."),
+    "limit_free": (429, "Bepul AI savolingiz ishlatildi. Davom etish uchun Premium oling."),
     "rate": (429, "Juda tez yozyapsiz. Bir daqiqadan so'ng qayta urinib ko'ring."),
     "busy": (503, "Hozir band, qayta urinib ko'ring."),
     "server": (500, "Xatolik yuz berdi. Qayta urinib ko'ring."),
@@ -4999,7 +4992,7 @@ AI_CONTEXT_PREFIX = {"body_part": "tana qismi", "condition": "holat"}
 
 def _ai_chat_error(code: str, headers: dict | None = None, extra: dict | None = None) -> web.Response:
     status, message = AI_ERRORS[code]
-    public = "limit" if code == "limit" else ("busy" if code == "rate" else code)
+    public = "limit" if code in ("limit", "limit_free") else ("busy" if code == "rate" else code)
     return _api_json({"ok": False, "error": public, "message": message, **(extra or {})}, status, headers)
 
 
@@ -5088,9 +5081,12 @@ async def api_ai_chat(request: web.Request) -> web.Response:
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
         else:
+            # Limit tugadi: Premium taklifi (klient "offer" bo'yicha Premium oynasini ko'rsatadi)
             result = "limit"
             remaining, limit = await asyncio.to_thread(database.get_ai_quota, user_id)
-            return _ai_chat_error("limit", extra={"remaining": remaining, "limit": limit})
+            is_prem, _exp, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
+            extra = {"remaining": remaining, "limit": limit, "offer": "premium" if prem_type != "ultra" else None}
+            return _ai_chat_error("limit" if is_prem else "limit_free", extra=extra)
 
         profile = await asyncio.to_thread(database.get_medical_profile, user_id)
         prompt = _ai_build_prompt(message, history, context_label, _build_profile_context(profile))

@@ -180,14 +180,26 @@ class AiChatQuotaTest(AiChatTestBase):
         self.assertEqual((self.q.free_left, self.q.used), (0, 0))
         self.assertEqual(resp.status, 200)
 
-    async def test_limit_reached_no_ai_call(self):
+    async def test_limit_reached_free_user_premium_offer(self):
         self.q.used = self.q.daily_limit
         resp, data = await self.chat()
         self.assertEqual(resp.status, 429)
         self.assertEqual(data["error"], "limit")
-        self.assertIn("limit", data["message"].lower())
+        self.assertEqual(data["message"], "Bepul AI savolingiz ishlatildi. Davom etish uchun Premium oling.")
+        self.assertEqual(data["offer"], "premium")
         self.assertEqual(data["remaining"], 0)
         self.ai.assert_not_called()
+
+    async def test_limit_reached_premium_user(self):
+        self.q.used = self.q.daily_limit
+        self.m["premium"].return_value = (1, None, "pro")
+        resp, data = await self.chat()
+        self.assertEqual((resp.status, data["error"]), (429, "limit"))
+        self.assertEqual(data["message"], "Bugungi AI so'rovlar limiti tugadi.")
+        self.assertEqual(data["offer"], "premium")                               # yuqoriroq tarif mumkin
+        self.m["premium"].return_value = (1, None, "ultra")
+        resp, data = await self.chat()
+        self.assertIsNone(data["offer"])                                         # Ultra — eng yuqori tarif
 
     async def test_ai_error_busy_and_quota_refunded(self):
         for fail in (mock.AsyncMock(return_value=None), mock.AsyncMock(side_effect=RuntimeError("503 UNAVAILABLE SECRET"))):
@@ -274,14 +286,15 @@ class AiQuotaReadTest(unittest.TestCase):
     """database.get_ai_quota — faqat o'qiydi, try_consume_* qoidasi bilan bir xil."""
 
     def quota(self, row, today="2026-11-08"):
+        import datetime as dt
         cur = mock.MagicMock()
         cur.fetchone.return_value = row
         cm = mock.MagicMock()
         cm.__enter__.return_value = (mock.MagicMock(), cur)
-        now = mock.MagicMock()
-        now.date.return_value.isoformat.return_value = today
+        y, m, d = (int(x) for x in today.split("-"))
+        now = dt.datetime(y, m, d, 12, 0, tzinfo=dt.timezone(dt.timedelta(hours=5)))
         db = bot.database
-        limits = {"FREE_AI_DAILY_LIMIT": "1", "PRO_AI_DAILY_LIMIT": "15", "PLUS_AI_DAILY_LIMIT": "30", "ULTRA_AI_DAILY_LIMIT": "100"}
+        limits = {"PRO_AI_DAILY_LIMIT": "15", "PLUS_AI_DAILY_LIMIT": "30", "ULTRA_AI_DAILY_LIMIT": "100"}
         with mock.patch.dict("os.environ", limits), mock.patch.object(db, "_managed_cursor", return_value=cm),                 mock.patch.object(db, "get_uz_now", return_value=now):
             result = db.get_ai_quota(USER_ID)
         sql = cur.execute.call_args.args[0]
@@ -289,19 +302,29 @@ class AiQuotaReadTest(unittest.TestCase):
         return result
 
     def test_free_user_with_unused_free_question(self):
-        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0)), (2, 2))
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0)), (1, 1))     # jami 1 ta: 1/1
 
-    def test_free_user_used_everything_today(self):
-        self.assertEqual(self.quota((0, None, "free", 1, "2026-11-08", 1)), (0, 1))
+    def test_free_user_used_free_question(self):
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1)), (0, 1))     # ishlatilgach 0/1
 
-    def test_yesterday_requests_not_counted(self):
-        self.assertEqual(self.quota((0, None, "free", 1, "2026-11-07", 1)), (1, 1))
+    def test_free_question_does_not_renew_next_day(self):
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-01", 1)), (0, 1))     # bir martalik, kunlik emas
+
+    def test_free_limit_ignores_old_env(self):
+        with mock.patch.dict("os.environ", {"FREE_AI_DAILY_LIMIT": "5"}):
+            self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0)), (1, 1))
+
+    def test_expired_premium_counts_as_free(self):
+        self.assertEqual(self.quota((1, "2020-01-01T00:00:00+05:00", "pro", 3, "2026-11-08", 1)), (0, 1))
+
+    def test_premium_yesterday_requests_not_counted(self):
+        self.assertEqual(self.quota((1, None, "plus", 9, "2026-11-07", 1)), (30, 30))
 
     def test_pro_without_expiry_uses_tier_limit(self):
         self.assertEqual(self.quota((1, None, "pro", 3, "2026-11-08", 1)), (12, 15))
 
     def test_new_user(self):
-        self.assertEqual(self.quota(None), (2, 2))
+        self.assertEqual(self.quota(None), (1, 1))
 
 
 if __name__ == "__main__":
