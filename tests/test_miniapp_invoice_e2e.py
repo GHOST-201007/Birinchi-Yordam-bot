@@ -48,7 +48,8 @@ class InvoiceE2ETest(MiniAppE2EBase):
     def test_real_premium_modal_button_uses_invoice(self):
         page, calls = self.open_app({"invoice": INVOICE_OK})
         page.click("#btn-open-premium")
-        page.click(".pm-btn--gold")
+        page.click("#premium-modal .plan-card:has(input[value='buy_plus_30'])")     # tarif kartasi
+        self.press_main(page, "#premium-continue")                                   # "★ 150 — Davom etish"
         self.wait_invoice(page)
         self.assertEqual([c[1]["plan"] for c in calls if c[0] == "invoice"], ["buy_plus_30"])
         self.assertEqual(self.tg(page)["links"], [])
