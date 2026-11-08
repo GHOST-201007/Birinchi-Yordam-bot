@@ -52,32 +52,132 @@ class HomeE2ETest(MiniAppE2EBase):
         self.assertEqual((round(wrap["width"]), round(wrap["height"])), (350, 340))
         self.assertEqual(page.get_attribute("#body-figure svg", "viewBox"), "0 0 350 340")
         expected = {1: ("left", 17), 2: ("left", 128), 3: ("right", 89), 4: ("right", 137), 5: ("right", 253)}
+        rel = """(sel) => { const w = document.getElementById('body-figure').getBoundingClientRect();
+            const r = document.querySelector(sel).getBoundingClientRect();     // bitta kadrda — siljish ta'sir qilmaydi
+            return {top: r.top - w.top, left: r.left - w.left, right: w.right - r.right, width: r.width, height: r.height}; }"""
         for slot, (side, top) in expected.items():
-            wrap = page.locator("#body-figure").bounding_box()
-            box = page.locator(LABEL.format(slot)).bounding_box()
+            box = page.evaluate(rel, LABEL.format(slot))
             self.assertEqual((round(box["width"]), round(box["height"])), (76, 36), slot)
-            self.assertAlmostEqual(box["y"] - wrap["y"], top, delta=1)
-            if side == "left":
-                self.assertAlmostEqual(box["x"], wrap["x"], delta=1)
-            else:
-                self.assertAlmostEqual(box["x"] + box["width"], wrap["x"] + wrap["width"], delta=1)
+            self.assertAlmostEqual(box["top"], top, delta=1)
+            self.assertAlmostEqual(box["left"] if side == "left" else box["right"], 0, delta=1)
             hit = page.evaluate(f"(() => {{ const s = getComputedStyle(document.querySelector(\"{LABEL.format(slot)}\"), '::after');"
                                 f" return 36 - 2 * parseFloat(s.top); }})()")
             self.assertGreaterEqual(hit, 44)                                             # bosish zonasi >= 44px
 
-    def test_front_back_labels_and_spine(self):
+    def front_parts(self, page, view="front"):
+        return page.evaluate(f"[...document.querySelectorAll('#body-figure .fig-man--{view} .body-part')].map(p => p.dataset.part)")
+
+    def test_front_back_labels_and_mannequin(self):
         page, _ = self.open_app({})
         self.ready(page)
         front = page.evaluate("[...document.querySelectorAll('#body-figure .fig-label')].map(b => [b.id, b.textContent])")
         self.assertEqual(front, [["bosh", "Bosh"], ["qol", "Qo'l"], ["kokrak", "Ko'krak"], ["qorin", "Qorin"], ["oyoq", "Oyoq"]])
-        spine = "getComputedStyle(document.querySelector('.fig-spine')).display"
-        self.assertEqual(page.evaluate(spine), "none")                                  # umurtqa — faqat Orqa
+        shown = "(v) => getComputedStyle(document.querySelector('#body-figure .fig-man--' + v)).display"
+        self.assertNotEqual(page.evaluate(shown, "front"), "none")
+        self.assertEqual(page.evaluate(shown, "back"), "none")
         page.click(".fig-views [data-view='back']")
         back = page.evaluate("[...document.querySelectorAll('#body-figure .fig-label')].map(b => [b.id, b.textContent])")
         self.assertEqual(back, [["bosh", "Bosh"], ["qol", "Qo'l"], ["orqa", "Orqa"], ["bel", "Bel"], ["oyoq", "Oyoq"]])
         self.assertEqual(page.get_attribute("#body-figure", "data-view"), "back")
-        self.assertNotEqual(page.evaluate(spine), "none")
+        self.assertEqual(page.evaluate(shown, "front"), "none")
+        self.assertNotEqual(page.evaluate(shown, "back"), "none")
         self.assertEqual(page.get_attribute(".fig-views [data-view='back']", "aria-pressed"), "true")
+
+    def test_mannequin_restored_from_old_body_map(self):
+        # 26150b4 dagi "toza siluet" maneken: old 19 qism, orqa 18 qism; aria-hidden SVG ichida fokus yo'q
+        page, _ = self.open_app({})
+        front = self.front_parts(page)
+        self.assertEqual(len(front), 19)
+        self.assertIn("chest", front)
+        self.assertIn("left_knee", front)
+        back = self.front_parts(page, "back")
+        self.assertEqual(len(back), 18)
+        self.assertIn("back", back)
+        self.assertNotIn("chest", back)
+        self.assertEqual(page.locator("#body-figure .fig-man [tabindex], #body-figure .fig-man [role]").count(), 0)
+        self.assertEqual(page.get_attribute("#body-figure svg", "aria-hidden"), "true")
+        self.assertEqual(page.locator("#body-figure .fig-man [style], #body-figure .fig-man [onclick]").count(), 0)
+
+    def test_mannequin_colors_light_and_dark(self):
+        part = "#body-figure .fig-man--front .body-part[data-part='chest'] .part-shape"
+        fill_js = "(sel) => getComputedStyle(document.querySelector(sel)).fill"
+        for scheme, fill, selected in (("light", "rgb(233, 236, 241)", "rgb(14, 124, 114)"),
+                                       ("dark", "rgb(34, 42, 53)", "rgb(61, 194, 179)")):
+            with self.subTest(scheme=scheme):
+                page, _ = self.open_app({}, init_script=f"window.Telegram.WebApp.colorScheme = '{scheme}';")
+                self.ready(page)
+                page.emulate_media(reduced_motion="reduce")
+                self.assertEqual(page.evaluate(fill_js, part), fill)                  # 26150b4 dagi rang
+                page.click("#kokrak")
+                page.wait_for_function("([sel, want]) => getComputedStyle(document.querySelector(sel)).fill === want",
+                                       arg=[part, selected], timeout=2000)            # tanlangan — --primary
+
+    def test_leaders_point_at_their_body_parts(self):
+        page, _ = self.open_app({})
+        self.ready(page)
+        check = """(view) => {
+            const out = [];
+            BODY_HOTSPOTS[view].forEach(spot => {
+                const dot = document.querySelector('#body-figure .fig-dot circle[data-slot="' + spot.slot + '"]');
+                const line = document.querySelector('#body-figure .fig-lead line:not(.fig-hit)[data-slot="' + spot.slot + '"]');
+                const cx = +dot.getAttribute('cx'), cy = +dot.getAttribute('cy');
+                const inside = viewParts().filter(p => spot.keys.includes(partBaseKey(p.dataset.part))).map(partBox)
+                    .some(b => b && b.x1 <= cx && cx <= b.x2 && b.y1 <= cy && cy <= b.y2);
+                out.push([spot.slot, inside, +line.getAttribute('x2') === cx && +line.getAttribute('y2') === cy,
+                          +line.getAttribute('x1') === FIG_LABEL_X[spot.slot]]);
+            });
+            return out; }"""
+        for view in ("front", "back"):
+            with self.subTest(view=view):
+                if view == "back":
+                    page.click(".fig-views [data-view='back']")
+                for slot, inside, joined, from_label in page.evaluate(check, view):
+                    self.assertTrue(inside, f"{view} {slot}: nuqta hudud qismida emas")
+                    self.assertTrue(joined and from_label, f"{view} {slot}")
+
+    def test_body_part_click_opens_that_part(self):
+        page, _ = self.open_app({})
+        self.ready(page)
+        page.click("#body-figure .fig-man--front .body-part[data-part='left_knee']")
+        page.wait_for_selector("#body-map-modal:not([hidden])")
+        self.assertEqual(page.inner_text("#modal-title"), "Chap tizza")
+        names = page.evaluate("[...document.querySelectorAll('#modal-diseases-list .sheet-item-name')].map(e => e.textContent)")
+        self.assertEqual(names, page.evaluate("bodyMapData.knee.diseases.map(d => d.name)"))   # og'riq sabablari
+        self.assertEqual(page.get_attribute("#oyoq", "aria-pressed"), "true")                  # tegishli yorliq
+        selected = page.evaluate("[...document.querySelectorAll('#body-figure .body-part.selected')].map(p => p.dataset.part)")
+        self.assertEqual(selected, ["left_knee"])
+        page.click("#modal-close")
+        self.assertEqual(page.locator("#body-figure .body-part.selected").count(), 0)
+        # Orqa ko'rinish: bel/orqa qismi
+        page.click(".fig-views [data-view='back']")
+        back_part = page.locator("#body-figure .fig-man--back .body-part[data-part='back']")
+        box = back_part.bounding_box()
+        back_part.click(position={"x": box["width"] / 2, "y": 8})                     # markazda strelka halqasi turadi
+        self.assertEqual(page.inner_text("#modal-title"), "Bel va Orqa")
+        self.assertEqual(page.get_attribute("#orqa", "aria-pressed"), "true")
+
+    def test_label_highlights_all_region_parts(self):
+        page, _ = self.open_app({})
+        self.ready(page)
+        page.click("#oyoq")
+        selected = sorted(page.evaluate(
+            "[...document.querySelectorAll('#body-figure .fig-man--front .body-part.selected')].map(p => p.dataset.part)"))
+        self.assertEqual(selected, sorted(f"{side}_{k}" for side in ("left", "right") for k in ("thigh", "knee", "shin", "foot")))
+
+    def test_leader_dot_and_line_open_region_sheet(self):
+        page, _ = self.open_app({})
+        self.ready(page)
+        dot = page.evaluate("""(() => { const r = document.querySelector('#body-figure .fig-dot circle[data-slot="4"]').getBoundingClientRect();
+            return [r.x + r.width / 2, r.y + r.height / 2]; })()""")
+        page.mouse.click(*dot)                                                         # strelka uchidagi nuqta
+        page.wait_for_selector("#body-map-modal:not([hidden])")
+        self.assertEqual(page.inner_text("#modal-title"), "Qorin")
+        page.click("#modal-close")
+        line = page.evaluate("""(() => { const r = document.querySelector('#body-figure .fig-hit[data-slot="5"]').getBoundingClientRect();
+            return [r.x + r.width * 0.4, r.y + r.height / 2]; })()""")
+        page.mouse.click(*line)                                                        # strelka chizig'ining o'zi
+        page.wait_for_selector("#body-map-modal:not([hidden])")
+        self.assertEqual(page.inner_text("#modal-title"), "Oyoq")
 
     def test_hotspot_opens_sheet_with_region_conditions(self):
         page, _ = self.open_app({})

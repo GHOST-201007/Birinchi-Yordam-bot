@@ -746,7 +746,7 @@ function showTab(tabId) {
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
     if (tabId !== 'tab-first-aid') hideBodySheet();      // sheet bosh ekrandagi tana figurasiga tegishli
-    if (tabId === 'tab-first-aid') fitBodyFigure();       // yashirin bo'limda o'lcham 0 edi
+    if (tabId === 'tab-first-aid') fitBodyFigure();       // yashirin bo'limda o'lcham 0 edi (strelkalar ham)
     if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
 
@@ -2398,6 +2398,75 @@ const BODY_HOTSPOTS = {
     ]
 };
 let selectedHotspotId = null;
+let selectedPartKeys = new Set();      // ajratilgan maneken qismlari (data-part)
+const FIG_MAN = { x: 87.89, y: 2, s: 0.6222 };   // maneken -> figura koordinatalari (index.html dagi transform bilan bir xil)
+const FIG_LABEL_Y = { 1: 35, 2: 146, 3: 107, 4: 155, 5: 271 };   // yorliq markazi (G 2.4)
+const FIG_LABEL_X = { 1: 76, 2: 76, 3: 274, 4: 274, 5: 274 };    // strelka boshlanishi (yorliq cheti)
+
+function partBaseKey(partKey) {
+    return String(partKey || '').replace('left_', '').replace('right_', '');
+}
+
+// Joriy ko'rinishdagi maneken qismlari
+function viewParts() {
+    return [...document.querySelectorAll(`#body-figure .fig-man--${currentBodyView} .body-part`)];
+}
+
+// Qism chegarasi figura koordinatalarida (faqat ko'rinadigan shakl, keng bosish zonasi emas)
+function partBox(part) {
+    let box = null;
+    part.querySelectorAll('.part-shape').forEach(shape => {
+        const b = shape.getBBox();
+        if (!b.width && !b.height) return;
+        box = box ? { x1: Math.min(box.x1, b.x), y1: Math.min(box.y1, b.y), x2: Math.max(box.x2, b.x + b.width), y2: Math.max(box.y2, b.y + b.height) }
+                  : { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height };
+    });
+    if (!box) return null;
+    const t = (v, o) => o + v * FIG_MAN.s;
+    return { x1: t(box.x1, FIG_MAN.x), x2: t(box.x2, FIG_MAN.x), y1: t(box.y1, FIG_MAN.y), y2: t(box.y2, FIG_MAN.y) };
+}
+
+// Strelka uchi va nuqta — hududning maneken qismiga (yorliq balandligida, iloji bo'lsa gorizontal)
+function placeFigureLeaders() {
+    const wrap = document.getElementById('body-figure');
+    if (!wrap || !wrap.offsetParent) return;
+    const parts = viewParts();
+    BODY_HOTSPOTS[currentBodyView].forEach(spot => {
+        const y = FIG_LABEL_Y[spot.slot];
+        const left = FIG_LABEL_X[spot.slot] < 175;
+        const boxes = parts.filter(p => spot.keys.includes(partBaseKey(p.getAttribute('data-part'))))
+            .map(partBox).filter(Boolean);
+        if (!boxes.length) return;
+        let pool = boxes.filter(b => b.y1 <= y && y <= b.y2);
+        if (!pool.length) {
+            const dist = b => Math.min(Math.abs(b.y1 - y), Math.abs(b.y2 - y));
+            const best = Math.min(...boxes.map(dist));
+            pool = boxes.filter(b => dist(b) === best);
+        }
+        const cx = b => (b.x1 + b.x2) / 2;
+        const box = pool.reduce((p, b) => (left ? cx(b) < cx(p) : cx(b) > cx(p)) ? b : p);
+        const tx = Math.round(cx(box) * 10) / 10;
+        const ty = Math.round(Math.min(Math.max(y, box.y1 + 4), box.y2 - 4) * 10) / 10;
+        wrap.querySelectorAll(`.fig-lead line[data-slot="${spot.slot}"]`).forEach(l => {
+            l.setAttribute('x2', tx);
+            l.setAttribute('y2', ty);
+        });
+        wrap.querySelectorAll(`.fig-halo circle[data-slot="${spot.slot}"], .fig-dot circle[data-slot="${spot.slot}"]`).forEach(c => {
+            c.setAttribute('cx', tx);
+            c.setAttribute('cy', ty);
+        });
+    });
+}
+
+// Maneken qismi bosilganda — aynan shu qism (masalan "Chap tizza") ma'lumoti; tegishli yorliq ham ajratiladi
+function openBodyPartFromFigure(partKey) {
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    const base = partBaseKey(partKey);
+    const spot = BODY_HOTSPOTS[currentBodyView].find(s => s.keys.includes(base));
+    selectedHotspotId = spot ? spot.id : null;
+    selectedPartKeys = new Set([partKey]);
+    openBodyMapModal(partKey);
+}
 
 function hotspotKeys(spot) {
     return spot.keys.filter(k => bodyMapData && bodyMapData[k]);
@@ -2416,6 +2485,7 @@ function renderBodyFigure() {
         btn.hidden = off;
         wrap.querySelectorAll(`[data-slot="${spot.slot}"]:not(.fig-label)`).forEach(el => el.classList.toggle('is-off', off));
     });
+    placeFigureLeaders();
     markSelectedBodyPart();
 }
 
@@ -2430,6 +2500,8 @@ function openHotspot(spot) {
         if (!seen.has(d.name)) { seen.add(d.name); diseases.push(d); }
     }));
     selectedHotspotId = spot.id;
+    selectedPartKeys = new Set(viewParts().map(p => p.getAttribute('data-part'))
+        .filter(k => spot.keys.includes(partBaseKey(k))));          // hududning maneken qismlari ham ajratiladi
     selectedBodyPartKey = keys[0];          // "AI'dan so'rash" zaxirasi (tg.sendData / ?start=ai_consult_<kalit>) uchun
     _openFullModal(keys[0], { name: spot.label, diseases: diseases });
 }
@@ -2442,16 +2514,22 @@ function fitBodyFigure() {
     const scale = Math.min(1, outer.clientWidth / 350);
     wrap.style.transform = scale < 1 ? `scale(${scale})` : '';
     outer.style.height = `${Math.round(340 * scale)}px`;
+    placeFigureLeaders();
 }
 
 function initBodyFigure() {
     const wrap = document.getElementById('body-figure');
     if (!wrap) return;
-    wrap.querySelectorAll('.fig-label').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const spot = BODY_HOTSPOTS[currentBodyView].find(s => String(s.slot) === btn.getAttribute('data-slot'));
+    // Yorliq, strelka (keng ko'rinmas chiziq), halqa va nuqta — hudud sheet'i
+    wrap.querySelectorAll('.fig-label, .fig-lead line, .fig-halo circle, .fig-dot circle').forEach(el => {
+        el.addEventListener('click', () => {
+            const spot = BODY_HOTSPOTS[currentBodyView].find(s => String(s.slot) === el.getAttribute('data-slot'));
             if (spot) openHotspot(spot);
         });
+    });
+    // Tana qismining o'zi — shu qism sheet'i
+    wrap.querySelectorAll('.fig-man .body-part').forEach(part => {
+        part.addEventListener('click', () => openBodyPartFromFigure(part.getAttribute('data-part')));
     });
     document.querySelectorAll('.fig-views [data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2484,6 +2562,7 @@ function hideBodySheet() {
     if (MainButtonCtl.owner === 'body') MainButtonCtl.clear();
     selectedBodyPartKey = null;
     selectedHotspotId = null;
+    selectedPartKeys = new Set();
     markSelectedBodyPart();
 }
 
@@ -2538,6 +2617,11 @@ function markSelectedBodyPart() {
         const on = !!selectedHotspotId && btn.id === selectedHotspotId;
         btn.classList.toggle('selected', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    // Faqat joriy ko'rinish (old/orqa manekenlarida bir xil data-part bor)
+    document.querySelectorAll('#body-figure .fig-man .body-part').forEach(part => {
+        const inView = !!part.closest(`.fig-man--${currentBodyView}`);
+        part.classList.toggle('selected', inView && selectedPartKeys.has(part.getAttribute('data-part')));
     });
 }
 
