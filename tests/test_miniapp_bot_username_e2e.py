@@ -51,7 +51,7 @@ class BotUsernameLinksE2ETest(MiniAppE2EBase):
 
     def test_body_map_ai_consult_link(self):
         page, _ = self.open_app({}, query="", init_data="")
-        page.click('[data-tab="tab-body-map"]')
+        page.wait_for_function("bodyMapData !== null")
         page.evaluate("openBodyMapModal('head')")
         page.wait_for_selector("#body-map-modal:not([hidden])")
         page.click("#ai-consult-btn")

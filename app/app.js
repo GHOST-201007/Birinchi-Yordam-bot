@@ -750,7 +750,7 @@ function showTab(tabId) {
     const content = document.querySelector('.app-content');
     if (content) content.scrollTop = 0;
     syncCalcMainButton();
-    if (tabId !== 'tab-body-map') hideBodySheet();
+    if (tabId !== 'tab-first-aid') hideBodySheet();      // sheet bosh ekrandagi tana figurasiga tegishli
     if (tabId === 'tab-history') drawChart(currentHistory);     // yashirin bo'limda kenglik 0 edi
 }
 
@@ -839,7 +839,7 @@ function openQuizFromHome() {
 
 function initHomeActions() {
     const actions = {
-        ai: () => showTab('tab-body-map'),
+        ai: () => showTab('tab-ai'),
         calc: () => showTab('tab-health'),
         quiz: openQuizFromHome,
     };
@@ -945,7 +945,7 @@ const MainButtonCtl = {
         const pick = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
         if (!active) return { color: pick('--text-2', '#5E6B7E'), text_color: pick('--on-primary', '#FFFFFF') };
         return {
-            color: (this.opts && this.opts.color) || pick('--primary-strong', '#0872AB'),
+            color: (this.opts && this.opts.color) || pick('--primary', '#0E7C72'),
             text_color: (this.opts && this.opts.textColor) || pick('--on-primary', '#FFFFFF')
         };
     },
@@ -2228,7 +2228,7 @@ function drawChart(type) {
 
     const cs = getComputedStyle(document.body);
     const color = cs.getPropertyValue('--primary').trim() || '#0A84C6';
-    const grid = cs.getPropertyValue('--separator').trim() || 'rgba(15,27,45,0.08)';
+    const grid = cs.getPropertyValue('--line').trim() || 'rgba(15,27,45,0.08)';
     const muted = cs.getPropertyValue('--text-2').trim() || '#5E6B7E';
     const font = cs.getPropertyValue('--font').trim() || 'sans-serif';
 
@@ -2310,241 +2310,8 @@ let bodyMapData = null;
 let selectedBodyPartKey = null;
 let currentBodyView = 'front';
 
-const FRONT_BODY_SVG = `
-<svg viewBox="0 0 280 540" class="human-body-svg">
-
-    <!-- Head / Bosh -->
-    <g class="body-part" data-part="head" role="button" tabindex="0">
-        <rect x="90" y="10" width="100" height="100" class="fat-hotspot" />
-        <path d="M 140 24 C 118 24 106 38 106 62 C 106 82 120 100 134 104 L 146 104 C 160 100 174 82 174 62 C 174 38 162 24 140 24 Z" class="part-shape"/>
-    </g>
-
-    <!-- Neck / Bo'yin -->
-    <g class="body-part" data-part="neck" role="button" tabindex="0">
-        <rect x="110" y="90" width="60" height="40" class="fat-hotspot" />
-        <path d="M 128 104 L 152 104 L 156 122 L 124 122 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Shoulder / Chap Yelka -->
-    <g class="body-part" data-part="left_shoulder" role="button" tabindex="0">
-        <rect x="60" y="120" width="60" height="40" class="fat-hotspot" />
-        <path d="M 124 122 L 96 126 C 86 130 80 140 82 152 L 102 150 C 108 138 116 130 124 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Shoulder / O'ng Yelka -->
-    <g class="body-part" data-part="right_shoulder" role="button" tabindex="0">
-        <rect x="160" y="120" width="60" height="40" class="fat-hotspot" />
-        <path d="M 156 122 L 184 126 C 194 130 200 140 198 152 L 178 150 C 172 138 164 130 156 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Chest / Ko'krak -->
-    <g class="body-part" data-part="chest" role="button" tabindex="0">
-        <rect x="90" y="124" width="100" height="65" class="fat-hotspot" />
-        <path d="M 104 128 C 120 124 160 124 176 128 C 182 144 180 178 174 188 C 158 192 122 192 106 188 C 100 178 98 144 104 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Arm / Chap Qo'l -->
-    <g class="body-part" data-part="left_arm" role="button" tabindex="0">
-        <rect x="50" y="150" width="50" height="90" class="fat-hotspot" />
-        <path d="M 80 154 L 98 152 L 90 236 L 72 232 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Arm / O'ng Qo'l -->
-    <g class="body-part" data-part="right_arm" role="button" tabindex="0">
-        <rect x="180" y="150" width="50" height="90" class="fat-hotspot" />
-        <path d="M 200 154 L 182 152 L 190 236 L 208 232 Z" class="part-shape"/>
-    </g>
-
-    <!-- Abdomen / Qorin -->
-    <g class="body-part" data-part="abdomen" role="button" tabindex="0">
-        <rect x="100" y="185" width="80" height="70" class="fat-hotspot" />
-        <path d="M 106 190 C 122 194 158 194 174 190 C 176 216 172 242 168 250 C 154 254 126 254 112 250 C 108 242 104 216 106 190 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Hand / Chap Kaft -->
-    <g class="body-part" data-part="left_hand" role="button" tabindex="0">
-        <rect x="50" y="230" width="45" height="50" class="fat-hotspot" />
-        <path d="M 70 234 L 88 238 C 88 252 82 268 76 270 C 68 268 64 252 70 234 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Hand / O'ng Kaft -->
-    <g class="body-part" data-part="right_hand" role="button" tabindex="0">
-        <rect x="185" y="230" width="45" height="50" class="fat-hotspot" />
-        <path d="M 210 234 L 192 238 C 192 252 198 268 204 270 C 212 268 216 252 210 234 Z" class="part-shape"/>
-    </g>
-
-    <!-- Pelvis / Chanoq -->
-    <g class="body-part" data-part="hip" role="button" tabindex="0">
-        <rect x="100" y="250" width="80" height="45" class="fat-hotspot" />
-        <path d="M 112 252 C 126 256 154 256 168 252 C 174 274 168 290 156 294 L 124 294 C 112 290 106 274 112 252 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Thigh / Chap Son -->
-    <g class="body-part" data-part="left_thigh" role="button" tabindex="0">
-        <rect x="100" y="290" width="40" height="95" class="fat-hotspot" />
-        <path d="M 110 296 L 136 296 L 132 376 L 108 376 C 104 350 106 320 110 296 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Thigh / O'ng Son -->
-    <g class="body-part" data-part="right_thigh" role="button" tabindex="0">
-        <rect x="140" y="290" width="40" height="95" class="fat-hotspot" />
-        <path d="M 144 296 L 170 296 C 174 320 176 350 172 376 L 148 376 L 144 296 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Knee / Chap Tizza -->
-    <g class="body-part" data-part="left_knee" role="button" tabindex="0">
-        <rect x="100" y="380" width="40" height="30" class="fat-hotspot" />
-        <ellipse cx="120" cy="392" rx="13" ry="11" class="part-shape"/>
-    </g>
-
-    <!-- Right Knee / O'ng Tizza -->
-    <g class="body-part" data-part="right_knee" role="button" tabindex="0">
-        <rect x="140" y="380" width="40" height="30" class="fat-hotspot" />
-        <ellipse cx="160" cy="392" rx="13" ry="11" class="part-shape"/>
-    </g>
-
-    <!-- Left Shin / Chap Boldir -->
-    <g class="body-part" data-part="left_shin" role="button" tabindex="0">
-        <rect x="100" y="405" width="40" height="75" class="fat-hotspot" />
-        <path d="M 108 406 L 132 406 L 126 476 L 112 476 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Shin / O'ng Boldir -->
-    <g class="body-part" data-part="right_shin" role="button" tabindex="0">
-        <rect x="140" y="405" width="40" height="75" class="fat-hotspot" />
-        <path d="M 148 406 L 172 406 L 168 476 L 154 476 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Foot / Chap Panja -->
-    <g class="body-part" data-part="left_foot" role="button" tabindex="0">
-        <rect x="90" y="475" width="45" height="35" class="fat-hotspot" />
-        <path d="M 110 478 L 128 478 L 132 506 L 98 506 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Foot / O'ng Panja -->
-    <g class="body-part" data-part="right_foot" role="button" tabindex="0">
-        <rect x="145" y="475" width="45" height="35" class="fat-hotspot" />
-        <path d="M 152 478 L 170 478 L 182 506 L 148 506 Z" class="part-shape"/>
-    </g>
-</svg>
-`;
-
-
-const BACK_BODY_SVG = `
-<svg viewBox="0 0 280 540" class="human-body-svg">
-    <!-- Head Back / Bosh ensa -->
-    <g class="body-part" data-part="head" role="button" tabindex="0">
-        <rect x="90" y="10" width="100" height="100" class="fat-hotspot" />
-        <path d="M 140 24 C 118 24 106 38 106 62 C 106 82 120 100 134 104 L 146 104 C 160 100 174 82 174 62 C 174 38 162 24 140 24 Z" class="part-shape"/>
-    </g>
-
-    <!-- Neck Back / Bo'yin -->
-    <g class="body-part" data-part="neck" role="button" tabindex="0">
-        <rect x="110" y="90" width="60" height="40" class="fat-hotspot" />
-        <path d="M 128 104 L 152 104 L 156 122 L 124 122 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Shoulder Back -->
-    <g class="body-part" data-part="left_shoulder" role="button" tabindex="0">
-        <rect x="60" y="120" width="60" height="40" class="fat-hotspot" />
-        <path d="M 124 122 L 96 126 C 86 130 80 140 82 152 L 102 150 C 108 138 116 130 124 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Shoulder Back -->
-    <g class="body-part" data-part="right_shoulder" role="button" tabindex="0">
-        <rect x="160" y="120" width="60" height="40" class="fat-hotspot" />
-        <path d="M 156 122 L 184 126 C 194 130 200 140 198 152 L 178 150 C 172 138 164 130 156 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Spine / Bel va Orqa -->
-    <g class="body-part" data-part="back" role="button" tabindex="0">
-        <rect x="90" y="120" width="100" height="135" class="fat-hotspot" />
-        <path d="M 104 128 C 120 124 160 124 176 128 C 182 156 178 220 172 250 C 156 254 124 254 108 250 C 102 220 98 156 104 128 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Arm Back -->
-    <g class="body-part" data-part="left_arm" role="button" tabindex="0">
-        <rect x="50" y="150" width="50" height="90" class="fat-hotspot" />
-        <path d="M 80 154 L 98 152 L 90 236 L 72 232 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Arm Back -->
-    <g class="body-part" data-part="right_arm" role="button" tabindex="0">
-        <rect x="180" y="150" width="50" height="90" class="fat-hotspot" />
-        <path d="M 200 154 L 182 152 L 190 236 L 208 232 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Hand Back -->
-    <g class="body-part" data-part="left_hand" role="button" tabindex="0">
-        <rect x="50" y="230" width="45" height="50" class="fat-hotspot" />
-        <path d="M 70 234 L 88 238 C 88 252 82 268 76 270 C 68 268 64 252 70 234 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Hand Back -->
-    <g class="body-part" data-part="right_hand" role="button" tabindex="0">
-        <rect x="185" y="230" width="45" height="50" class="fat-hotspot" />
-        <path d="M 210 234 L 192 238 C 192 252 198 268 204 270 C 212 268 216 252 210 234 Z" class="part-shape"/>
-    </g>
-
-    <!-- Pelvis / Dumba -->
-    <g class="body-part" data-part="hip" role="button" tabindex="0">
-        <rect x="100" y="250" width="80" height="45" class="fat-hotspot" />
-        <path d="M 112 252 C 126 256 154 256 168 252 C 174 274 168 290 156 294 L 124 294 C 112 290 106 274 112 252 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Thigh Back -->
-    <g class="body-part" data-part="left_thigh" role="button" tabindex="0">
-        <rect x="100" y="290" width="40" height="95" class="fat-hotspot" />
-        <path d="M 110 296 L 136 296 L 132 376 L 108 376 C 104 350 106 320 110 296 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Thigh Back -->
-    <g class="body-part" data-part="right_thigh" role="button" tabindex="0">
-        <rect x="140" y="290" width="40" height="95" class="fat-hotspot" />
-        <path d="M 144 296 L 170 296 C 174 320 176 350 172 376 L 148 376 L 144 296 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Knee Back -->
-    <g class="body-part" data-part="left_knee" role="button" tabindex="0">
-        <rect x="100" y="380" width="40" height="30" class="fat-hotspot" />
-        <ellipse cx="120" cy="392" rx="13" ry="11" class="part-shape"/>
-    </g>
-
-    <!-- Right Knee Back -->
-    <g class="body-part" data-part="right_knee" role="button" tabindex="0">
-        <rect x="140" y="380" width="40" height="30" class="fat-hotspot" />
-        <ellipse cx="160" cy="392" rx="13" ry="11" class="part-shape"/>
-    </g>
-
-    <!-- Left Shin Back -->
-    <g class="body-part" data-part="left_shin" role="button" tabindex="0">
-        <rect x="100" y="405" width="40" height="75" class="fat-hotspot" />
-        <path d="M 108 406 L 132 406 L 126 476 L 112 476 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Shin Back -->
-    <g class="body-part" data-part="right_shin" role="button" tabindex="0">
-        <rect x="140" y="405" width="40" height="75" class="fat-hotspot" />
-        <path d="M 148 406 L 172 406 L 168 476 L 154 476 Z" class="part-shape"/>
-    </g>
-
-    <!-- Left Foot Back -->
-    <g class="body-part" data-part="left_foot" role="button" tabindex="0">
-        <rect x="90" y="475" width="45" height="35" class="fat-hotspot" />
-        <path d="M 110 478 L 128 478 L 132 506 L 98 506 Z" class="part-shape"/>
-    </g>
-
-    <!-- Right Foot Back -->
-    <g class="body-part" data-part="right_foot" role="button" tabindex="0">
-        <rect x="145" y="475" width="45" height="35" class="fat-hotspot" />
-        <path d="M 152 478 L 170 478 L 182 506 L 148 506 Z" class="part-shape"/>
-    </g>
-</svg>
-`;
-
+// A'zo ma'lumotlari (body_map_data.json) va bottom sheet. Tana figurasi — bosh ekranda (Stage 2).
 async function initBodyMap() {
-    const container = document.getElementById('body-map-container');
-    if (!container) return;
 
     // Local fallback in case body_map_data.json fails to load
     const fallbackBodyParts = {
@@ -2574,22 +2341,6 @@ async function initBodyMap() {
         console.warn("Failed to fetch body_map_data.json. Using local fallback.", e);
         bodyMapData = fallbackBodyParts;
     }
-
-    renderBodyMap(currentBodyView);
-    populateQuickChips();
-
-    // Oldi / Orqa — segmented
-    document.querySelectorAll('#tab-body-map [data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const view = btn.getAttribute('data-view');
-            if (currentBodyView === view) return;
-            currentBodyView = view;
-            document.querySelectorAll('#tab-body-map [data-view]').forEach(b =>
-                b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
-            renderBodyMap(view);
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-        });
-    });
 
     const closeBtn = document.getElementById('modal-close');
     if (closeBtn) closeBtn.addEventListener('click', closeBodySheet);
@@ -2669,93 +2420,6 @@ function markSelectedBodyPart() {
     });
 }
 
-
-function hasBodyPartClass(target) {
-    if (!target) return false;
-    let cls = '';
-    if (target.getAttribute) {
-        const val = target.getAttribute('class');
-        if (val) {
-            cls = (typeof val === 'object' && val !== null && val.baseVal !== undefined) ? val.baseVal : val;
-        }
-    }
-    if (!cls && target.className) {
-        cls = (typeof target.className === 'object' && target.className.baseVal !== undefined) ? target.className.baseVal : target.className;
-    }
-    if (typeof cls !== 'string') return false;
-    return cls.split(/\s+/).indexOf('body-part') !== -1;
-}
-
-function renderBodyMap(view) {
-    const container = document.getElementById('body-map-container');
-    if (!container) return;
-
-    container.innerHTML = (view === 'back') ? BACK_BODY_SVG : FRONT_BODY_SVG;
-
-    const parts = container.querySelectorAll('.body-part');
-    parts.forEach(function(partEl) {
-        const partKey = partEl.getAttribute('data-part');
-        if (!partKey) return;
-
-        const triggerModal = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log("BODY PART CLICKED:", partKey); // As requested for debugging
-            try {
-                if (tg && tg.HapticFeedback) {
-                    tg.HapticFeedback.selectionChanged();
-                }
-            } catch (hapticErr) {
-                console.warn("Haptic failed:", hapticErr);
-            }
-            openBodyMapModal(partKey);
-        };
-
-        // Desktop click
-        partEl.onclick = triggerModal;
-
-        // Mobile touchend (more responsive on touch screens)
-        partEl.addEventListener('touchend', triggerModal, { passive: false });
-
-        // Klaviatura: Enter / Space
-        partEl.setAttribute('aria-label', bodyPartName(partKey));
-        partEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') triggerModal(e);
-        });
-    });
-    markSelectedBodyPart();
-}
-
-function populateQuickChips() {
-    const chipsContainer = document.getElementById('body-quick-chips');
-    if (!chipsContainer || !bodyMapData) return;
-
-    const chipsList = [
-        { key: 'head', name: 'Bosh' },
-        { key: 'neck', name: "Bo'yin" },
-        { key: 'chest', name: "Ko'krak" },
-        { key: 'abdomen', name: 'Qorin' },
-        { key: 'back', name: 'Bel va Orqa' },
-        { key: 'shoulder', name: 'Yelka' },
-        { key: 'arm', name: "Qo'l" },
-        { key: 'knee', name: 'Tizza' },
-        { key: 'foot', name: 'Panja' }
-    ];
-
-    chipsContainer.innerHTML = '';
-    chipsList.forEach(item => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cat-chip';
-        btn.setAttribute('data-part', item.key);
-        btn.textContent = item.name;
-        btn.addEventListener('click', () => {
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-            openBodyMapModal(item.key);
-        });
-        chipsContainer.appendChild(btn);
-    });
-}
 
 function openBodyMapModal(partKey) {
     try {

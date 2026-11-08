@@ -416,23 +416,15 @@
             </section>
 
             <!-- TAB 6: BODY MAP -->
-            <section id="tab-body-map" class="tab-content">
+            <section id="tab-ai" class="tab-content" aria-label="AI maslahat">
                 <div class="screen-head">
-                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-person-standing"/></svg>Tana xaritasi</h1>
-                    <p class="screen-sub">Og'riq yoki bezovtalik mavjud tana a'zosini tanlang</p>
+                    <h1 class="screen-title"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>AI maslahat</h1>
                 </div>
-
-                <div class="segmented" role="tablist" aria-label="Ko'rinish">
-                    <button type="button" role="tab" aria-selected="true" id="btn-view-front" data-view="front">Oldi</button>
-                    <button type="button" role="tab" aria-selected="false" id="btn-view-back" data-view="back">Orqa</button>
+                <div class="ai-soon">
+                    <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></div>
+                    <h2>Tez orada</h2>
+                    <p>Bu yerda savolingizni yozib, birinchi yordam bo'yicha AI maslahatini shu yerning o'zida olasiz.</p>
                 </div>
-
-                <div class="body-map-card">
-                    <div id="body-map-container" class="body-map-svg-wrapper"></div>
-                </div>
-
-                <h2 class="section-label">Tezkor tanlash</h2>
-                <div class="chip-scroll body-quick-chips" id="body-quick-chips" aria-label="Tana a'zolari"></div>
             </section>
 
         </main>
@@ -478,14 +470,14 @@
                 <svg class="icon" aria-hidden="true"><use href="#i-heart-pulse"/></svg>
                 <span>Sog'liq</span>
             </button>
-            <button class="nav-btn" data-tab="tab-body-map">
-                <svg class="icon" aria-hidden="true"><use href="#i-person-standing"/></svg>
-                <span>Tana</span>
+            <button class="nav-btn" data-tab="tab-ai">
+                <svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>
+                <span>AI</span>
             </button>
         </nav>
 
         <!-- MODAL FOR BODY MAP DISEASES -->
-        <!-- Tana a'zosi: pastdan chiquvchi bottom sheet (modal emas — xarita ko'rinib, bosilib turadi) -->
+        <!-- Tana hududi: pastdan chiquvchi bottom sheet (modal emas). Bosh ekrandagi tana figurasidan ochiladi (Stage 2) -->
         <div id="body-map-modal" class="sheet" role="dialog" aria-modal="false" aria-labelledby="modal-title" hidden>
             <div class="sheet-handle" aria-hidden="true"></div>
             <div class="sheet-head">

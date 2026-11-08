@@ -79,9 +79,9 @@ class QuizE2ETest(MiniAppE2EBase):
         idx = self.answer(page, True)
         btn = page.locator(OPTS).nth(idx)
         self.assertIn("correct", btn.get_attribute("class"))
-        teal = page.evaluate("getComputedStyle(document.body).getPropertyValue('--teal').trim()")
-        self.assertEqual(teal.upper(), "#14A39A")
-        page.wait_for_function(f"getComputedStyle(document.querySelectorAll('{OPTS}')[{idx}]).borderTopColor === 'rgb(20, 163, 154)'",
+        primary = page.evaluate("getComputedStyle(document.body).getPropertyValue('--primary').trim()")
+        self.assertEqual(primary.upper(), "#0E7C72")                                # G: to'g'ri javob — --primary (teal)
+        page.wait_for_function(f"getComputedStyle(document.querySelectorAll('{OPTS}')[{idx}]).borderTopColor === 'rgb(14, 124, 114)'",
                                timeout=2000)                                        # transition tugashi
         self.assertTrue(btn.locator(".quiz-opt-ok").is_visible())
         self.assertEqual(self.tg(page)["haptics"], ["success"])
@@ -96,7 +96,7 @@ class QuizE2ETest(MiniAppE2EBase):
         wrong = page.locator(OPTS).nth(idx)
         self.assertIn("wrong", wrong.get_attribute("class"))
         self.assertTrue(wrong.locator(".quiz-opt-bad").is_visible())
-        page.wait_for_function(f"getComputedStyle(document.querySelectorAll('{OPTS}')[{idx}]).borderTopColor === 'rgb(229, 72, 77)'",
+        page.wait_for_function(f"getComputedStyle(document.querySelectorAll('{OPTS}')[{idx}]).borderTopColor === 'rgb(180, 35, 27)'",
                                timeout=2000)                                        # transition tugashi
         self.assertIn("correct", page.locator(OPTS).nth(correct).get_attribute("class"))
         self.assertEqual(self.tg(page)["haptics"], ["error"])

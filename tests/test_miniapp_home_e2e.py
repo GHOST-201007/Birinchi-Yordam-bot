@@ -29,7 +29,7 @@ class HomeE2ETest(MiniAppE2EBase):
         labels = page.evaluate("[...document.querySelectorAll('.quick-actions .qa')].map(b => b.innerText.trim())")
         self.assertEqual(labels, ["AI maslahat", "Kalkulyator", "Test", "Baraban"])
         page.click('.qa[data-action="ai"]')
-        self.assertEqual(self.active_section(page), "tab-body-map")
+        self.assertEqual(self.active_section(page), "tab-ai")
         page.click('nav [data-tab="tab-first-aid"]')
         page.click('.qa[data-action="calc"]')
         self.assertEqual(self.active_section(page), "tab-health")

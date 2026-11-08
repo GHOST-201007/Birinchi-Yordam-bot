@@ -50,7 +50,7 @@ class BonusRedesignE2ETest(MiniAppE2EBase):
             self.assertEqual(cards.nth(i).locator(".day-dot use").get_attribute("href"), "#i-check")   # olingan — ✓
         self.assertIn("active", cards.nth(2).get_attribute("class"))
         self.assertEqual(page.evaluate("getComputedStyle(document.querySelectorAll('#daily-bonus-grid .day-dot')[2]).borderTopColor"),
-                         "rgb(10, 132, 198)")                                          # bugungi — --primary halqa
+                         "rgb(14, 124, 114)")                                          # bugungi — --primary halqa
         self.assertEqual(cards.nth(6).locator(".day-dot use").get_attribute("href"), "#i-gift")
         self.assertEqual(cards.nth(2).get_attribute("aria-label"), "3-kun: 3 ball, bugun")
         self.assertEqual(cards.nth(0).get_attribute("aria-label"), "1-kun: 1 ball, olingan")

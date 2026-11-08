@@ -68,7 +68,7 @@ class HistoryE2ETest(MiniAppE2EBase):
         page = self.open_history(bmi=BMI)
         self.assertTrue(page.is_visible("#bmi-chart"))
         self.assertGreater(page.evaluate("document.getElementById('bmi-chart').width"), 100)  # yashirin bo'limda 0 emas
-        self.assertTrue(page.evaluate(HAS_COLOR_JS, ["bmi-chart", 10, 132, 198]))            # --primary (light)
+        self.assertTrue(page.evaluate(HAS_COLOR_JS, ["bmi-chart", 14, 124, 114]))            # --primary (light)
         self.assertFalse(page.evaluate(HAS_COLOR_JS, ["bmi-chart", 0, 122, 255]))            # eski #007aff yo'q
         self.assertEqual(page.get_attribute("#bmi-chart", "aria-label"), "BMI grafigi: 4 ta natija, oxirgisi 17.9")
 
@@ -76,7 +76,7 @@ class HistoryE2ETest(MiniAppE2EBase):
         page = self.open_history(bmi=BMI)
         page.evaluate("window.Telegram.WebApp.colorScheme = 'dark'; window.__tgEvents.themeChanged()")
         self.assertTrue(page.evaluate("document.body.classList.contains('dark-mode')"))
-        self.assertTrue(page.evaluate(HAS_COLOR_JS, ["bmi-chart", 63, 169, 232]))             # --primary (dark)
+        self.assertTrue(page.evaluate(HAS_COLOR_JS, ["bmi-chart", 61, 194, 179]))             # --primary (dark)
 
     def test_switch_to_water_and_clear(self):
         page = self.open_history(bmi=BMI, water=[{"date": "2.11.2026", "liters": "2.1", "weight": 70},

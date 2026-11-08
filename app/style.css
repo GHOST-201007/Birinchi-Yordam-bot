@@ -1,71 +1,55 @@
 /* Custom Styling for Telegram Mini App */
 /* ═══════════════════════════════════════════════════════════════════
-   DIZAYN TOKENLARI (4.2) — "@wallet uslubi, shifokorlarcha"
-   Yagona :root va yagona body.dark-mode. Ekranlar faqat shu tokenlardan foydalanadi.
+   DIZAYN TOKENLARI — "G · Tana-birinchi" (docs/MINI_APP_G_TASK.md, 2-bo'lim)
+   Yagona :root va yagona body.dark-mode. G ning o'z palitrasi (Telegram mavzu ranglari emas).
    ═══════════════════════════════════════════════════════════════════ */
+/* Nunito — o'zimizda (CSP: tashqi shrift yo'q). Bitta variable fayl 600–800 og'irliklarni beradi, faqat latin. */
+@font-face {
+    font-family: "Nunito";
+    font-style: normal;
+    font-weight: 600 800;
+    font-display: swap;
+    src: url("fonts/nunito-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+                   U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
-    --bg:        #F2F4F7;
-    --surface:   #FFFFFF;
-    --text:      #0F1B2D;
-    --text-2:    #5E6B7E;
-    --separator: rgba(15, 27, 45, 0.08);
+    --bg: #EEF8F5; --surface: #FFFFFF; --text: #0F2A2E; --text-2: #4F6B6E;
+    --line: #D7E8E3; --line-strong: #BFDDD6;
+    --primary: #0E7C72; --on-primary: #FFFFFF; --primary-soft: #DCEFEC;
+    --body-fill: #CFEAE4; --seg-bg: #DCEDE8;
+    --danger: #B4231B; --danger-line: #D6453D; --danger-soft: #FDECEC;
+    --warning: #9A5700; --warning-soft: #FFF1D6;
+    --info: #075E94; --info-soft: #E1F0FB;
+    --r-sm: 10px; --r-md: 14px; --r-lg: 22px; --r-pill: 999px;
+    --font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-    --primary:        #0A84C6;   /* klinik ko'k */
-    --primary-soft:   rgba(10, 132, 198, 0.10);
-    --teal:           #14A39A;   /* sog'liq / ijobiy */
-    --teal-soft:      rgba(20, 163, 154, 0.10);
-    --danger:         #E5484D;   /* faqat favqulodda */
-    --danger-soft:    rgba(229, 72, 77, 0.10);
-    --warning:        #F5A524;   /* ball / bonus */
-    --warning-soft:   rgba(245, 165, 36, 0.12);
-    --on-accent:      #FFFFFF;
-    /* To'ldirilgan tugmalar (oq matn bilan kontrast >= 4.5:1) */
-    --primary-strong: #0872AB;
-    --on-primary:     #FFFFFF;
-    --danger-strong:  #C9343A;
-
-    --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+    /* Qo'shimcha (G ro'yxatida yo'q, mavjud ekranlar uchun) */
+    --on-danger: #FFFFFF;            /* --danger fonidagi matn (dark'da --danger och — matn to'q) */
+    --r-xl: 28px;
     --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px;
-
-    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
     --fs-caption: 12px; --fs-body: 15px; --fs-title: 17px; --fs-h2: 22px; --fs-display: 34px;
-
-    --shadow-card: 0 1px 2px rgba(15, 27, 45, .04), 0 4px 16px rgba(15, 27, 45, .04);
+    --shadow-card: 0 1px 2px rgba(15, 42, 46, .04), 0 4px 16px rgba(15, 42, 46, .05);
     --ease: cubic-bezier(.2, .8, .2, 1);
     color-scheme: light;
 }
 
-/* Telegram yorug' mavzusi faol bo'lsa (app.js: body.tg-light) — uning ranglari, bo'lmasa yuqoridagi fallback */
-body.tg-light {
-    --bg:      var(--tg-theme-secondary-bg-color, #F2F4F7);
-    --surface: var(--tg-theme-bg-color, #FFFFFF);
-    --text:    var(--tg-theme-text-color, #0F1B2D);
-    --text-2:  var(--tg-theme-hint-color, #5E6B7E);
-}
-
 body.dark-mode {
-    --bg: #0B0F14;
-    --surface: #151B23;
-    --text: #E8EEF5;
-    --text-2: #8592A3;
-    --separator: rgba(255, 255, 255, 0.08);
-    --primary: #3FA9E8;
-    --primary-soft: rgba(63, 169, 232, 0.14);
-    --teal: #2EC4B6;
-    --teal-soft: rgba(46, 196, 182, 0.14);
-    --danger: #FF6B6B;
-    --danger-soft: rgba(255, 107, 107, 0.14);
-    --warning: #F7B955;
-    --warning-soft: rgba(247, 185, 85, 0.14);
-    --primary-strong: #3FA9E8;
-    --on-primary: #06121C;
+    --bg: #0C1517; --surface: #152225; --text: #E6F2F0; --text-2: #8FA9A9;
+    --line: #22393B; --line-strong: #2E4A4C;
+    --primary: #3DC2B3; --on-primary: #06211E; --primary-soft: #183A38;
+    --body-fill: #1F3A3B; --seg-bg: #1A2C2E;
+    --danger: #FF8A8A; --danger-line: #FF7B7B; --danger-soft: #3A1D22;
+    --warning: #F5B544; --warning-soft: #3B2C10;
+    --info: #7CC4F2; --info-soft: #12304A;
+    --on-danger: #2A0E0E;
     --shadow-card: none;
     color-scheme: dark;
 }
 
-/* ESKI o'zgaruvchi nomlari — yangi tokenlarga bog'langan. :root VA body da e'lon qilinadi, shunda
-   body.dark-mode / body.tg-light dagi tokenlar ularda ham to'g'ri hisoblanadi. Ekranlar qayta yozilgach olib tashlanadi. */
-:root, body {
+/* ESKI o'zgaruvchi nomlari — yangi tokenlarga bog'langan (faqat body ichida ishlatiladi). */
+body {
     --bg-color: var(--bg);
     --secondary-bg-color: var(--surface);
     --color-surface: var(--surface);
@@ -76,13 +60,13 @@ body.dark-mode {
     --color-primary-light: var(--primary-soft);
     --color-primary-dark: var(--primary);
     --button-color: var(--primary);
-    --button-text-color: var(--on-accent);
+    --button-text-color: var(--on-primary);
     --color-text-primary: var(--text);
     --color-text-muted: var(--text-2);
     --accent-red: var(--danger);
     --accent-red-bg: var(--danger-soft);
-    --accent-green: var(--teal);
-    --accent-green-bg: var(--teal-soft);
+    --accent-green: var(--primary);
+    --accent-green-bg: var(--primary-soft);
     --accent-orange: var(--warning);
     --accent-orange-bg: var(--warning-soft);
     --accent-blue: var(--primary);
@@ -1202,7 +1186,7 @@ html, body {
     padding: 1px 8px;
     border-radius: 999px;
     background: var(--primary-soft);
-    color: var(--primary-strong);
+    color: var(--primary);
     font-weight: 600;
 }
 .global-score[hidden],
@@ -1216,8 +1200,8 @@ html, body {
     min-width: 44px;
     padding: 0 14px;
     border-radius: 20px;
-    background: var(--danger-strong);
-    color: #FFFFFF;
+    background: var(--danger);
+    color: var(--on-danger);
     font-size: var(--fs-body);
     font-weight: 700;
     text-decoration: none;
@@ -1235,7 +1219,7 @@ html, body {
     border: 0;
     border-radius: var(--r-sm);
     background: transparent;
-    color: var(--primary-strong);
+    color: var(--primary);
     font: 600 var(--fs-body) var(--font);
     cursor: pointer;
     flex-shrink: 0;
@@ -1249,10 +1233,10 @@ html, body {
 .app-nav {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--surface);
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--line);
     flex-shrink: 0;
     z-index: 10;
 }
@@ -1266,12 +1250,12 @@ html, body {
     border: 0;
     background: transparent;
     color: var(--text-2);
-    font: 500 10px/1.2 var(--font);
+    font: 700 11px/1.2 var(--font);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
-.nav-btn .icon { font-size: 22px; }
-.nav-btn.active { color: var(--primary-strong); }   /* matn: kontrast >= 4.5:1 */
+.nav-btn .icon { width: 24px; height: 24px; stroke-width: 1.9; }
+.nav-btn.active { color: var(--primary); font-weight: 800; }   /* matn: kontrast >= 4.5:1 */
 .nav-btn:active .icon { transform: scale(0.92); }
 
 /* Segmented control (iOS uslubi) */
@@ -1310,7 +1294,7 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
     padding: var(--s-5);
     margin-bottom: var(--s-5);
     border-radius: var(--r-xl);
-    background: linear-gradient(135deg, var(--danger-strong) 0%, #A8262C 100%);
+    background: linear-gradient(135deg, var(--danger) 0%, #A8262C 100%);
     color: #FFFFFF;
 }
 .sos-head { display: flex; align-items: center; gap: var(--s-2); }
@@ -1420,9 +1404,9 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
     right: 0;
     left: calc(var(--s-4) + 32px + var(--s-3));
     height: 1px;
-    background: var(--separator);
+    background: var(--line);
 }
-.list-row:active { background: var(--separator); }
+.list-row:active { background: var(--line); }
 .row-icon {
     width: 32px;
     height: 32px;
@@ -1453,13 +1437,13 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
     flex-shrink: 0;
     padding: 6px 14px;
     border-radius: 999px;
-    background: var(--primary-strong);
+    background: var(--primary);
     color: var(--on-primary);
     font-size: 13px;
     font-weight: 600;
 }
-.pill--ghost { background: var(--primary-soft); color: var(--primary-strong); }
-.pill--done { background: var(--teal-soft); color: var(--teal); }
+.pill--ghost { background: var(--primary-soft); color: var(--primary); }
+.pill--done { background: var(--primary-soft); color: var(--primary); }
 
 /* 4. Premium banner (bir qator) */
 .premium-banner {
@@ -1548,11 +1532,11 @@ body.dark-mode .search-field { background: rgba(118, 118, 128, 0.24); }
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: var(--primary-strong);
+    color: var(--primary);
     cursor: pointer;
 }
 .close-overlay-btn .icon { width: 26px; height: 26px; }
-.close-overlay-btn:active { background: var(--separator); }
+.close-overlay-btn:active { background: var(--line); }
 body.has-tg-back .close-overlay-btn { display: none; }
 .detail-title {
     margin: 0 0 var(--s-2);
@@ -1574,7 +1558,7 @@ body.has-tg-back .close-overlay-btn { display: none; }
 body.dark-mode .chip--danger { color: var(--danger); }
 .chip--warning { background: var(--warning-soft); color: #9A5B00; }
 .chip--primary { background: var(--primary-soft); color: #065A88; }
-body.dark-mode .chip--primary { color: var(--primary-strong); }
+body.dark-mode .chip--primary { color: var(--primary); }
 body.dark-mode .chip--warning { color: var(--warning); }
 .detail-lead { margin: 0 0 var(--s-5); font-size: var(--fs-body); line-height: 1.5; color: var(--text); }
 .detail-block { margin-bottom: var(--s-5); }
@@ -1587,9 +1571,9 @@ body.dark-mode .chip--warning { color: var(--warning); }
     background: var(--surface);
     color: var(--text);
     font-size: 14px;
-    border: 1px solid var(--separator);
+    border: 1px solid var(--line);
 }
-body.dark-mode .symptom-tag { border-color: var(--separator); }
+body.dark-mode .symptom-tag { border-color: var(--line); }
 
 /* Qadamlar: raqamlangan vertikal timeline */
 .timeline { list-style: none; margin: 0; padding: 0; }
@@ -1602,7 +1586,7 @@ body.dark-mode .symptom-tag { border-color: var(--separator); }
     left: 15px;
     width: 2px;
     border-radius: 1px;
-    background: var(--separator);
+    background: var(--line);
 }
 .timeline-num {
     width: 32px;
@@ -1612,7 +1596,7 @@ body.dark-mode .symptom-tag { border-color: var(--separator); }
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    background: var(--primary-strong);
+    background: var(--primary);
     color: var(--on-primary);
     font-size: 16px;
     font-weight: 700;
@@ -1658,15 +1642,15 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     height: 48px;
     margin-top: var(--s-2);
     border-radius: var(--r-md);
-    background: var(--danger-strong);
-    color: #FFFFFF;
+    background: var(--danger);
+    color: var(--on-danger);
     font-weight: 700;
     text-decoration: none;
 }
 .aid-card {
     padding: var(--s-4);
     border-radius: var(--r-md);
-    background: var(--teal-soft);
+    background: var(--primary-soft);
 }
 .aid-card p { margin: 0; line-height: 1.55; }
 .detail-note { margin: 0 0 var(--s-4); font-size: 14px; line-height: 1.5; color: var(--text-2); }
@@ -1675,7 +1659,7 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     gap: var(--s-2);
     margin: var(--s-6) 0 0;
     padding-top: var(--s-4);
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--line);
     font-size: var(--fs-caption);
     line-height: 1.4;
     color: var(--text-2);
@@ -1739,7 +1723,7 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     flex-shrink: 0;
     min-height: 34px;
     padding: 0 14px;
-    border: 1px solid var(--separator);
+    border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--surface);
     color: var(--text);
@@ -1750,7 +1734,7 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
 .cat-chip::after { content: ''; position: absolute; inset: -5px 0; }      /* bosish maydoni >= 44px */
 .cat-chip[aria-selected="true"] {
     border-color: transparent;
-    background: var(--primary-strong);
+    background: var(--primary);
     color: var(--on-primary);
 }
 
@@ -1786,13 +1770,13 @@ body:not(.dark-mode) .dont-title { color: #B42A30; }
     padding: 0 var(--s-4);
     border: 0;
     border-radius: var(--r-md);
-    background: var(--primary-strong);
+    background: var(--primary);
     color: var(--on-primary);
     font: 600 var(--fs-title) var(--font);
     cursor: pointer;
 }
 .btn-primary:active { transform: scale(0.98); }
-.btn-primary:disabled { background: var(--separator); color: var(--text-2); cursor: default; transform: none; }
+.btn-primary:disabled { background: var(--line); color: var(--text-2); cursor: default; transform: none; }
 .btn-primary[hidden] { display: none; }
 /* Telegram ichida MainButton bor — sahifadagi nusxa kerak emas */
 body.tg-main .inpage-main { display: none; }
@@ -1801,8 +1785,8 @@ body.tg-main .inpage-main { display: none; }
 body.tg-main-on .app-content { padding-bottom: calc(24px + 72px) !important; }
 body.tg-main-on .overlay-inner { padding-bottom: calc(var(--s-8) + 72px + env(safe-area-inset-bottom, 0px)); }
 
-.chip--teal { background: var(--teal-soft); color: #0B746D; }
-body.dark-mode .chip--teal { color: var(--teal); }
+.chip--teal { background: var(--primary-soft); color: #0B746D; }
+body.dark-mode .chip--teal { color: var(--primary); }
 
 .calc-card {
     margin-bottom: var(--s-4);
@@ -1819,7 +1803,7 @@ body.dark-mode .chip--teal { color: var(--teal); }
     min-height: 36px;
 }
 .calc-switch .icon { width: 16px; height: 16px; }
-.calc-switch button[aria-selected="true"] { color: var(--primary-strong); }
+.calc-switch button[aria-selected="true"] { color: var(--primary); }
 body.dark-mode .calc-switch button[aria-selected="true"] { color: var(--text); }
 .calc-section { display: none; }
 .calc-section.active { display: block; }
@@ -1902,7 +1886,7 @@ body.dark-mode .input-wrap select { background: rgba(118, 118, 128, 0.18); }
     width: 100%;
     min-height: 44px;
     padding: var(--s-2) 0;
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--line);
     font-size: 15px;
     color: var(--text);
     text-align: left;
@@ -1921,7 +1905,7 @@ body.dark-mode .input-wrap select { background: rgba(118, 118, 128, 0.18); }
 }
 .bmi-seg { flex: 1; border-radius: 3px; }
 .bmi-seg--low { background: var(--warning); opacity: .55; }
-.bmi-seg--ok { background: var(--teal); }
+.bmi-seg--ok { background: var(--primary); }
 .bmi-seg--over { background: var(--warning); }
 .bmi-seg--obese { background: var(--danger); }
 .bmi-pointer {
@@ -2003,7 +1987,7 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
 
 /* Qator: bosilganda effekt */
 .disease-groups .list-row { transition: background-color .12s ease, transform .12s ease; }
-.disease-groups .list-row:active { background: var(--separator); transform: scale(0.99); }
+.disease-groups .list-row:active { background: var(--line); transform: scale(0.99); }
 
 /* Yengil kirish animatsiyasi */
 @keyframes row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -2036,7 +2020,7 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--primary-strong);
+    color: var(--primary);
     font: 700 11px/17px var(--font);
     cursor: pointer;
 }
@@ -2060,7 +2044,7 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
     margin-bottom: var(--s-3);
     border-radius: 50%;
     background: var(--primary-soft);
-    color: var(--primary-strong);
+    color: var(--primary);
 }
 .empty-icon .icon { width: 28px; height: 28px; }
 .empty-title { margin: 0 0 4px; font-size: var(--fs-title); font-weight: 700; color: var(--text); }
@@ -2072,14 +2056,14 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
     gap: var(--s-2);
     min-height: 48px;
     padding: 0 var(--s-5);
-    border: 1px solid var(--separator);
+    border: 1px solid var(--line);
     border-radius: var(--r-md);
     background: var(--surface);
-    color: var(--primary-strong);
+    color: var(--primary);
     font: 600 16px var(--font);
     cursor: pointer;
 }
-.btn-secondary:active { background: var(--separator); }
+.btn-secondary:active { background: var(--line); }
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2110,7 +2094,7 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
     transition: background-color .15s ease, box-shadow .15s ease;
 }
 .detail-bar > * { pointer-events: auto; }
-.detail-bar.compact { background: var(--bg); box-shadow: 0 1px 0 var(--separator); }
+.detail-bar.compact { background: var(--bg); box-shadow: 0 1px 0 var(--line); }
 .detail-bar-title {
     display: flex;
     align-items: center;
@@ -2167,7 +2151,7 @@ body:not(.has-tg-back) .overlay-inner { padding-top: calc(52px + env(safe-area-i
     line-height: 1.45;
     color: var(--text);
 }
-.safety-row .icon { flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px; color: var(--teal); }
+.safety-row .icon { flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px; color: var(--primary); }
 
 /* 103 kartasi eng tepada (kritik holat) */
 .call-card--top { border: 1px solid rgba(201, 52, 58, 0.25); }
@@ -2178,10 +2162,10 @@ body:not(.has-tg-back) .overlay-inner { padding-top: calc(52px + env(safe-area-i
 /* Qadamlar: belgilash + progress */
 .steps-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
 .steps-head .detail-h { margin-bottom: var(--s-2); }
-.steps-progress { font-size: 16px; font-weight: 700; color: var(--teal-strong, #0B746D); white-space: nowrap; }
-body.dark-mode .steps-progress { color: var(--teal); }
-.steps-bar { height: 4px; margin-bottom: var(--s-2); border-radius: 2px; background: var(--separator); overflow: hidden; }
-.steps-bar span { display: block; width: 0; height: 100%; border-radius: 2px; background: var(--teal); transition: width .2s var(--ease); }
+.steps-progress { font-size: 16px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+body.dark-mode .steps-progress { color: var(--primary); }
+.steps-bar { height: 4px; margin-bottom: var(--s-2); border-radius: 2px; background: var(--line); overflow: hidden; }
+.steps-bar span { display: block; width: 0; height: 100%; border-radius: 2px; background: var(--primary); transition: width .2s var(--ease); }
 .detail-block .steps-hint { margin: 0 0 var(--s-3); font-size: 16px; color: var(--text-2); }
 .timeline-btn {
     display: flex;
@@ -2197,11 +2181,11 @@ body.dark-mode .steps-progress { color: var(--teal); }
     color: inherit;
     cursor: pointer;
 }
-.timeline-btn:active { background: var(--separator); }
+.timeline-btn:active { background: var(--line); }
 .timeline-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
 .timeline-check { display: none; width: 18px; height: 18px; stroke-width: 3; }
 .timeline-step.done .timeline-num { background: #0B746D; }
-body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); color: #06121C; }
+body.dark-mode .timeline-step.done .timeline-num { background: var(--primary); color: #06121C; }
 .timeline-step.done .timeline-n { display: none; }
 .timeline-step.done .timeline-check { display: block; }
 .timeline-step.done .timeline-text { color: var(--text-2); }
@@ -2227,8 +2211,8 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
     height: 22px;
     margin-top: 1px;
     border-radius: 50%;
-    background: var(--danger-strong);
-    color: #FFFFFF;
+    background: var(--danger);
+    color: var(--on-danger);
 }
 .dont-x .icon { width: 14px; height: 14px; stroke-width: 3; }
 
@@ -2284,7 +2268,7 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
     margin-bottom: var(--s-3);
     border-radius: 50%;
     background: var(--primary-soft);
-    color: var(--primary-strong);
+    color: var(--primary);
 }
 .quiz-start-icon .icon { width: 36px; height: 36px; }
 .quiz-start-title,
@@ -2300,7 +2284,7 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
     background: var(--bg);
 }
 .quiz-stat { display: flex; flex-direction: column; align-items: center; padding: var(--s-3) var(--s-2); }
-.quiz-stat + .quiz-stat { border-left: 1px solid var(--separator); }
+.quiz-stat + .quiz-stat { border-left: 1px solid var(--line); }
 .quiz-stat span { font-size: 28px; font-weight: 700; line-height: 1.2; color: var(--text); }
 .quiz-stat small { margin-top: 2px; font-size: 13px; color: var(--text-2); }
 
@@ -2317,7 +2301,7 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
 .quiz-q-num { color: var(--text); }
 .quiz-score { display: inline-flex; align-items: center; gap: 4px; }
 .quiz-score .icon { width: 16px; height: 16px; color: var(--warning); fill: var(--warning); }
-.quiz-progress-bar { height: 4px; margin-bottom: var(--s-4); border-radius: 2px; background: var(--separator); overflow: hidden; }
+.quiz-progress-bar { height: 4px; margin-bottom: var(--s-4); border-radius: 2px; background: var(--line); overflow: hidden; }
 .quiz-progress-fill { width: 0; height: 100%; border-radius: 2px; background: var(--primary); transition: width .25s var(--ease); }
 .quiz-card {
     margin-bottom: var(--s-4);
@@ -2337,7 +2321,7 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
     width: 100%;
     min-height: 56px;
     padding: var(--s-3) var(--s-4);
-    border: 2px solid var(--separator);
+    border: 2px solid var(--line);
     border-radius: var(--r-md);
     background: var(--surface);
     color: var(--text);
@@ -2363,11 +2347,11 @@ body.dark-mode .timeline-step.done .timeline-num { background: var(--teal); colo
 }
 .quiz-opt-ok, .quiz-opt-bad { display: none; width: 18px; height: 18px; stroke-width: 3; }
 .quiz-opt-text { flex: 1; }
-.quiz-option-btn.correct { border-color: var(--teal); background: var(--teal-soft); }
+.quiz-option-btn.correct { border-color: var(--primary); background: var(--primary-soft); }
 .quiz-option-btn.correct .quiz-opt-badge { background: #0B746D; color: #FFFFFF; }
 .quiz-option-btn.wrong { border-color: var(--danger); background: var(--danger-soft); }
-.quiz-option-btn.wrong .quiz-opt-badge { background: var(--danger-strong); color: #FFFFFF; }
-body.dark-mode .quiz-option-btn.correct .quiz-opt-badge { background: var(--teal); color: #06121C; }
+.quiz-option-btn.wrong .quiz-opt-badge { background: var(--danger); color: var(--on-danger); }
+body.dark-mode .quiz-option-btn.correct .quiz-opt-badge { background: var(--primary); color: #06121C; }
 .quiz-option-btn.correct .quiz-opt-letter,
 .quiz-option-btn.wrong .quiz-opt-letter { display: none; }
 .quiz-option-btn.correct .quiz-opt-ok,
@@ -2378,9 +2362,9 @@ body.dark-mode .quiz-option-btn.correct .quiz-opt-badge { background: var(--teal
 .quiz-ring { position: relative; width: 168px; height: 168px; margin-bottom: var(--s-4); }
 .quiz-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .quiz-ring circle { fill: none; stroke-width: 10; }
-.ring-track { stroke: var(--separator); }
+.ring-track { stroke: var(--line); }
 .ring-fill { stroke: var(--primary); stroke-linecap: round; transition: stroke-dasharray .6s var(--ease); }
-.quiz-ring--good .ring-fill { stroke: var(--teal); }
+.quiz-ring--good .ring-fill { stroke: var(--primary); }
 .quiz-ring--low .ring-fill { stroke: var(--warning); }
 .ring-center {
     position: absolute;
@@ -2522,7 +2506,7 @@ body.dark-mode .field-error { color: var(--danger); }
     margin-bottom: var(--s-2);
     border-radius: 50%;
     background: var(--primary-soft);
-    color: var(--primary-strong);
+    color: var(--primary);
 }
 .result-icon .icon { width: 24px; height: 24px; }
 .result-icon--calorie { background: var(--warning-soft); color: #9A5B00; }
@@ -2535,12 +2519,12 @@ body.dark-mode .result-icon--calorie { color: var(--warning); }
     width: 100%;
     margin-top: var(--s-2);
     padding-top: var(--s-3);
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--line);
     font-size: 15px;
     font-weight: 600;
     color: #0B746D;
 }
-body.dark-mode .result-saved { color: var(--teal); }
+body.dark-mode .result-saved { color: var(--primary); }
 .result-saved .icon { width: 18px; height: 18px; }
 
 .chart-empty .empty-icon { margin-bottom: 0; }
@@ -2579,7 +2563,7 @@ body.dark-mode .body-part .part-shape { fill: #222A35; stroke: #56606D; }
 body.dark-mode .body-part:hover .part-shape { fill: #1E3446; }
 .body-part:focus-visible .part-shape { stroke: var(--primary); stroke-width: 2.5; }
 .body-part.selected .part-shape,
-body.dark-mode .body-part.selected .part-shape { fill: var(--primary); stroke: var(--primary-strong); }
+body.dark-mode .body-part.selected .part-shape { fill: var(--primary); stroke: var(--primary); }
 .body-quick-chips { margin-bottom: var(--s-4); }
 
 /* Bottom sheet: pastdan chiqadi, xarita ustida — lekin modal emas (fon qoraytirilmaydi, menyu ishlaydi) */
@@ -2587,7 +2571,7 @@ body.dark-mode .body-part.selected .part-shape { fill: var(--primary); stroke: v
     position: fixed;
     left: 0;
     right: 0;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));   /* pastki menyu ustida — u bosilib turadi */
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));   /* pastki menyu ustida — u bosilib turadi */
     z-index: 70;
     max-height: 58vh;
     overflow-y: auto;
@@ -2600,7 +2584,7 @@ body.dark-mode .body-part.selected .part-shape { fill: var(--primary); stroke: v
 .sheet[hidden] { display: none; }
 @keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 body.sheet-open .app-content { padding-bottom: 64vh !important; }
-.sheet-handle { width: 36px; height: 5px; margin: 0 auto var(--s-2); border-radius: 3px; background: var(--separator); }
+.sheet-handle { width: 36px; height: 5px; margin: 0 auto var(--s-2); border-radius: 3px; background: var(--line); }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .sheet-title { margin: 0; font-size: var(--fs-h2); font-weight: 700; color: var(--text); }
 .sheet-close {
@@ -2620,7 +2604,7 @@ body.sheet-open .app-content { padding-bottom: 64vh !important; }
 .sheet-close:focus-visible { outline: 2px solid var(--primary); }
 .sheet-sub { margin: 2px 0 var(--s-3); font-size: 15px; color: var(--text-2); }
 .sheet-list { margin-bottom: var(--s-3); border-radius: var(--r-md); background: var(--bg); overflow: hidden; }
-.sheet-item + .sheet-item { border-top: 1px solid var(--separator); }
+.sheet-item + .sheet-item { border-top: 1px solid var(--line); }
 .sheet-item summary {
     display: flex;
     align-items: center;
@@ -2643,13 +2627,13 @@ body.sheet-open .app-content { padding-bottom: 64vh !important; }
     margin: 0 var(--s-4) var(--s-3);
     padding: var(--s-3);
     border-radius: var(--r-sm);
-    background: var(--teal-soft);
+    background: var(--primary-soft);
     font-size: 15px;
     line-height: 1.45;
     color: var(--text);
 }
 .sheet-tip .icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; color: #0B746D; }
-body.dark-mode .sheet-tip .icon { color: var(--teal); }
+body.dark-mode .sheet-tip .icon { color: var(--primary); }
 .sheet-problems { margin: 0; padding: var(--s-2) var(--s-4) var(--s-2) 36px; }
 .sheet-problems li { padding: 6px 0; font-size: 16px; color: var(--text); }
 .sheet-disclaimer { display: flex; gap: var(--s-2); margin: 0 0 var(--s-3); font-size: 14px; line-height: 1.45; color: var(--text-2); }
@@ -2753,7 +2737,7 @@ body.dark-mode #wheel-result-msg .result-icon--super { color: var(--warning); }
     margin-top: var(--s-4);
     border: 0;
     border-radius: var(--r-md);
-    background: var(--primary-strong);
+    background: var(--primary);
     color: var(--on-primary);
     font: 600 var(--fs-title) var(--font);
     cursor: pointer;
@@ -2819,7 +2803,7 @@ body.dark-mode .bonus-head-icon { color: var(--warning); }
     justify-content: center;
     width: 40px;
     height: 40px;
-    border: 2px solid var(--separator);
+    border: 2px solid var(--line);
     border-radius: 50%;
     background: var(--bg);
     color: var(--text-2);
@@ -2829,10 +2813,10 @@ body.dark-mode .bonus-head-icon { color: var(--warning); }
 .day-dot .icon { width: 20px; height: 20px; }
 .day-reward { font-size: 13px; font-weight: 700; color: var(--text-2); }
 .daily-bonus-card.claimed .day-dot { border-color: #0B746D; background: #0B746D; color: #FFFFFF; }
-body.dark-mode .daily-bonus-card.claimed .day-dot { border-color: var(--teal); background: var(--teal); color: #06121C; }
+body.dark-mode .daily-bonus-card.claimed .day-dot { border-color: var(--primary); background: var(--primary); color: #06121C; }
 .daily-bonus-card.claimed .day-dot .icon { stroke-width: 3; }
-.daily-bonus-card.active .day-dot { border: 3px solid var(--primary); background: var(--surface); color: var(--primary-strong); }
-.daily-bonus-card.active .day-reward { color: var(--primary-strong); }
+.daily-bonus-card.active .day-dot { border: 3px solid var(--primary); background: var(--surface); color: var(--primary); }
+.daily-bonus-card.active .day-reward { color: var(--primary); }
 .daily-bonus-card.day-7:not(.claimed) .day-dot { border-color: var(--warning); color: #9A5B00; background: var(--warning-soft); }
 body.dark-mode .daily-bonus-card.day-7:not(.claimed) .day-dot { color: var(--warning); }
 
@@ -2847,13 +2831,13 @@ body.dark-mode .daily-bonus-card.day-7:not(.claimed) .day-dot { color: var(--war
     line-height: 1.45;
     color: var(--text);
 }
-.bonus-note .icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; color: var(--primary-strong); }
+.bonus-note .icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; color: var(--primary); }
 .daily-bonus-result { margin: 0 0 var(--s-3); font-size: 16px; font-weight: 700; color: #0B746D; text-align: center; }
-body.dark-mode .daily-bonus-result { color: var(--teal); }
+body.dark-mode .daily-bonus-result { color: var(--primary); }
 
 /* Tugma oqim ichida (avval wheel-center-btn klassi tufayli absolute — "suzib" turardi) */
 .bonus-claim { position: static; transform: none; }
-.bonus-claim.is-claimed { background: var(--separator); color: var(--text-2); cursor: default; }
+.bonus-claim.is-claimed { background: var(--line); color: var(--text-2); cursor: default; }
 .bonus-claim.is-claimed:active { transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2913,7 +2897,7 @@ body.dark-mode .pm-crown { color: var(--warning); }
     gap: var(--s-3);
     min-height: 64px;
     padding: var(--s-3) var(--s-4);
-    border: 2px solid var(--separator);
+    border: 2px solid var(--line);
     border-radius: var(--r-md);
     background: var(--surface);
     cursor: pointer;
@@ -2928,7 +2912,7 @@ body.dark-mode .pm-crown { color: var(--warning); }
     border-radius: 50%;
 }
 .plan-card:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); }
-.plan-card input:checked + .plan-radio { border: 7px solid var(--primary-strong); }
+.plan-card input:checked + .plan-radio { border: 7px solid var(--primary); }
 .plan-card:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
 .plan-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .plan-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 16px; font-weight: 700; color: var(--text); }
@@ -2946,13 +2930,30 @@ body.dark-mode .pm-crown { color: var(--warning); }
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: var(--teal-soft);
+    background: var(--primary-soft);
     color: #0B746D;
 }
-body.dark-mode .pm-check { color: var(--teal); }
+body.dark-mode .pm-check { color: var(--primary); }
 .pm-check .icon { width: 14px; height: 14px; stroke-width: 3; }
 
 @media (prefers-reduced-motion: reduce) {
     .pm-sheet { animation: none; }
     .plan-card { transition: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   G — AI tabi (vaqtinchalik "Tez orada"; 4-bosqichda suhbat bilan to'ladi)
+   ═══════════════════════════════════════════════════════════════════ */
+.ai-soon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--s-8) var(--s-4);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    text-align: center;
+}
+.ai-soon .empty-icon { background: var(--primary-soft); color: var(--primary); }
+.ai-soon h2 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--text); }
+.ai-soon p { max-width: 280px; margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }

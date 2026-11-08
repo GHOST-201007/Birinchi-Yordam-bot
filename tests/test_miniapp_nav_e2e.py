@@ -6,7 +6,7 @@ import unittest
 
 from tests.e2e_base import STATE_OK, MiniAppE2EBase
 
-NAV = [("tab-first-aid", "Yordam"), ("tab-diseases", "Kasalliklar"), ("tab-health", "Sog'liq"), ("tab-body-map", "Tana")]
+NAV = [("tab-first-aid", "Yordam"), ("tab-diseases", "Kasalliklar"), ("tab-health", "Sog'liq"), ("tab-ai", "AI")]
 
 
 class NavE2ETest(MiniAppE2EBase):
@@ -116,11 +116,11 @@ class NavE2ETest(MiniAppE2EBase):
         page, _ = self.open_app({})
         tg = self.tg(page)
         self.assertEqual(tg["headerColors"][-1].upper(), "#FFFFFF")         # --surface
-        self.assertEqual(tg["bgColors"][-1].upper(), "#F2F4F7")             # --bg
+        self.assertEqual(tg["bgColors"][-1].upper(), "#EEF8F5")             # --bg
         page.evaluate("window.Telegram.WebApp.colorScheme = 'dark'; window.__tgEvents.themeChanged();")
         tg = self.tg(page)
-        self.assertEqual(tg["headerColors"][-1].upper(), "#151B23")
-        self.assertEqual(tg["bgColors"][-1].upper(), "#0B0F14")
+        self.assertEqual(tg["headerColors"][-1].upper(), "#152225")
+        self.assertEqual(tg["bgColors"][-1].upper(), "#0C1517")
 
 
 if __name__ == "__main__":

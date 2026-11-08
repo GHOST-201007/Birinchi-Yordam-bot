@@ -83,7 +83,7 @@ class CspHeaderE2ETest(MiniAppE2EBase):
                                 enforce_csp=True)
         page.wait_for_selector("#global-score:not([hidden])")
         self.assertEqual(page.inner_text("#global-score-val"), "7")
-        for tab in ("tab-diseases", "tab-health", "tab-body-map", "tab-first-aid"):
+        for tab in ("tab-diseases", "tab-health", "tab-ai", "tab-first-aid"):
             page.click(f'nav [data-tab="{tab}"]')
             page.wait_for_selector(f"#{tab}.active")
         page.click('#first-aid-grid [data-id="kuyish"]')

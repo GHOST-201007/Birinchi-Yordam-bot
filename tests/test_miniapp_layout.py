@@ -70,7 +70,7 @@ class HtmlStructureTest(unittest.TestCase):
 
 
 class LayoutE2ETest(MiniAppE2EBase):
-    TABS = ["tab-first-aid", "tab-diseases", "tab-health", "tab-body-map"]
+    TABS = ["tab-first-aid", "tab-diseases", "tab-health", "tab-ai"]
 
     def test_header_and_nav_inside_viewport_on_every_tab(self):
         page, _ = self.open_app({})
