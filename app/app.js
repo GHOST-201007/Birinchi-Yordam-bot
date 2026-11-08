@@ -84,6 +84,53 @@ function reportError(where, err) {
 
 const BOT_USERNAME = "Birinchiyordam1Bot";
 
+// ── Ikonkalar: index.html dagi inline SVG sprite (#i-<nom>). FontAwesome yo'q, tashqi so'rov yo'q. ──
+// Ma'lumotlardagi eski icon nomlari (masalan "fa-fire-burner") o'zgarmaydi — bu yerda sprite nomiga o'giriladi.
+const FA_ICON_MAP = {
+    'fa-arrow-left': 'arrow-left',
+    'fa-bone': 'bone',
+    'fa-brain': 'brain',
+    'fa-briefcase-medical': 'book',
+    'fa-chart-line': 'chart',
+    'fa-chevron-down': 'chevron-down',
+    'fa-chevron-left': 'chevron-left',
+    'fa-chevron-right': 'chevron-right',
+    'fa-child-reaching': 'person-standing',
+    'fa-circle-check': 'circle-check',
+    'fa-circle-info': 'info',
+    'fa-coins': 'star',
+    'fa-crosshairs': 'crosshair',
+    'fa-droplet': 'droplet',
+    'fa-face-dizzy': 'dizzy',
+    'fa-fire': 'flame',
+    'fa-fire-burner': 'flame',
+    'fa-gift': 'gift',
+    'fa-glass-water-droplet': 'glass-water',
+    'fa-head-side-cough': 'wind',
+    'fa-heart-circle-xmark': 'heart-crack',
+    'fa-heart-pulse': 'heart-pulse',
+    'fa-kit-medical': 'first-aid',
+    'fa-magnifying-glass': 'search',
+    'fa-person': 'user',
+    'fa-person-walking-arrow-right': 'repeat',
+    'fa-phone-flip': 'phone',
+    'fa-rotate': 'rotate-cw',
+    'fa-spinner': 'loader',
+    'fa-star': 'star',
+    'fa-sun': 'sun',
+    'fa-triangle-exclamation': 'alert-triangle',
+    'fa-user-doctor': 'stethoscope',
+    'fa-vial': 'test-tube',
+    'fa-wand-magic-sparkles': 'sparkles',
+    'fa-xmark': 'x'
+};
+function iconName(name) {
+    return FA_ICON_MAP[name] || name || 'activity';
+}
+function svgIcon(name, cls) {
+    return '<svg class="icon' + (cls ? ' ' + cls : '') + '" aria-hidden="true" focusable="false"><use href="#i-' + iconName(name) + '"/></svg>';
+}
+
 // Mini App -> bot API (/api/...). Foydalanuvchi faqat tekshirilgan initData orqali aniqlanadi.
 // initData yo'q bo'lsa yoki so'rov xato bersa istisno ko'tariladi: chaqiruvchi URL-parametr zaxira yo'liga o'tadi.
 function canUseApi() {
@@ -257,17 +304,41 @@ if (userScore !== null) {
 // DARK / LIGHT MODE
 // ═══════════════════════════════════════════════════════════════════
 
-function initTheme() {
-    const saved = SafeStorage.getItem('theme') || 'light';
+// Standart: Telegram mavzusiga ergashish (tg.colorScheme). Foydalanuvchi qo'lda tanlasa — o'sha saqlanadi.
+function currentThemeMode() {
+    const saved = SafeStorage.getItem('theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    return (tg && tg.colorScheme === 'dark') ? 'dark' : 'light';
+}
+
+function applyTheme(mode) {
+    const body = document.body;
+    body.classList.toggle('dark-mode', mode === 'dark');
+    // Telegram'ning yorug' mavzu ranglari faqat Telegram ham yorug' bo'lsa ishlatiladi (aks holda aralash ranglar)
+    body.classList.toggle('tg-light', mode === 'light' && !!tg && tg.colorScheme === 'light');
     const btn = document.getElementById('theme-toggle-btn');
-    if (btn) {
-        if (saved === 'dark') {
-            document.body.classList.add('dark-mode');
-            btn.textContent = '☀️';
-        } else {
-            document.body.classList.remove('dark-mode');
-            btn.textContent = '🌙';
-        }
+    if (btn) btn.innerHTML = svgIcon(mode === 'dark' ? 'sun' : 'moon');
+    syncTelegramChrome();
+}
+
+// Telegram sarlavha va fon rangini ilova tokenlariga moslaydi (--surface / --bg)
+function syncTelegramChrome() {
+    if (!tg) return;
+    try {
+        const cs = getComputedStyle(document.body);
+        const surface = cs.getPropertyValue('--surface').trim();
+        const bg = cs.getPropertyValue('--bg').trim();
+        if (tg.setHeaderColor && /^#[0-9a-f]{6}$/i.test(surface)) tg.setHeaderColor(surface);
+        if (tg.setBackgroundColor && /^#[0-9a-f]{6}$/i.test(bg)) tg.setBackgroundColor(bg);
+    } catch (e) {
+        console.warn("Telegram rangini o'rnatib bo'lmadi:", e);
+    }
+}
+
+function initTheme() {
+    applyTheme(currentThemeMode());
+    if (tg && tg.onEvent) {
+        try { tg.onEvent('themeChanged', () => applyTheme(currentThemeMode())); } catch (e) { /* eski klient */ }
     }
 }
 
@@ -275,9 +346,9 @@ function bindThemeToggle() {
     const btn = document.getElementById('theme-toggle-btn');
     if (btn) {
         btn.onclick = () => {
-            const isDark = document.body.classList.toggle('dark-mode');
-            btn.textContent = isDark ? '☀️' : '🌙';
-            SafeStorage.setItem('theme', isDark ? 'dark' : 'light');
+            const next = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
+            SafeStorage.setItem('theme', next);
+            applyTheme(next);
         };
     }
 }
@@ -652,7 +723,7 @@ function renderFirstAidGrid() {
 
         card.innerHTML = `
             <div class="card-icon" style="background-color: ${item.bgColor}; color: ${item.color};">
-                <i class="fa-solid ${item.icon}"></i>
+                ${svgIcon(item.icon)}
             </div>
             <h3>${item.title}</h3>
             <p>${item.desc}</p>
@@ -787,7 +858,7 @@ function renderDiseases(data) {
                 <h4>${item.name}</h4>
                 <span>📁 ${item.cat}</span>
             </div>
-            <i class="fa-solid fa-chevron-right"></i>
+            ${svgIcon('chevron-right')}
         `;
 
         div.addEventListener('click', () => {
@@ -1814,7 +1885,7 @@ async function initBodyMap() {
 
             aiBtn.disabled = true;
             const originalContent = aiBtn.innerHTML;
-            aiBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ? Ulanmoqda...';
+            aiBtn.innerHTML = svgIcon('loader', 'icon-spin') + ' Ulanmoqda...';
 
             setTimeout(() => {
                 aiBtn.disabled = false;
@@ -2012,8 +2083,8 @@ function _openFullModal(partKey, data) {
                     li.innerHTML = `
                         <div class="disease-item-header" style="cursor: pointer;">
                             <strong>${d.name}</strong>
-                            ${d.urgent ? '<span class="urgent-badge"><i class="fa-solid fa-triangle-exclamation"></i> Tezkor</span>' : ''}
-                            <i class="fa-solid fa-chevron-down toggle-icon" style="color: var(--hint-color); transition: transform 0.2s; font-size: 12px;"></i>
+                            ${d.urgent ? '<span class="urgent-badge">' + svgIcon('alert-triangle') + ' Tezkor</span>' : ''}
+                            ${svgIcon('chevron-down', 'toggle-icon')}
                         </div>
                         <div class="disease-details-content" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;">
                             <p class="disease-desc" style="margin-top: 8px; margin-bottom: 8px;">${d.desc || ''}</p>
@@ -2821,13 +2892,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             card.className = classes.join(' ');
             
-            let iconClass = 'fa-solid fa-star star-icon';
-            if (isDay7) iconClass = 'fa-solid fa-gift star-icon';
-            
+            const dayIcon = isDay7 ? 'gift' : 'star';
+
             card.innerHTML = `
-                <i class="fa-solid fa-circle-check check-icon"></i>
+                ${svgIcon('circle-check', 'check-icon')}
                 <div class="day-label">${i}-kun</div>
-                <i class="${iconClass}"></i>
+                ${svgIcon(dayIcon, 'star-icon')}
                 <div class="points-label">${rewards[i-1]} ball</div>
                 ${isDay7 ? '<div class="big-bonus-label">Katta bonus!</div>' : ''}
             `;

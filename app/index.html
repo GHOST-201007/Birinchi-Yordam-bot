@@ -4,34 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Birinchi Yordam Mini App</title>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css?v=__CSS_VERSION__">
 </head>
 <body>
+    <!-- SVG ikonkalar to'plami (Lucide uslubi, 24x24, chiziqli). Tashqi so'rov yo'q. -->
+    <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+        <symbol id="i-alert-triangle" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+        <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+        <symbol id="i-bone" viewBox="0 0 24 24"><path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z"/></symbol>
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></symbol>
+        <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-6 .13 4 4 0 0 0-2.52 5.77 4 4 0 0 0 .55 6.59A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 6 .13 4 4 0 0 1 2.52 5.77 4 4 0 0 1-.55 6.59A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.6 6.5a3 3 0 0 0 .4-1.38"/><path d="M6 5.13a3 3 0 0 0 .4 1.37"/></symbol>
+        <symbol id="i-calculator" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></symbol>
+        <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+        <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+        <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M22 12h-4"/><path d="M6 12H2"/><path d="M12 6V2"/><path d="M12 22v-4"/></symbol>
+        <symbol id="i-crown" viewBox="0 0 24 24"><path d="M11.56 3.27a.5.5 0 0 1 .88 0l2.95 5.6a1 1 0 0 0 1.52.3l4.28-3.67a.5.5 0 0 1 .8.52l-2.84 10.25a1 1 0 0 1-.95.73H5.81a1 1 0 0 1-.96-.73L2.02 6.02a.5.5 0 0 1 .8-.52l4.27 3.67a1 1 0 0 0 1.52-.3z"/><path d="M5 21h14"/></symbol>
+        <symbol id="i-dizzy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 15h8"/><path d="m8 8 2 2"/><path d="m10 8-2 2"/><path d="m14 8 2 2"/><path d="m16 8-2 2"/></symbol>
+        <symbol id="i-droplet" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+        <symbol id="i-first-aid" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M12 11v6"/><path d="M9 14h6"/></symbol>
+        <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+        <symbol id="i-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.4 3 11 5 12 8c1-3 2.6-5 4.5-5a2.5 2.5 0 0 1 0 5"/></symbol>
+        <symbol id="i-glass-water" viewBox="0 0 24 24"><path d="M5.12 4.1A1 1 0 0 1 6.11 3h11.78a1 1 0 0 1 .99 1.1L17.19 20.2A2 2 0 0 1 15.2 22H8.8a2 2 0 0 1-2-1.8z"/><path d="M6 12a5 5 0 0 1 6 0 5 5 0 0 0 6 0"/></symbol>
+        <symbol id="i-heart-crack" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="m12 13-1-1 2-2-3-3 2-2"/></symbol>
+        <symbol id="i-heart-pulse" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+        <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+        <symbol id="i-person-standing" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><path d="m9 20 3-6 3 6"/><path d="m6 8 6 2 6-2"/><path d="M12 10v4"/></symbol>
+        <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+        <symbol id="i-pill" viewBox="0 0 24 24"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></symbol>
+        <symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+        <symbol id="i-rotate-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+        <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+        <symbol id="i-siren" viewBox="0 0 24 24"><path d="M7 18v-6a5 5 0 1 1 10 0v6"/><path d="M5 21a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1z"/><path d="M21 12h1"/><path d="M18.5 4.5 18 5"/><path d="M2 12h1"/><path d="M12 2v1"/><path d="m4.93 4.93.71.71"/><path d="M12 12v6"/></symbol>
+        <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
+        <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.52 2.3a.53.53 0 0 1 .96 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.13a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .29-.9l5.17-.76a2.12 2.12 0 0 0 1.6-1.16z"/></symbol>
+        <symbol id="i-stethoscope" viewBox="0 0 24 24"><path d="M11 2v2"/><path d="M5 2v2"/><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"/><path d="M8 15a6 6 0 0 0 12 0v-3"/><circle cx="20" cy="10" r="2"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+        <symbol id="i-test-tube" viewBox="0 0 24 24"><path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/><path d="M8.5 2h7"/><path d="M14.5 16h-5"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+        <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    </svg>
     <div id="app-container">
         <!-- HEADER -->
         <header class="app-header">
             <!-- Universal Back Button -->
             <button class="header-back-btn hidden" id="header-back-btn" aria-label="Orqaga">
-                <i class="fa-solid fa-arrow-left"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg>
                 <span>Orqaga</span>
             </button>
             <div class="user-info" id="user-info-container">
-                <div class="avatar" id="user-avatar"><i class="fa-solid fa-user-doctor"></i></div>
+                <div class="avatar" id="user-avatar"><svg class="icon" aria-hidden="true"><use href="#i-stethoscope"/></svg></div>
                 <div class="welcome-text">
                     <span class="greeting">Assalomu alaykum</span>
                     <span class="username" id="user-name">Salomatlik Himoyachisi</span>
-                    <span class="global-score" id="global-score" style="display:none; font-size: 0.8rem; color: #f59e0b; font-weight: 600; margin-top: 2px;"><i class="fa-solid fa-coins"></i> <span id="global-score-val">0</span> ball</span>
+                    <span class="global-score" id="global-score" style="display:none; font-size: 0.8rem; color: #f59e0b; font-weight: 600; margin-top: 2px;"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg> <span id="global-score-val">0</span> ball</span>
                 </div>
             </div>
-            <button class="theme-toggle-btn" id="theme-toggle-btn" title="Mavzuni o'zgartirish">🌙</button>
+            <button class="theme-toggle-btn" id="theme-toggle-btn" title="Mavzuni o'zgartirish" aria-label="Mavzuni o'zgartirish"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
             <div class="emergency-badge">
-                <a href="tel:103" class="emergency-btn"><i class="fa-solid fa-phone-flip"></i> 103</a>
+                <a href="tel:103" class="emergency-btn"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg> 103</a>
             </div>
         </header>
 
@@ -58,7 +100,7 @@
                     </div>
                     <button class="wheel-promo-btn" id="btn-open-wheel">
                         <span>Ochish</span>
-                        <i class="fa-solid fa-chevron-right"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
                     </button>
                 </div>
                 
@@ -75,7 +117,7 @@
                     </div>
                     <button class="wheel-promo-btn">
                         <span>Ochish</span>
-                        <i class="fa-solid fa-chevron-right"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
                     </button>
                 </div>
                 
@@ -91,7 +133,7 @@
                         <p>Cheksiz AI va maxsus imkoniyatlar!</p>
                     </div>
                     <button class="wheel-promo-btn" style="background: rgba(251, 191, 36, 0.25); color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">
-                        <i class="fa-solid fa-star"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
                         <span>VIP</span>
                     </button>
                 </div>
@@ -110,9 +152,9 @@
                 </div>
 
                 <div class="search-box">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <svg class="icon search-icon" aria-hidden="true"><use href="#i-search"/></svg>
                     <input type="text" id="disease-search-input" placeholder="Kasallik nomini kiriting (masalan: Gripp)...">
-                    <button class="clear-btn" id="search-clear-btn"><i class="fa-solid fa-xmark"></i></button>
+                    <button class="clear-btn" id="search-clear-btn"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
                 </div>
 
                 <div class="disease-list" id="disease-list-container">
@@ -177,7 +219,7 @@
                         <button class="action-btn" id="btn-calculate-water">Hisoblash</button>
 
                         <div class="calc-result" id="water-result-card" style="display: none;">
-                            <div class="water-glass-icon"><i class="fa-solid fa-glass-water-droplet"></i></div>
+                            <div class="water-glass-icon"><svg class="icon" aria-hidden="true"><use href="#i-glass-water"/></svg></div>
                             <h3 id="water-value">2.1 Litr</h3>
                             <p>Sizning kunlik suvga bo'lgan minimum ehtiyojingiz. Quyidagi holatlarda ko'proq iching:</p>
                             <ul class="water-tips">
@@ -221,7 +263,7 @@
                         <button class="action-btn" id="btn-calculate-calorie">Hisoblash</button>
 
                         <div class="calc-result" id="calorie-result-card" style="display: none; flex-direction: column; align-items: center; text-align: center;">
-                            <div class="water-glass-icon" style="color: var(--accent-orange);"><i class="fa-solid fa-fire"></i></div>
+                            <div class="water-glass-icon" style="color: var(--accent-orange);"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg></div>
                             <h3 id="calorie-value">2200 kkal</h3>
                             <p>Vaznni saqlab qolish uchun kunlik energiya ehtiyoji. Boshqa maqsadlar uchun:</p>
                             <ul class="water-tips" style="text-align: left; width: 100%;">
@@ -337,11 +379,11 @@
                 <!-- Front / Back View Switcher -->
                 <div class="body-view-controls">
                     <button class="body-view-btn active" id="btn-view-front" data-view="front">
-                        <i class="fa-solid fa-person"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>
                         <span>Oldi ko'rinish</span>
                     </button>
                     <button class="body-view-btn" id="btn-view-back" data-view="back">
-                        <i class="fa-solid fa-person-walking-arrow-right"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-repeat"/></svg>
                         <span>Orqa ko'rinish (Bel)</span>
                     </button>
                 </div>
@@ -349,7 +391,7 @@
                 <div class="body-map-card">
                     <div class="scanner-grid-bg"></div>
                     <div class="scanner-laser"></div>
-                    <div class="scanner-hud-tag top-left"><i class="fa-solid fa-crosshairs"></i> SCAN 3D</div>
+                    <div class="scanner-hud-tag top-left"><svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg> SCAN 3D</div>
                     <div class="scanner-hud-tag top-right" id="scanner-current-view">OLDI TARAFI</div>
                     <div id="body-map-container" class="body-map-svg-wrapper">
                         <!-- High Quality Anatomical SVG renders here -->
@@ -367,7 +409,7 @@
         <!-- FULL-SCREEN OVERLAY FOR DETAILS (FIRST AID & DISEASES) -->
         <div class="overlay-details" id="overlay-details">
             <div class="overlay-header">
-                <button class="close-overlay-btn" id="close-overlay-btn"><i class="fa-solid fa-chevron-left"></i> Orqaga</button>
+                <button class="close-overlay-btn" id="close-overlay-btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> Orqaga</button>
                 <h3 id="overlay-title">Sarlavha</h3>
             </div>
             <div class="overlay-body" id="overlay-body-content">
@@ -378,27 +420,27 @@
         <!-- BOTTOM NAVIGATION BAR -->
         <nav class="app-nav">
             <button class="nav-btn active" data-tab="tab-first-aid">
-                <i class="fa-solid fa-kit-medical"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-first-aid"/></svg>
                 <span>Yordam</span>
             </button>
             <button class="nav-btn" data-tab="tab-diseases">
-                <i class="fa-solid fa-briefcase-medical"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>
                 <span>Kasallik</span>
             </button>
             <button class="nav-btn" data-tab="tab-health">
-                <i class="fa-solid fa-heart-pulse"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-heart-pulse"/></svg>
                 <span>Sog'liq</span>
             </button>
             <button class="nav-btn" data-tab="tab-quiz">
-                <i class="fa-solid fa-brain"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg>
                 <span>Test</span>
             </button>
             <button class="nav-btn" data-tab="tab-history">
-                <i class="fa-solid fa-chart-line"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>
                 <span>Tarix</span>
             </button>
             <button class="nav-btn" data-tab="tab-body-map">
-                <i class="fa-solid fa-child-reaching"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-person-standing"/></svg>
                 <span>Tana</span>
             </button>
         </nav>
@@ -411,19 +453,19 @@
                         <span class="modal-organ-icon" id="modal-organ-icon">🩺</span>
                         <h3 id="modal-title">A'zo nomi</h3>
                     </div>
-                    <span class="close-btn" id="modal-close"><i class="fa-solid fa-xmark"></i></span>
+                    <span class="close-btn" id="modal-close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></span>
                 </div>
                 <div class="modal-body">
                     <p class="modal-subtitle">Ushbu sohadagi eng ko'p uchraydigan holatlar:</p>
                     <ul id="modal-diseases-list" class="body-disease-list"></ul>
                 </div>
                 <div class="modal-disclaimer">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <svg class="icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
                     <span>Bu umumiy ma'lumot, aniq tashxis emas. Shifokor bilan maslahat qiling.</span>
                 </div>
                 <div class="modal-footer">
                     <button id="ai-consult-btn" class="primary-btn ai-pulse-btn">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>
                         🤖 AI konsultantga o'tish
                     </button>
                 </div>
@@ -435,7 +477,7 @@
         <div id="wheel-modal" class="modal wheel-fullscreen-modal hidden" style="display: none;">
             <canvas id="wheel-confetti-canvas" class="wheel-confetti-canvas"></canvas>
             <div class="wheel-modal-inner">
-                <button class="wheel-close-btn" id="wheel-modal-close" aria-label="Yopish"><i class="fa-solid fa-xmark"></i></button>
+                <button class="wheel-close-btn" id="wheel-modal-close" aria-label="Yopish"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
                 
                 <div class="wheel-modal-header">
                     <div class="wheel-header-badge">
@@ -464,7 +506,7 @@
                         <!-- Glowing Central Spin Button -->
                         <button class="wheel-center-btn" id="btn-spin-wheel">
                             <div class="wheel-center-btn-inner">
-                                <i class="fa-solid fa-rotate spin-icon-center"></i>
+                                <svg class="icon spin-icon-center" aria-hidden="true"><use href="#i-rotate-cw"/></svg>
                                 <span class="wheel-center-text">AYLANTIR</span>
                             </div>
                         </button>
@@ -480,7 +522,7 @@
     <div id="daily-bonus-modal" class="modal hidden">
         <div class="modal-content" style="background: #111827; max-width: 400px; padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); overflow: visible;">
             <div class="modal-header" style="border: none; padding: 0; margin-bottom: 20px;">
-                <span class="close-btn" id="daily-bonus-close" style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.1); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; z-index: 10;"><i class="fa-solid fa-xmark"></i></span>
+                <span class="close-btn" id="daily-bonus-close" style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.1); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; z-index: 10;"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></span>
             </div>
             <div class="modal-body" style="text-align: center; padding: 0;">
                 <div style="font-size: 3rem; margin-top: -50px; text-shadow: 0 10px 20px rgba(0,0,0,0.5);">🎁</div>
@@ -489,7 +531,7 @@
                 
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="fa-solid fa-star" style="color: #f59e0b; font-size: 1.2rem;"></i>
+                        <svg class="icon" aria-hidden="true" style="color: #f59e0b; font-size: 1.2rem;"><use href="#i-star"/></svg>
                         <span style="color: rgba(255,255,255,0.8); font-weight: 500;">Sizning hozirgi ballaringiz</span>
                     </div>
                     <span id="daily-bonus-current-score" style="color: #f59e0b; font-size: 1.3rem; font-weight: 700;">0</span>
@@ -504,7 +546,7 @@
                 </div>
                 
                 <div style="background: rgba(59, 130, 246, 0.1); border-radius: 12px; padding: 15px; display: flex; align-items: flex-start; gap: 12px; text-align: left; margin-bottom: 20px;">
-                    <i class="fa-solid fa-circle-info" style="color: #3b82f6; margin-top: 3px;"></i>
+                    <svg class="icon" aria-hidden="true" style="color: #3b82f6; margin-top: 3px;"><use href="#i-info"/></svg>
                     <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; line-height: 1.4; margin: 0;">Seriyani uzib qo'ymang! Har kuni kirganingizda bonus olish imkoniyatingiz bor.</p>
                 </div>
                 
@@ -519,7 +561,7 @@
     <div id="premium-modal" class="modal hidden">
         <div class="pm-sheet">
             <button class="pm-close" id="premium-modal-close" aria-label="Yopish">
-                <i class="fa-solid fa-xmark"></i>
+                <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
             </button>
             <div class="pm-crown">👑</div>
             <h2 class="pm-title">Premium Tariflar</h2>
@@ -536,7 +578,7 @@
                     <p class="pm-desc">Kuniga 15 AI so'rov &bull; Ovozli xabar &bull; Barcha funksiyalar</p>
                 </div>
                 <button class="pm-btn pm-btn--blue" onclick="buyPremium('buy_pro_7')">
-                    <i class="fa-solid fa-star"></i>
+                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
                     <span>50</span>
                 </button>
             </div>
@@ -552,7 +594,7 @@
                     <p class="pm-desc">Kuniga 30 AI so'rov &bull; Ustunlik &bull; Barcha imkoniyatlar</p>
                 </div>
                 <button class="pm-btn pm-btn--gold" onclick="buyPremium('buy_plus_30')">
-                    <i class="fa-solid fa-star"></i>
+                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
                     <span>150</span>
                 </button>
             </div>
@@ -569,7 +611,7 @@
                     <p class="pm-desc">100+ AI so'rov &bull; VIP xizmat &bull; Cheksiz imkoniyatlar</p>
                 </div>
                 <button class="pm-btn pm-btn--purple" onclick="buyPremium('buy_ultra_30')">
-                    <i class="fa-solid fa-star"></i>
+                    <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
                     <span>300</span>
                 </button>
             </div>

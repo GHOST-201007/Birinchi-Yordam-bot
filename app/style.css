@@ -1,74 +1,124 @@
 /* Custom Styling for Telegram Mini App */
+/* ═══════════════════════════════════════════════════════════════════
+   DIZAYN TOKENLARI (4.2) — "@wallet uslubi, shifokorlarcha"
+   Yagona :root va yagona body.dark-mode. Ekranlar faqat shu tokenlardan foydalanadi.
+   ═══════════════════════════════════════════════════════════════════ */
 :root {
-    /* Yagona :root — avvalgi ikki blokdan birlashtirilgan (keyingisi qiymati yutadi). */
-    /* CSS Variables — Light Mode */
-    --bg-color: #f0fbf9; /* Soft mint background matching image */
-    --text-color: #1a2f2e; /* Dark slate/teal text */
-    --hint-color: #7b9996; /* Soft teal-gray */
-    --link-color: #159b8a;
-    --secondary-bg-color: #ffffff;
-    /* Brand Colors */
-    --color-primary: #159b8a; /* Teal primary from image */
-    --color-primary-light: #2cc4b2;
-    /* Map legacy vars to brand */
-    --button-color: var(--color-primary);
-    --button-text-color: #ffffff;
-    --color-surface: #ffffff;
-    --color-text-primary: var(--text-color);
-    --color-text-muted: var(--hint-color);
-    /* Accent colors */
-    --accent-red: #ff3b30;
-    --accent-red-bg: rgba(255, 59, 48, 0.1);
-    --accent-green: #34c759;
-    --accent-green-bg: rgba(52, 199, 89, 0.1);
-    --accent-orange: #ff9500;
-    --accent-orange-bg: rgba(255, 149, 0, 0.1);
-    --accent-blue: #007aff;
-    --accent-blue-bg: rgba(0, 122, 255, 0.1);
-    /* Shadows & Radii */
-    --card-shadow: 0 8px 24px rgba(21, 155, 138, 0.08);
-    --border-radius-sm: 8px;
-    --border-radius-md: 20px;
-    --border-radius-lg: 24px;
-    /* Yetishmayotgan o'zgaruvchilar (scratch/overrides.css dan tiklandi).
-    Ularsiz 103 tugmasi foni, oraliqlar va burchaklar ishlamay qolgan edi. */
-    --color-error: #ff3b30;
+    --bg:        #F2F4F7;
+    --surface:   #FFFFFF;
+    --text:      #0F1B2D;
+    --text-2:    #5E6B7E;
+    --separator: rgba(15, 27, 45, 0.08);
+
+    --primary:        #0A84C6;   /* klinik ko'k */
+    --primary-soft:   rgba(10, 132, 198, 0.10);
+    --teal:           #14A39A;   /* sog'liq / ijobiy */
+    --teal-soft:      rgba(20, 163, 154, 0.10);
+    --danger:         #E5484D;   /* faqat favqulodda */
+    --danger-soft:    rgba(229, 72, 77, 0.10);
+    --warning:        #F5A524;   /* ball / bonus */
+    --warning-soft:   rgba(245, 165, 36, 0.12);
+    --on-accent:      #FFFFFF;
+
+    --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px;
+
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+    --fs-caption: 12px; --fs-body: 15px; --fs-title: 17px; --fs-h2: 22px; --fs-display: 34px;
+
+    --shadow-card: 0 1px 2px rgba(15, 27, 45, .04), 0 4px 16px rgba(15, 27, 45, .04);
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    color-scheme: light;
+}
+
+/* Telegram yorug' mavzusi faol bo'lsa (app.js: body.tg-light) — uning ranglari, bo'lmasa yuqoridagi fallback */
+body.tg-light {
+    --bg:      var(--tg-theme-secondary-bg-color, #F2F4F7);
+    --surface: var(--tg-theme-bg-color, #FFFFFF);
+    --text:    var(--tg-theme-text-color, #0F1B2D);
+    --text-2:  var(--tg-theme-hint-color, #5E6B7E);
+}
+
+body.dark-mode {
+    --bg: #0B0F14;
+    --surface: #151B23;
+    --text: #E8EEF5;
+    --text-2: #8592A3;
+    --separator: rgba(255, 255, 255, 0.08);
+    --primary: #3FA9E8;
+    --primary-soft: rgba(63, 169, 232, 0.14);
+    --teal: #2EC4B6;
+    --teal-soft: rgba(46, 196, 182, 0.14);
+    --danger: #FF6B6B;
+    --danger-soft: rgba(255, 107, 107, 0.14);
+    --warning: #F7B955;
+    --warning-soft: rgba(247, 185, 85, 0.14);
+    --shadow-card: none;
+    color-scheme: dark;
+}
+
+/* ESKI o'zgaruvchi nomlari — yangi tokenlarga bog'langan. :root VA body da e'lon qilinadi, shunda
+   body.dark-mode / body.tg-light dagi tokenlar ularda ham to'g'ri hisoblanadi. Ekranlar qayta yozilgach olib tashlanadi. */
+:root, body {
+    --bg-color: var(--bg);
+    --secondary-bg-color: var(--surface);
+    --color-surface: var(--surface);
+    --text-color: var(--text);
+    --hint-color: var(--text-2);
+    --link-color: var(--primary);
+    --color-primary: var(--primary);
+    --color-primary-light: var(--primary-soft);
+    --color-primary-dark: var(--primary);
+    --button-color: var(--primary);
+    --button-text-color: var(--on-accent);
+    --color-text-primary: var(--text);
+    --color-text-muted: var(--text-2);
+    --accent-red: var(--danger);
+    --accent-red-bg: var(--danger-soft);
+    --accent-green: var(--teal);
+    --accent-green-bg: var(--teal-soft);
+    --accent-orange: var(--warning);
+    --accent-orange-bg: var(--warning-soft);
+    --accent-blue: var(--primary);
+    --accent-blue-bg: var(--primary-soft);
+    --card-shadow: var(--shadow-card);
+    --shadow-sm: var(--shadow-card);
+    --shadow-md: var(--shadow-card);
+    --shadow-lg: var(--shadow-card);
+    --border-radius-sm: var(--r-sm);
+    --border-radius-md: var(--r-md);
+    --border-radius-lg: var(--r-lg);
+    --radius-sm: var(--r-sm);
+    --radius-md: var(--r-lg);
+    --radius-lg: var(--r-xl);
+    --color-error: var(--danger);
     --space-1: 6px;
     --space-2: 12px;
     --space-3: 18px;
     --space-4: 24px;
     --space-10: 100px;
-    --radius-sm: 12px;
-    --radius-md: 20px;
-    --radius-lg: 28px;
-    --shadow-md: 0 8px 16px rgba(15, 118, 110, 0.05);
-    --shadow-lg: 0 16px 32px rgba(15, 118, 110, 0.08);
-    --color-primary-dark: #0f7a6c;
-    --shadow-sm: 0 4px 12px rgba(21, 155, 138, 0.05);
 }
 
-/* Dark mode overrides – keep contrast */
-/* Yagona qorong'u rejim bloki — avvalgi ikki blokdan birlashtirilgan. */
-body.dark-mode {
-    --shadow-md: 0 8px 16px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.4);
-    --bg-color: #0b1816;
-    --text-color: #e2f1ef;
-    --hint-color: #648581;
-    --link-color: #4da6ff;
-    --button-color: #1eb5a2;
-    --button-text-color: #ffffff;
-    --secondary-bg-color: #122825;
-    --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    --accent-red-bg: rgba(255, 59, 48, 0.15);
-    --accent-green-bg: rgba(52, 199, 89, 0.15);
-    --accent-orange-bg: rgba(255, 149, 0, 0.15);
-    --accent-blue-bg: rgba(0, 122, 255, 0.15);
-    --color-surface: #122825;
-    --color-primary: #1eb5a2;
-    --color-primary-dark: #2cc4b2;
-    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.3);
+/* ── Ikonkalar (inline SVG sprite) ── */
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.icon {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: -0.15em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
+.icon--fill { fill: currentColor; }
+.icon-spin { animation: icon-spin 0.9s linear infinite; }
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+
+/* Raqamlar (ball, BMI, taymer, narx) */
+.tabular { font-variant-numeric: tabular-nums; }
 
 /* Smooth transition for theme switch */
 body, #app-container, .app-header, .app-nav, .overlay-details {
@@ -79,7 +129,7 @@ body, #app-container, .app-header, .app-nav, .overlay-details {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font);
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -373,7 +423,7 @@ body.dark-mode .header-back-btn {
     color: var(--hint-color);
 }
 
-.disease-item i {
+.disease-item .icon {
     color: var(--hint-color);
     font-size: 14px;
 }
@@ -588,7 +638,7 @@ body.dark-mode .header-back-btn {
     transition: color 0.2s;
 }
 
-.nav-btn i { font-size: 20px; }
+.nav-btn .icon { font-size: 20px; }
 
 .nav-btn.active { color: var(--color-primary); }
 
@@ -953,7 +1003,7 @@ body.dark-mode .header-back-btn {
     fill: #475569;
     font-size: 10px;
     font-weight: 700;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font);
     text-anchor: middle;
     pointer-events: none;
     transition: fill 0.25s ease;
@@ -968,7 +1018,7 @@ body.dark-mode .header-back-btn {
     fill: #94a3b8;
     font-size: 9px;
     font-weight: 600;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font);
     text-anchor: middle;
     pointer-events: none;
     opacity: 0.7;
@@ -1594,7 +1644,7 @@ body:not(.dark-mode) .part-label-bg {
     fill: #f0fdfa;
     font-size: 9.5px;
     font-weight: 700;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font);
     text-anchor: middle;
     pointer-events: none;
     letter-spacing: 0.2px;
@@ -1868,7 +1918,7 @@ body.dark-mode .body-disease-modal::before {
     flex-shrink: 0;
 }
 
-.modal-disclaimer i {
+.modal-disclaimer .icon {
     color: #f59e0b;
     font-size: 13px;
     margin-top: 2px;
@@ -2601,7 +2651,7 @@ body.dark-mode .body-disease-modal::before {
     transition: opacity .15s, transform .1s;
 }
 .pm-btn:active { opacity: .85; transform: scale(.95); }
-.pm-btn i { color: #fbbf24; font-size: .85em; }
+.pm-btn .icon { color: #fbbf24; font-size: .85em; }
 .pm-btn--blue   { background: #3b82f6; }
 .pm-btn--gold   { background: #f59e0b; }
 .pm-btn--purple { background: #8b5cf6; }
@@ -2841,15 +2891,17 @@ body.dark-mode .theme-toggle-btn {
 
 /* Chevron arrow */
 .first-aid-card::after {
-    content: '\f054'; /* fa-chevron-right */
-    font-family: 'Font Awesome 6 Free';
-    font-weight: 900;
+    /* chevron-right: FontAwesome o'rniga SVG maska (tashqi shrift yo'q) */
+    content: '';
     position: absolute;
     top: 24px;
     right: 16px;
-    font-size: 12px;
-    color: var(--hint-color);
+    width: 12px;
+    height: 12px;
+    background-color: var(--hint-color);
     opacity: 0.5;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .first-aid-card h3 {
@@ -2901,7 +2953,7 @@ body.dark-mode .theme-toggle-btn {
     border: none !important;
 }
 
-.nav-btn i { 
+.nav-btn .icon { 
     font-size: 20px !important; 
     transition: all 0.2s ease !important; 
 }
@@ -2913,7 +2965,7 @@ body.dark-mode .theme-toggle-btn {
 .nav-btn.active { 
     color: var(--color-primary) !important; 
 }
-.nav-btn.active i {
+.nav-btn.active .icon {
     transform: translateY(-2px);
 }
 
