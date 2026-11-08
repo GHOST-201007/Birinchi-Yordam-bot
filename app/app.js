@@ -3094,6 +3094,22 @@ function initWheelOfFortune() {
         };
     }
 
+    // Aylanish tugagan, lekin "Mukofotni olish" bosilmagan sovrin. Oyna yopilganda (X / BackButton) shu sovrin
+    // serverdan BIR MARTA olinadi. Ikkinchi marta yopish yoki qayta ochish hech narsa qilmaydi (qiymat null).
+    // Server ham idempotent: claim faqat pending_spin_prize bo'lsa va 24 soatlik limit ichida bo'lmasa beriladi.
+    let unclaimedPrize = null;
+
+    function claimUnclaimedOnClose() {
+        if (unclaimedPrize === null) return;
+        const p = unclaimedPrize;
+        unclaimedPrize = null;
+        if (wheelApiActive) {
+            claimSpinViaApi(p, { toast: true });     // fonda; natija toast bilan
+        } else {
+            openSpinDeepLink(p);                     // ZAXIRA: bot orqali (API yo'q)
+        }
+    }
+
     // Wheel modal open — push navigation
     const _wheelOpen = openBtn.onclick;
     function pushWheelNav() {
@@ -3104,6 +3120,7 @@ function initWheelOfFortune() {
                     modal.classList.add('hidden');
                     modal.style.display = 'none';
                     AppNavigation.pop();
+                    claimUnclaimedOnClose();
                 }
             }
         });
@@ -3130,6 +3147,7 @@ function initWheelOfFortune() {
             modal.classList.add('hidden');
             modal.style.display = 'none';
             AppNavigation.pop();
+            claimUnclaimedOnClose();
         }
     };
 
@@ -3225,6 +3243,7 @@ function initWheelOfFortune() {
 
         document.getElementById('btn-confirm-spin').onclick = () => {
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+            unclaimedPrize = null;
             if (wheelApiActive) {
                 claimSpinViaApi(winningPoints);
             } else {
@@ -3298,12 +3317,14 @@ function initWheelOfFortune() {
             return;
         }
         // Server hali bermagan (ulanish muammosi). Server ikki marta bermaydi, shuning uchun qayta urinish xavfsiz
+        unclaimedPrize = winningPoints;              // foydalanuvchi yopib ketsa — yopishda yana bir urinish
         renderWheelCard("⚠️", "Ulanishda xatolik", "Ball hali qo'shilmadi. Qayta urinib ko'ring.",
-            "Qayta urinish", () => claimSpinViaApi(winningPoints));
+            "Qayta urinish", () => { unclaimedPrize = null; claimSpinViaApi(winningPoints); });
     }
 
     // "Hisobga qo'shish" bosilganda ballni serverda hisobga qo'shadi (botga chiqmasdan, tg.close() yo'q)
-    async function claimSpinViaApi(winningPoints) {
+    async function claimSpinViaApi(winningPoints, opts) {
+        const toast = (msg) => { if (opts && opts.toast) showToast(msg); };
         const prevScore = AppState.data ? AppState.data.score : null;
         renderWheelCard("⏳", "Hisobga qo'shilmoqda...", "");
         let r;
@@ -3321,10 +3342,12 @@ function initWheelOfFortune() {
 
         if (!r.ok) {
             renderWheelCard("ℹ️", "Ball qo'shilmadi", r.message || "Mukofot allaqachon olingan.");
+            toast(r.message || "Mukofot allaqachon olingan.");
             return;
         }
         if (r.is_super) {
             renderSuperPrizeCard();
+            toast("SUPER PRIZ: Premium Plus uchun 50% chegirma faollashtirildi");
         } else {
             // Ball soni SERVERDAN: sarlavhada oldingi/yangi score farqi, matnda server xabari (r.message — server
             // uni allaqachon oddiy matnga aylantirgan). Klientdagi winningPoints ko'rsatilmaydi. renderWheelCard textContent ishlatadi.
@@ -3332,6 +3355,7 @@ function initWheelOfFortune() {
             renderWheelCard("🎉",
                 gained > 0 ? `+${gained} ball yutdingiz!` : "Ball hisobingizga qo'shildi",
                 r.message || "✅ Ball hisobingizga qo'shildi");
+            toast(gained > 0 ? `+${gained} ball hisobingizga qo'shildi` : "Ball hisobingizga qo'shildi");
         }
     }
 
@@ -3415,6 +3439,7 @@ function initWheelOfFortune() {
             // Confetti — faqat SUPER priz'da
             if (winningPoints === 0) fireConfetti();
 
+            unclaimedPrize = winningPoints;
             renderSpinConfirmCard(winningPoints);
         }, spinMs + 100);
     };
