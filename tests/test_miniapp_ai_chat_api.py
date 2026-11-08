@@ -57,6 +57,7 @@ class AiChatTestBase(ApiTestBase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.q = FakeQuota()
+        self.now = [1000.0]                 # soxta soat (AiChatThrottle) — har chat() oldidan oldinga suriladi
         self.ai = mock.AsyncMock(return_value="**Sovuq suv** bilan sovuting.\n- 103 ga qo'ng'iroq qiling")
         db = bot.database
         patches = [
@@ -67,14 +68,15 @@ class AiChatTestBase(ApiTestBase):
             mock.patch.object(db, "get_ai_quota", side_effect=self.q.quota),
             mock.patch.object(db, "get_medical_profile", return_value=None),
             mock.patch.object(bot, "get_gemini_response", self.ai),
-            mock.patch.object(bot, "ai_chat_rate_limiter", bot.ApiRateLimiter(limit=bot.AI_CHAT_RATE_LIMIT)),
+            mock.patch.object(bot, "ai_chat_throttle", bot.AiChatThrottle(clock=lambda: self.now[0])),
         ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
         bot._active_ai_users.discard(USER_ID)
 
-    async def chat(self, message="Kuyib qoldim, nima qilay?", **extra):
+    async def chat(self, message="Kuyib qoldim, nima qilay?", advance=11.0, **extra):
+        self.now[0] += advance                # standart: cheklovlarga tegmaydigan oraliq
         body = {"message": message, **extra}
         return await self.post(PATH, extra=body)
 
@@ -238,7 +240,7 @@ class AiChatQuotaTest(AiChatTestBase):
             resp, data = await self.chat()
         finally:
             bot._active_ai_users.discard(USER_ID)
-        self.assertEqual((resp.status, data["error"]), (503, "busy"))
+        self.assertEqual((resp.status, data["error"], data["reason"]), (409, "busy", "inflight"))
         self.assertEqual(self.q.used, 0)
         self.ai.assert_not_called()
 
@@ -248,7 +250,7 @@ class AiChatSafetyTest(AiChatTestBase):
         self.q.daily_limit = 100
         statuses = []
         for _ in range(7):
-            resp, data = await self.chat()
+            resp, data = await self.chat(advance=2.0)
             statuses.append(resp.status)
         self.assertEqual(statuses, [200] * 6 + [429])
         self.assertEqual(data["ok"], False)
@@ -280,6 +282,81 @@ class AiChatSafetyTest(AiChatTestBase):
         with mock.patch.object(bot.database, "get_medical_profile", return_value=("A+", 30, None, None, None, "penitsillin")):
             await self.chat()
         self.assertIn("Dorilarga allergiyalar: penitsillin", self.ai.call_args.args[0])
+
+
+class AiChatThrottleTest(AiChatTestBase):
+    """Soniyalik cheklov, uzluksiz bosishda 30 s blok, daqiqalik limit, bir vaqtda 1 ta so'rov."""
+
+    async def test_second_request_within_a_second_rejected(self):
+        resp, _ = await self.chat()
+        self.assertEqual(resp.status, 200)
+        resp, data = await self.chat(advance=0.3)
+        self.assertEqual(resp.status, 429)
+        self.assertEqual((data["error"], data["reason"], data["retry_after"]), ("busy", "rate", 1))
+        self.assertTrue(data["message"].startswith("Juda tez yozyapsiz"))
+        self.assertEqual(resp.headers.get("Retry-After"), "1")
+        self.assertEqual((self.ai.call_count, self.q.used), (1, 1))            # kvota bir marta
+        resp, _ = await self.chat(advance=1.0)                                    # 1 s o'tgach — ruxsat
+        self.assertEqual(resp.status, 200)
+
+    async def test_continuous_presses_block_for_30_seconds(self):
+        await self.chat()
+        codes = []
+        for _ in range(3):                                                        # uzluksiz bosish
+            resp, data = await self.chat(advance=0.2)
+            codes.append((resp.status, data.get("retry_after")))
+        self.assertEqual(codes[-1], (429, 30))
+        self.assertIn("30 soniyadan", data["message"])
+        resp, data = await self.chat(advance=5.0)                                 # hali blokda
+        self.assertEqual((resp.status, data["retry_after"]), (429, 25))
+        resp, _ = await self.chat(advance=26.0)                                   # 31 s o'tdi
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(self.ai.call_count, 2)
+
+    async def test_minute_limit_blocks(self):
+        self.q.daily_limit = 100
+        for _ in range(6):
+            resp, _ = await self.chat(advance=2.0)
+            self.assertEqual(resp.status, 200)
+        resp, data = await self.chat(advance=2.0)
+        self.assertEqual((resp.status, data["retry_after"]), (429, 30))
+        resp, data = await self.chat(advance=60.0)                                # blok va daqiqa oynasi o'tdi
+        self.assertEqual(resp.status, 200)
+
+    async def test_only_one_request_in_flight_quota_once(self):
+        gate = asyncio.Event()
+
+        async def slow(prompt):
+            await gate.wait()
+            return "Javob"
+        with mock.patch.object(bot, "get_gemini_response", slow):
+            first = asyncio.ensure_future(self.chat())
+            for _ in range(50):                                                   # birinchi so'rov AI ga yetguncha
+                await asyncio.sleep(0.01)
+                if USER_ID in bot._active_ai_users:
+                    break
+            self.assertIn(USER_ID, bot._active_ai_users)
+            resp2, data2 = await self.chat(advance=2.0)                           # javob kelguncha ikkinchisi
+            gate.set()
+            resp1, data1 = await first
+        self.assertEqual((resp2.status, data2["reason"]), (409, "inflight"))
+        self.assertIn("javob tayyorlanmoqda", data2["message"].lower())
+        self.assertEqual(resp1.status, 200)
+        self.assertEqual(self.q.used, 1)                                          # kvota bir marta yechildi
+        self.assertNotIn(USER_ID, bot._active_ai_users)
+
+    async def test_repeated_presses_while_waiting_block(self):
+        bot._active_ai_users.add(USER_ID)
+        try:
+            results = []
+            for _ in range(3):
+                resp, data = await self.chat(advance=2.0)
+                results.append((resp.status, data.get("reason"), data.get("retry_after")))
+        finally:
+            bot._active_ai_users.discard(USER_ID)
+        self.assertEqual(results[:2], [(409, "inflight", None)] * 2)
+        self.assertEqual(results[2], (429, "rate", 30))                          # 3-urinish — 30 s blok
+        self.assertEqual(self.q.used, 0)
 
 
 class AiQuotaReadTest(unittest.TestCase):

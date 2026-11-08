@@ -4765,7 +4765,74 @@ class ApiRateLimiter:
 
 api_rate_limiter = ApiRateLimiter()
 AI_CHAT_RATE_LIMIT = 6           # /api/ai/chat: har user_id uchun daqiqasiga
-ai_chat_rate_limiter = ApiRateLimiter(limit=AI_CHAT_RATE_LIMIT)
+AI_CHAT_MIN_INTERVAL = 1.0       # soniya: qabul qilingan so'rovlar orasida kamida
+AI_CHAT_STRIKES = 3              # shuncha rad etilgan urinish ...
+AI_CHAT_STRIKE_WINDOW = 10.0     # ... shu soniya ichida bo'lsa (uzluksiz bosish) —
+AI_CHAT_BLOCK_SECONDS = 30       # qisqa blok
+
+
+class AiChatThrottle:
+    """/api/ai/chat uchun foydalanuvchi bo'yicha cheklov (in-memory, event loop ichida chaqiriladi).
+    * soniyada: qabul qilingan so'rovlar orasida kamida AI_CHAT_MIN_INTERVAL;
+    * daqiqasiga AI_CHAT_RATE_LIMIT ta — oshsa darhol AI_CHAT_BLOCK_SECONDS blok;
+    * rad etilgan urinishlar ("strike", javob kutilayotganda qayta bosish ham) AI_CHAT_STRIKE_WINDOW ichida
+      AI_CHAT_STRIKES ga yetsa — AI_CHAT_BLOCK_SECONDS blok.
+    check() 0 qaytarsa ruxsat, aks holda necha soniyadan keyin urinish mumkin."""
+    CLEANUP_EVERY = 500
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self._last = {}
+        self._hits = {}
+        self._strikes = {}
+        self._blocked = {}
+        self._calls = 0
+
+    def _cleanup(self, now):
+        self._calls += 1
+        if self._calls < self.CLEANUP_EVERY:
+            return
+        self._calls = 0
+        for uid in list(self._last):
+            if now - self._last[uid] > 60 and self._blocked.get(uid, 0) <= now:
+                for d in (self._last, self._hits, self._strikes, self._blocked):
+                    d.pop(uid, None)
+
+    def _add_strike(self, user_id, now) -> int:
+        strikes = [t for t in self._strikes.get(user_id, ()) if t > now - AI_CHAT_STRIKE_WINDOW] + [now]
+        if len(strikes) >= AI_CHAT_STRIKES:
+            self._strikes[user_id] = []
+            self._blocked[user_id] = now + AI_CHAT_BLOCK_SECONDS
+            return AI_CHAT_BLOCK_SECONDS
+        self._strikes[user_id] = strikes
+        return 0
+
+    def check(self, user_id) -> int:
+        now = self.clock()
+        self._cleanup(now)
+        until = self._blocked.get(user_id, 0)
+        if now < until:
+            return max(1, math.ceil(until - now))
+        hits = [t for t in self._hits.get(user_id, ()) if t > now - 60]
+        if len(hits) >= AI_CHAT_RATE_LIMIT:                       # daqiqalik limit — darhol blok
+            self._hits[user_id] = hits
+            self._strikes[user_id] = []
+            self._blocked[user_id] = now + AI_CHAT_BLOCK_SECONDS
+            return AI_CHAT_BLOCK_SECONDS
+        last = self._last.get(user_id)
+        if last is not None and now - last < AI_CHAT_MIN_INTERVAL:   # soniyalik cheklov
+            return self._add_strike(user_id, now) or max(1, math.ceil(AI_CHAT_MIN_INTERVAL - (now - last)))
+        hits.append(now)
+        self._hits[user_id] = hits
+        self._last[user_id] = now
+        return 0
+
+    def strike(self, user_id) -> int:
+        """Javob kutilayotganda qayta yuborish — rad etiladi va "strike" sanaladi."""
+        return self._add_strike(user_id, self.clock())
+
+
+ai_chat_throttle = AiChatThrottle()
 
 
 def _api_json(data: dict, status: int = 200, headers: dict | None = None) -> web.Response:
@@ -4949,7 +5016,8 @@ AI_ERRORS = {
     "forbidden": (403, "Mini appni Telegram ichida oching."),
     "limit": (429, "Bugungi AI so'rovlar limiti tugadi."),
     "limit_free": (429, "Bepul AI savolingiz ishlatildi. Davom etish uchun Premium oling."),
-    "rate": (429, "Juda tez yozyapsiz. Bir daqiqadan so'ng qayta urinib ko'ring."),
+    "rate": (429, "Juda tez yozyapsiz. Birozdan so'ng qayta urinib ko'ring."),
+    "inflight": (409, "Oldingi savolingizga javob tayyorlanmoqda. Javobni kuting."),
     "busy": (503, "Hozir band, qayta urinib ko'ring."),
     "server": (500, "Xatolik yuz berdi. Qayta urinib ko'ring."),
 }
@@ -4990,9 +5058,17 @@ AI_CONTEXT_LABELS = {"body_part": _load_body_part_labels(), "condition": _load_c
 AI_CONTEXT_PREFIX = {"body_part": "tana qismi", "condition": "holat"}
 
 
+def _ai_rate_error(retry_after: int) -> web.Response:
+    """Juda tez: necha soniyadan keyin urinish mumkinligi bilan (Retry-After va retry_after)."""
+    message = (f"Juda tez yozyapsiz. {retry_after} soniyadan so'ng qayta urinib ko'ring."
+               if retry_after > 1 else AI_ERRORS["rate"][1])
+    return _api_json({"ok": False, "error": "busy", "reason": "rate", "message": message, "retry_after": retry_after},
+                     429, {"Retry-After": str(retry_after)})
+
+
 def _ai_chat_error(code: str, headers: dict | None = None, extra: dict | None = None) -> web.Response:
     status, message = AI_ERRORS[code]
-    public = "limit" if code in ("limit", "limit_free") else ("busy" if code == "rate" else code)
+    public = "limit" if code in ("limit", "limit_free") else ("busy" if code in ("rate", "inflight") else code)
     return _api_json({"ok": False, "error": public, "message": message, **(extra or {})}, status, headers)
 
 
@@ -5061,18 +5137,22 @@ async def api_ai_chat(request: web.Request) -> web.Response:
         if banned:
             result = "forbidden"
             return _ai_chat_error("forbidden")
-        if not ai_chat_rate_limiter.allow(user_id):
+        wait = ai_chat_throttle.check(user_id)          # soniyalik / daqiqalik cheklov, uzluksiz bosishda blok
+        if wait:
             result = "rate"
-            return _ai_chat_error("rate", {"Retry-After": str(int(API_RATE_WINDOW))})
+            return _ai_rate_error(wait)
         parsed = _ai_validate(request["api_payload"])
         if parsed is None:
             result = "bad_request"
             return _ai_chat_error("bad_request")
         message, history, context_label = parsed
 
+        # Bir vaqtda faqat 1 ta so'rov: javob kelguncha ikkinchisi rad etiladi (kvota yechilmaydi).
+        # Tekshirish va qo'shish orasida await yo'q — event loop ichida atomar.
         if user_id in _active_ai_users:                 # bot yoki boshqa oynada javob kutilmoqda
-            result = "busy"
-            return _ai_chat_error("busy")
+            result = "inflight"
+            wait = ai_chat_throttle.strike(user_id)
+            return _ai_rate_error(wait) if wait else _ai_chat_error("inflight", extra={"reason": "inflight"})
         _active_ai_users.add(user_id)
         active = True
 
