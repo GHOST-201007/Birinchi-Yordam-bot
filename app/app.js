@@ -206,13 +206,27 @@ function setGlobalScore(value) {
     const scoreValEl = document.getElementById('global-score-val');
     if (scoreEl && scoreValEl && value !== null && value !== undefined) {
         scoreValEl.textContent = String(value);
-        scoreEl.style.display = 'inline-block';
+        scoreEl.hidden = false;
+    }
+}
+
+// Headerdagi Premium ko'rsatkichi (/api/state: is_premium, premium_type)
+const PREMIUM_TIER_NAMES = { pro: 'Premium Pro', plus: 'Premium Plus', ultra: 'Premium Ultra' };
+function setPremiumBadge(s) {
+    const el = document.getElementById('hdr-premium');
+    const nameEl = document.getElementById('hdr-premium-name');
+    if (!el || !nameEl) return;
+    if (s && s.is_premium) {
+        nameEl.textContent = PREMIUM_TIER_NAMES[s.premium_type] || 'Premium';
+        el.hidden = false;
+    } else {
+        el.hidden = true;
     }
 }
 
 // Mini app ochilganda (menyu tugmasidan ham — URL'da hech narsa bo'lmaydi) ball serverdan olinadi
 document.addEventListener('DOMContentLoaded', () => {
-    getAppState(60000).then((s) => { if (s) setGlobalScore(s.score); });
+    getAppState(60000).then((s) => { if (s) { setGlobalScore(s.score); setPremiumBadge(s); } });
 });
 
 if (tg) {
@@ -237,14 +251,23 @@ const AppNavigation = (function () {
         return backBtn;
     }
 
+    // Telegram ichida o'z tugmamiz o'rniga tg.BackButton (stek bo'sh bo'lmasa ko'rinadi)
+    function tgBackButton() {
+        return (tg && tg.BackButton) ? tg.BackButton : null;
+    }
+
     function updateBtn() {
         const btn = getBackBtn();
-        if (!btn) return;
-        if (stack.length > 0) {
-            btn.classList.remove('hidden');
-        } else {
-            btn.classList.add('hidden');
+        const tgBtn = tgBackButton();
+        if (tgBtn) {
+            try {
+                if (stack.length > 0) tgBtn.show(); else tgBtn.hide();
+            } catch (e) { /* eski klient */ }
+            if (btn) btn.classList.add('hidden');
+            return;
         }
+        if (!btn) return;
+        btn.classList.toggle('hidden', stack.length === 0);
     }
 
     function push(entry) {
@@ -277,6 +300,11 @@ const AppNavigation = (function () {
         if (btn) {
             btn.addEventListener('click', back);
         }
+        const tgBtn = tgBackButton();
+        if (tgBtn && tgBtn.onClick) {
+            try { tgBtn.onClick(back); } catch (e) { /* eski klient */ }
+        }
+        updateBtn();
     }
 
     return { push, pop, back, init };
@@ -295,7 +323,7 @@ if (userScore !== null) {
         const scoreValEl = document.getElementById('global-score-val');
         if (scoreEl && scoreValEl) {
             scoreValEl.textContent = userScore;
-            scoreEl.style.display = 'inline-block';
+            scoreEl.hidden = false;
         }
     });
 }
@@ -304,11 +332,14 @@ if (userScore !== null) {
 // DARK / LIGHT MODE
 // ═══════════════════════════════════════════════════════════════════
 
-// Standart: Telegram mavzusiga ergashish (tg.colorScheme). Foydalanuvchi qo'lda tanlasa — o'sha saqlanadi.
+// Mavzu Telegram'ga ergashadi (tg.colorScheme, themeChanged). Telegram tashqarisida — tizim sozlamasi.
+// Qo'lda almashtirish tugmasi olib tashlandi; eski saqlangan 'theme' qiymati hisobga olinmaydi.
 function currentThemeMode() {
-    const saved = SafeStorage.getItem('theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return (tg && tg.colorScheme === 'dark') ? 'dark' : 'light';
+    if (tg && (tg.colorScheme === 'dark' || tg.colorScheme === 'light')) return tg.colorScheme;
+    try {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    } catch (e) { /* eski brauzer */ }
+    return 'light';
 }
 
 function applyTheme(mode) {
@@ -316,8 +347,6 @@ function applyTheme(mode) {
     body.classList.toggle('dark-mode', mode === 'dark');
     // Telegram'ning yorug' mavzu ranglari faqat Telegram ham yorug' bo'lsa ishlatiladi (aks holda aralash ranglar)
     body.classList.toggle('tg-light', mode === 'light' && !!tg && tg.colorScheme === 'light');
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.innerHTML = svgIcon(mode === 'dark' ? 'sun' : 'moon');
     syncTelegramChrome();
 }
 
@@ -339,19 +368,13 @@ function initTheme() {
     applyTheme(currentThemeMode());
     if (tg && tg.onEvent) {
         try { tg.onEvent('themeChanged', () => applyTheme(currentThemeMode())); } catch (e) { /* eski klient */ }
+    } else if (window.matchMedia) {
+        try {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(currentThemeMode()));
+        } catch (e) { /* eski brauzer */ }
     }
 }
 
-function bindThemeToggle() {
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) {
-        btn.onclick = () => {
-            const next = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-            SafeStorage.setItem('theme', next);
-            applyTheme(next);
-        };
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // DATA SETS
@@ -656,7 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
     SafeStorage.initFromCloud(function() {
         try {
             initTheme();
-            bindThemeToggle();
 
             // Safe Telegram User Info Setup inside DOMContentLoaded
             if (tg) {
@@ -691,23 +713,37 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // TAB SYSTEM
+// Nav'da yo'q bo'limlar qaysi tab ostida ekani (pastki menyuda shu tab faol ko'rinadi)
+const NAV_PARENT = { 'tab-history': 'tab-health', 'tab-quiz': 'tab-first-aid' };
+
+function showTab(tabId) {
+    const section = document.getElementById(tabId);
+    if (!section) return;
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc === section));
+    const navId = NAV_PARENT[tabId] || tabId;
+    document.querySelectorAll('.nav-btn').forEach(b => {
+        const on = b.getAttribute('data-tab') === navId;
+        b.classList.toggle('active', on);
+        if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('[data-show-tab]').forEach(b => {
+        b.setAttribute('aria-selected', b.getAttribute('data-show-tab') === tabId ? 'true' : 'false');
+    });
+    const content = document.querySelector('.app-content');
+    if (content) content.scrollTop = 0;
+}
+
 function initTabs() {
-    const navButtons = document.querySelectorAll('.nav-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    navButtons.forEach(btn => {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const targetTab = btn.getAttribute('data-tab');
-
-            navButtons.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(tc => tc.classList.remove('active'));
-
-            btn.classList.add('active');
-            document.getElementById(targetTab).classList.add('active');
-
+            showTab(btn.getAttribute('data-tab'));
             // Switching main tabs clears the navigation stack
             AppNavigation.pop();
         });
+    });
+    // Segmented control (masalan Sog'liq: Kalkulyator | Tarix)
+    document.querySelectorAll('[data-show-tab]').forEach(btn => {
+        btn.addEventListener('click', () => showTab(btn.getAttribute('data-show-tab')));
     });
 }
 

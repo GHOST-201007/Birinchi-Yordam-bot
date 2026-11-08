@@ -58,23 +58,22 @@
     <div id="app-container">
         <!-- HEADER -->
         <header class="app-header">
-            <!-- Universal Back Button -->
+            <!-- Orqaga: Telegram ichida tg.BackButton ishlatiladi; bu tugma faqat brauzer uchun zaxira -->
             <button class="header-back-btn hidden" id="header-back-btn" aria-label="Orqaga">
-                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg>
+                <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>
                 <span>Orqaga</span>
             </button>
             <div class="user-info" id="user-info-container">
-                <div class="avatar" id="user-avatar"><svg class="icon" aria-hidden="true"><use href="#i-stethoscope"/></svg></div>
+                <div class="avatar" id="user-avatar"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></div>
                 <div class="welcome-text">
-                    <span class="greeting">Assalomu alaykum</span>
                     <span class="username" id="user-name">Salomatlik Himoyachisi</span>
-                    <span class="global-score" id="global-score" style="display:none; font-size: 0.8rem; color: #f59e0b; font-weight: 600; margin-top: 2px;"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg> <span id="global-score-val">0</span> ball</span>
+                    <div class="hdr-meta">
+                        <span class="global-score tabular" id="global-score" hidden><svg class="icon icon--fill" aria-hidden="true"><use href="#i-star"/></svg> <span id="global-score-val">0</span> ball</span>
+                        <span class="hdr-premium" id="hdr-premium" hidden><svg class="icon" aria-hidden="true"><use href="#i-crown"/></svg> <span id="hdr-premium-name">Premium</span></span>
+                    </div>
                 </div>
             </div>
-            <button class="theme-toggle-btn" id="theme-toggle-btn" title="Mavzuni o'zgartirish" aria-label="Mavzuni o'zgartirish"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
-            <div class="emergency-badge">
-                <a href="tel:103" class="emergency-btn"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg> 103</a>
-            </div>
+            <a href="tel:103" class="emergency-btn" aria-label="Tez yordam: 103 ga qo'ng'iroq"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span class="tabular">103</span></a>
         </header>
 
         <!-- MAIN CONTENT AREA -->
@@ -164,6 +163,10 @@
 
             <!-- TAB 3: KALKULYATOR -->
             <section id="tab-health" class="tab-content">
+                <div class="segmented" role="tablist" aria-label="Sog'liq bo'limi">
+                    <button type="button" role="tab" aria-selected="true" data-show-tab="tab-health">Kalkulyator</button>
+                    <button type="button" role="tab" aria-selected="false" data-show-tab="tab-history">Tarix</button>
+                </div>
                 <div class="section-title">
                     <h2>⚖️ Sog'liq Kalkulyatorlari</h2>
                     <p>Vazningiz va salomatligingiz ko'rsatkichlari</p>
@@ -334,6 +337,10 @@
 
             <!-- TAB 5: TARIX -->
             <section id="tab-history" class="tab-content">
+                <div class="segmented" role="tablist" aria-label="Sog'liq bo'limi">
+                    <button type="button" role="tab" aria-selected="false" data-show-tab="tab-health">Kalkulyator</button>
+                    <button type="button" role="tab" aria-selected="true" data-show-tab="tab-history">Tarix</button>
+                </div>
                 <div class="section-title">
                     <h2>📈 Sog'liq Tarixi</h2>
                     <p>BMI va suv balansini kuzating</p>
@@ -418,26 +425,18 @@
         </div>
 
         <!-- BOTTOM NAVIGATION BAR -->
-        <nav class="app-nav">
-            <button class="nav-btn active" data-tab="tab-first-aid">
+        <nav class="app-nav" aria-label="Asosiy bo'limlar">
+            <button class="nav-btn active" data-tab="tab-first-aid" aria-current="page">
                 <svg class="icon" aria-hidden="true"><use href="#i-first-aid"/></svg>
                 <span>Yordam</span>
             </button>
             <button class="nav-btn" data-tab="tab-diseases">
                 <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>
-                <span>Kasallik</span>
+                <span>Kasalliklar</span>
             </button>
             <button class="nav-btn" data-tab="tab-health">
                 <svg class="icon" aria-hidden="true"><use href="#i-heart-pulse"/></svg>
                 <span>Sog'liq</span>
-            </button>
-            <button class="nav-btn" data-tab="tab-quiz">
-                <svg class="icon" aria-hidden="true"><use href="#i-brain"/></svg>
-                <span>Test</span>
-            </button>
-            <button class="nav-btn" data-tab="tab-history">
-                <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>
-                <span>Tarix</span>
             </button>
             <button class="nav-btn" data-tab="tab-body-map">
                 <svg class="icon" aria-hidden="true"><use href="#i-person-standing"/></svg>

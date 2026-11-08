@@ -47,6 +47,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
             "spin": mock.MagicMock(return_value=(True, SPIN_OK_MSG)),
             "daily": mock.MagicMock(return_value=(True, 3, 3)),
             "spin_state": mock.MagicMock(return_value=(None, 5)),
+            "premium": mock.MagicMock(return_value=(0, None, "free")),
         }
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
         stack.enter_context(mock.patch.object(bot, "api_rate_limiter", bot.ApiRateLimiter()))
@@ -57,6 +58,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(db, "check_and_grant_spin_bonus", self.m["spin"]))
         stack.enter_context(mock.patch.object(db, "check_and_grant_daily_bonus", self.m["daily"]))
         stack.enter_context(mock.patch.object(bot, "_read_spin_state", self.m["spin_state"]))
+        stack.enter_context(mock.patch.object(db, "get_premium_info", self.m["premium"]))
 
         self.client = TestClient(TestServer(bot.create_web_app()))
         await self.client.start_server()
@@ -113,7 +115,7 @@ class AuthTest(ApiTestBase):
             resp, data = await self.post(path, extra=extra)
             self.assertEqual(resp.status, 200, path)
         # Hamma DB chaqiruvlari faqat initData ichidagi id bilan
-        for name in ("banned", "score", "bonus_info", "prize", "daily"):
+        for name in ("banned", "score", "bonus_info", "prize", "daily", "premium"):
             for call in self.m[name].call_args_list:
                 self.assertEqual(call.args[0], USER_ID, name)
         # Klient yuborgan ball e'tiborga olinmaydi: server doim 0 uzatadi
@@ -212,7 +214,18 @@ class StateTest(ApiTestBase):
         resp, data = await self.post("/api/state")
         self.assertEqual(resp.status, 200)
         self.assertEqual(data, {"ok": True, "score": 17, "streak": 3, "daily_claimed": False,
-                                "prize": 5, "cooldown_seconds": 0})
+                                "prize": 5, "cooldown_seconds": 0, "is_premium": False, "premium_type": "free"})
+
+    async def test_state_reports_active_premium_tier(self):
+        self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "plus")
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["is_premium"], data["premium_type"]), (True, "plus"))
+        self.m["premium"].assert_called_once_with(USER_ID)
+
+    async def test_state_premium_type_is_free_when_not_premium(self):
+        self.m["premium"].return_value = (0, "2026-01-01 10:00:00", "plus")      # muddati o'tgan
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["is_premium"], data["premium_type"]), (False, "free"))
 
     async def test_super_prize_is_zero_not_null(self):
         self.m["prize"].return_value = 0

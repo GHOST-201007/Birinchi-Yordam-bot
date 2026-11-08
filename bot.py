@@ -4866,6 +4866,7 @@ async def _api_handle(request: web.Request, name: str, action, *, with_body: boo
 
 async def _api_state_action(user_id: int) -> dict:
     score = await asyncio.to_thread(database.get_score, user_id)
+    is_prem, _expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
     bonus = await asyncio.to_thread(database.get_daily_bonus_info, user_id)
     prize = await asyncio.to_thread(database.generate_or_get_spin_prize, user_id)
     cooldown = 0
@@ -4879,6 +4880,9 @@ async def _api_state_action(user_id: int) -> dict:
         "daily_claimed": bool(bonus["is_claimed_today"]),
         "prize": prize,                 # None -> null (kutish yoki foydalanuvchi yo'q); 0 -> SUPER PRIZ
         "cooldown_seconds": cooldown,
+        # Header'dagi Premium ko'rsatkichi uchun (faqat o'qish; yuqoridagi maydonlar o'zgarmagan)
+        "is_premium": bool(is_prem),
+        "premium_type": (prem_type or "free") if is_prem else "free",
     }
 
 

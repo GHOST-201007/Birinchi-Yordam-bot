@@ -27,15 +27,17 @@ INIT_DATA = "query_id=AAH-test&user=%7B%22id%22%3A424242%7D&auth_date=1800000000
 
 FAKE_TELEGRAM = """
 (() => {
-  const state = { closed: 0, links: [], alerts: [], invoices: [] };
+  const state = { closed: 0, links: [], alerts: [], invoices: [], backVisible: false, headerColors: [], bgColors: [] };
   window.__tg = state;
   const noop = () => {};
   window.Telegram = { WebApp: {
     initData: %(init)s,
     initDataUnsafe: { user: { id: 424242, first_name: 'Ali' } },
     version: '8.0', platform: 'tdesktop', colorScheme: 'light', themeParams: {},
-    ready: noop, expand: noop, disableVerticalSwipes: noop, setHeaderColor: noop, setBackgroundColor: noop,
-    onEvent: noop, offEvent: noop, enableClosingConfirmation: noop, sendData: noop,
+    ready: noop, expand: noop, disableVerticalSwipes: noop,
+    setHeaderColor: (c) => { state.headerColors.push(c); }, setBackgroundColor: (c) => { state.bgColors.push(c); },
+    onEvent: (name, cb) => { (window.__tgEvents = window.__tgEvents || {})[name] = cb; },
+    offEvent: noop, enableClosingConfirmation: noop, sendData: noop,
     isVersionAtLeast: () => true,
     close: () => { state.closed++; },
     openTelegramLink: (u) => { state.links.push(u); },
@@ -47,7 +49,8 @@ FAKE_TELEGRAM = """
       removeItem: (k, cb) => cb && cb(null, true), getKeys: (cb) => cb && cb(null, []),
       getItems: (ks, cb) => cb && cb(null, {})
     },
-    BackButton: { show: noop, hide: noop, onClick: noop, offClick: noop },
+    BackButton: { show: () => { state.backVisible = true; }, hide: () => { state.backVisible = false; },
+                  onClick: (cb) => { window.__backCb = cb; }, offClick: noop },
     MainButton: { show: noop, hide: noop, setText: noop, onClick: noop, offClick: noop }
   } };
 })();

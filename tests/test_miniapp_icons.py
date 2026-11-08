@@ -50,9 +50,12 @@ class IconsTest(unittest.TestCase):
         self.assertTrue(data_icons)
         self.assertEqual(data_icons - mapped, set())
 
-    def test_icon_only_buttons_have_labels(self):
-        btn = re.search(r'<button[^>]*id="theme-toggle-btn"[^>]*>', self.html).group(0)
-        self.assertIn("aria-label", btn)
+    def test_icon_buttons_have_labels(self):
+        link = re.search(r'<a[^>]*class="emergency-btn"[^>]*>', self.html).group(0)
+        self.assertIn('href="tel:103"', link)
+        self.assertIn("aria-label", link)
+        back = re.search(r'<button[^>]*id="header-back-btn"[^>]*>', self.html).group(0)
+        self.assertIn("aria-label", back)
 
 
 if __name__ == "__main__":
