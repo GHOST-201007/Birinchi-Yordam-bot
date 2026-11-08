@@ -251,7 +251,7 @@
                         <div class="field">
                             <label for="calorie-age">Yoshingiz</label>
                             <div class="input-wrap">
-                                <input type="number" inputmode="numeric" id="calorie-age" placeholder="Masalan: 25" min="1" max="120">
+                                <input type="number" inputmode="decimal" id="calorie-age" placeholder="Masalan: 25" min="1" max="120">
                                 <span class="input-unit" aria-hidden="true">yosh</span>
                             </div>
                         </div>
@@ -272,6 +272,7 @@
 
                 <!-- Natijalar -->
                 <div class="result-card" id="bmi-result-card" data-calc-result="bmi" aria-live="polite" hidden>
+                    <div class="result-icon"><svg class="icon" aria-hidden="true"><use href="#i-scale"/></svg></div>
                     <div class="result-value tabular"><span id="bmi-number">22.5</span><small>BMI</small></div>
                     <span class="chip" id="bmi-status">Normal vazn</span>
                     <p class="result-desc" id="bmi-description">Sizning vazningiz bo'yingizga nisbatan me'yorda.</p>
@@ -281,17 +282,23 @@
                     </div>
                     <div class="bmi-scale-labels tabular" aria-hidden="true"><span>18.5</span><span>25</span><span>30</span></div>
                     <div class="result-item"><svg class="icon" aria-hidden="true"><use href="#i-scale"/></svg><span>Bo'yingiz uchun normal vazn</span><strong class="tabular" id="bmi-ideal-range">-</strong></div>
+                    <div class="result-saved" role="status"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><span>Tarixga saqlandi</span></div>
                 </div>
 
                 <div class="result-card" id="water-result-card" data-calc-result="water" aria-live="polite" hidden>
+                    <div class="result-icon result-icon--water"><svg class="icon" aria-hidden="true"><use href="#i-droplet"/></svg></div>
                     <div class="result-value tabular" id="water-value">2.1 Litr</div>
+                    <span class="chip chip--primary">Kunlik minimum</span>
                     <p class="result-desc">Sizning kunlik suvga bo'lgan minimum ehtiyojingiz. Quyidagi holatlarda ko'proq iching:</p>
                     <div class="result-item"><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg><span>Sport bilan shug'ullanganda</span><strong class="tabular" id="water-sport">2.6 L</strong></div>
                     <div class="result-item"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span>Issiq havoda</span><strong class="tabular" id="water-summer">2.4 L</strong></div>
+                    <div class="result-saved" role="status"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><span>Tarixga saqlandi</span></div>
                 </div>
 
                 <div class="result-card" id="calorie-result-card" data-calc-result="calorie" aria-live="polite" hidden>
+                    <div class="result-icon result-icon--calorie"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg></div>
                     <div class="result-value tabular" id="calorie-value">2200 kkal</div>
+                    <span class="chip chip--primary">Vaznni saqlash</span>
                     <p class="result-desc">Vaznni saqlab qolish uchun kunlik energiya ehtiyoji. Boshqa maqsadlar uchun:</p>
                     <div class="result-item"><svg class="icon" aria-hidden="true"><use href="#i-trending-down"/></svg><span>Sog'lom ozish</span><strong class="tabular" id="calorie-lose">1700 kkal</strong></div>
                     <div class="result-item"><svg class="icon" aria-hidden="true"><use href="#i-trending-up"/></svg><span>Semirish (massa)</span><strong class="tabular" id="calorie-gain">2700 kkal</strong></div>
@@ -382,7 +389,12 @@
                 <div id="history-bmi" class="history-section active" role="tabpanel">
                     <div class="history-chart-card">
                         <canvas id="bmi-chart" height="180" role="img" aria-label="BMI grafigi"></canvas>
-                        <div class="chart-empty" id="bmi-chart-empty"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span>BMI hisoblaganingizda bu yerda grafik paydo bo'ladi</span></div>
+                        <div class="chart-empty" id="bmi-chart-empty">
+                            <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg></div>
+                            <h2 class="empty-title">Hali hisob-kitob yo'q</h2>
+                            <span class="chart-empty-text">BMI hisoblaganingizda bu yerda grafik paydo bo'ladi</span>
+                            <button type="button" class="btn-secondary" data-go-calc="bmi"><svg class="icon" aria-hidden="true"><use href="#i-calculator"/></svg><span>Kalkulyatorga o'tish</span></button>
+                        </div>
                     </div>
                     <div class="inset-group history-log" id="bmi-history-log"></div>
                     <button type="button" class="btn-secondary btn-danger-text" id="btn-clear-bmi-history" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Tarixni tozalash</span></button>
@@ -391,7 +403,12 @@
                 <div id="history-water" class="history-section" role="tabpanel">
                     <div class="history-chart-card">
                         <canvas id="water-chart" height="180" role="img" aria-label="Suv grafigi"></canvas>
-                        <div class="chart-empty" id="water-chart-empty"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span>Suv hisoblashlaringiz bu yerda grafik shaklida ko'rinadi</span></div>
+                        <div class="chart-empty" id="water-chart-empty">
+                            <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg></div>
+                            <h2 class="empty-title">Hali hisob-kitob yo'q</h2>
+                            <span class="chart-empty-text">Suv hisoblashlaringiz bu yerda grafik shaklida ko'rinadi</span>
+                            <button type="button" class="btn-secondary" data-go-calc="water"><svg class="icon" aria-hidden="true"><use href="#i-calculator"/></svg><span>Kalkulyatorga o'tish</span></button>
+                        </div>
                     </div>
                     <div class="inset-group history-log" id="water-history-log"></div>
                     <button type="button" class="btn-secondary btn-danger-text" id="btn-clear-water-history" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Tarixni tozalash</span></button>

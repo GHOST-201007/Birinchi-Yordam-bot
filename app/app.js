@@ -1636,12 +1636,40 @@ const CALC_FIELDS = {
     calorie: ['calorie-weight', 'calorie-height', 'calorie-age']
 };
 
+// Ruxsat etilgan oraliqlar (input min/max bilan bir xil) va maydon ostidagi xabar
+const CALC_RANGES = {
+    'bmi-weight': [20, 300, "Vazn 20–300 kg oralig'ida bo'lsin"],
+    'bmi-height': [50, 250, "Bo'y 50–250 sm oralig'ida bo'lsin"],
+    'water-weight': [20, 300, "Vazn 20–300 kg oralig'ida bo'lsin"],
+    'calorie-weight': [20, 300, "Vazn 20–300 kg oralig'ida bo'lsin"],
+    'calorie-height': [50, 250, "Bo'y 50–250 sm oralig'ida bo'lsin"],
+    'calorie-age': [1, 120, "Yosh 1–120 oralig'ida bo'lsin"]
+};
+
+function fieldValue(id) {
+    const el = document.getElementById(id);
+    return id === 'calorie-age' ? parseInt(el.value) : parseFloat(el.value);
+}
+
+function fieldValid(id) {
+    const v = fieldValue(id);
+    const r = CALC_RANGES[id];
+    return v > 0 && (!r || (v >= r[0] && v <= r[1]));
+}
+
 function calcInputValid(type) {
-    return CALC_FIELDS[type].every(id => {
-        const el = document.getElementById(id);
-        const v = id === 'calorie-age' ? parseInt(el.value) : parseFloat(el.value);
-        return v > 0;
-    });
+    return CALC_FIELDS[type].every(fieldValid);
+}
+
+// Xabar faqat maydon to'ldirilib, noto'g'ri bo'lsa (yozish paytida emas — blur/Enter da)
+function showFieldError(id, force) {
+    const el = document.getElementById(id);
+    const err = document.getElementById(id + '-err');
+    if (!err) return;
+    const bad = el.value.trim() !== '' && !fieldValid(id);
+    const show = bad && (force || !err.hidden);
+    err.hidden = !show;
+    if (show) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
 }
 
 function runCalc() {
@@ -1678,7 +1706,8 @@ function switchCalc(type) {
 function showCalcResult(id) {
     const card = document.getElementById(id);
     card.hidden = false;
-    try { card.scrollIntoView({ block: 'nearest' }); } catch (e) { /* eski brauzer */ }
+    // Natija ko'rinadigan joyga o'zi skroll qiladi (MainButton paddingi hisobga olinadi)
+    try { card.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' }); } catch (e) { /* eski brauzer */ }
 }
 
 const BMI_CHIP = { low: 'chip--warning', ok: 'chip--teal', over: 'chip--warning', obese: 'chip--danger' };
@@ -1734,8 +1763,16 @@ function calcBmi() {
     chip.innerText = status;
     chip.className = 'chip ' + BMI_CHIP[level];
     document.getElementById('bmi-description').innerText = desc;
-    document.getElementById('bmi-gauge-pointer').style.left = `${pointerPos}%`;
-    showCalcResult('bmi-result-card');
+    // Marker shkala bo'ylab joyiga keladi: birinchi ko'rsatishda chap chetdan
+    const pointer = document.getElementById('bmi-gauge-pointer');
+    if (document.getElementById('bmi-result-card').hidden) {
+        pointer.style.left = '0%';
+        showCalcResult('bmi-result-card');
+        void pointer.offsetWidth;
+    } else {
+        showCalcResult('bmi-result-card');
+    }
+    pointer.style.left = `${pointerPos}%`;
 
     // BMI tarixiga saqlash
     saveHistory('bmi', { bmi: bmi.toFixed(1), weight, height, status: status.replace(/[^a-zA-Z\s']/g, '').trim() });
@@ -1809,9 +1846,33 @@ function initCalculators() {
         btn.addEventListener('click', () => switchCalc(btn.getAttribute('data-calc')));
     });
     Object.keys(CALC_FIELDS).forEach(type => {
-        CALC_FIELDS[type].forEach(id => {
-            document.getElementById(id).addEventListener('input', () => {
+        const ids = CALC_FIELDS[type];
+        ids.forEach((id, i) => {
+            const el = document.getElementById(id);
+            // Maydon ostidagi xabar (aria-describedby)
+            const err = document.createElement('p');
+            err.className = 'field-error';
+            err.id = id + '-err';
+            err.hidden = true;
+            err.textContent = CALC_RANGES[id][2];
+            el.closest('.field').appendChild(err);
+            el.setAttribute('aria-describedby', err.id);
+            el.setAttribute('enterkeyhint', i === ids.length - 1 ? 'done' : 'next');
+
+            el.addEventListener('input', () => {
+                showFieldError(id, false);
                 if (type === currentCalc && MainButtonCtl.owner === 'calc') MainButtonCtl.setActive(calcInputValid(type));
+            });
+            el.addEventListener('blur', () => showFieldError(id, true));
+            // Enter: keyingi maydon; oxirgisida — hisoblash (hammasi to'g'ri bo'lsa), aks holda birinchi xatoga
+            el.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                showFieldError(id, true);
+                if (i < ids.length - 1) { document.getElementById(ids[i + 1]).focus(); return; }
+                if (calcInputValid(type)) { currentCalc = type; runCalc(); return; }
+                const bad = ids.find(x => !fieldValid(x));
+                if (bad) { showFieldError(bad, true); document.getElementById(bad).focus(); }
             });
         });
         // Sahifadagi tugma (brauzer zaxirasi) — MainButton bilan bir xil yo'l
@@ -2065,6 +2126,14 @@ function initHistory() {
             renderHistoryLog();
         });
     });
+    document.querySelectorAll('[data-go-calc]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            showTab('tab-health');
+            switchCalc(btn.getAttribute('data-go-calc'));
+            const first = document.getElementById(CALC_FIELDS[currentCalc][0]);
+            if (first) first.focus({ preventScroll: true });
+        });
+    });
     renderHistoryLog();
     // Grafik o'lchami faqat bo'lim ko'ringanda ma'lum — Tarix ochilganda qayta chiziladi
     window.addEventListener('resize', () => drawChart(currentHistory));
@@ -2114,7 +2183,12 @@ function updateHistoryEmpty(type, count) {
     const clear = document.getElementById(`btn-clear-${type}-history`);
     empty.hidden = count >= 2;
     canvas.hidden = count < 2;
-    if (count === 1) empty.querySelector('span').textContent = "Grafik ikkinchi natijadan keyin paydo bo'ladi";
+    // 0 ta — "Hali hisob-kitob yo'q" + kalkulyatorga o'tish; 1 ta — grafik uchun yana bitta natija kerak
+    empty.querySelector('.empty-title').hidden = count !== 0;
+    empty.querySelector('[data-go-calc]').hidden = count !== 0;
+    empty.querySelector('.chart-empty-text').textContent = count === 1
+        ? "Grafik ikkinchi natijadan keyin paydo bo'ladi"
+        : (type === 'bmi' ? "BMI hisoblaganingizda bu yerda grafik paydo bo'ladi" : "Suv hisoblashlaringiz bu yerda grafik shaklida ko'rinadi");
     log.hidden = count === 0;
     clear.hidden = count === 0;
 }
