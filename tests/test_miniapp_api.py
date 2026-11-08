@@ -48,6 +48,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
             "daily": mock.MagicMock(return_value=(True, 3, 3)),
             "spin_state": mock.MagicMock(return_value=(None, 5)),
             "premium": mock.MagicMock(return_value=(0, None, "free")),
+            "ai_quota": mock.MagicMock(return_value=(1, 2)),
         }
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
         stack.enter_context(mock.patch.object(bot, "api_rate_limiter", bot.ApiRateLimiter()))
@@ -59,6 +60,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(db, "check_and_grant_daily_bonus", self.m["daily"]))
         stack.enter_context(mock.patch.object(bot, "_read_spin_state", self.m["spin_state"]))
         stack.enter_context(mock.patch.object(db, "get_premium_info", self.m["premium"]))
+        stack.enter_context(mock.patch.object(db, "get_ai_quota", self.m["ai_quota"]))
 
         self.client = TestClient(TestServer(bot.create_web_app()))
         await self.client.start_server()
@@ -214,7 +216,8 @@ class StateTest(ApiTestBase):
         resp, data = await self.post("/api/state")
         self.assertEqual(resp.status, 200)
         self.assertEqual(data, {"ok": True, "score": 17, "streak": 3, "daily_claimed": False,
-                                "prize": 5, "cooldown_seconds": 0, "is_premium": False, "premium_type": "free"})
+                                "prize": 5, "cooldown_seconds": 0, "is_premium": False, "premium_type": "free",
+                                "ai_remaining": 1, "ai_limit": 2})
 
     async def test_state_reports_active_premium_tier(self):
         self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "plus")

@@ -4737,7 +4737,8 @@ async def health_check(request):
 # shuning uchun route'lar aynan /api/... prefiksi bilan ro'yxatdan o'tadi.
 # ═══════════════════════════════════════════════════════════════════
 WEB_BIND_HOST = "127.0.0.1"      # internetga ochiq emas; faqat nginx (localhost) orqali
-API_MAX_BODY = 4096              # so'rov tanasi hajmi (bayt)
+API_MAX_BODY = 4096              # so'rov tanasi hajmi (bayt) — /api/ai/chat dan tashqari hammasi
+AI_CHAT_MAX_BODY = 16 * 1024     # /api/ai/chat: xabar + tarix (6 x 1000 belgi)
 API_RATE_LIMIT = 20              # bitta foydalanuvchi uchun
 API_RATE_WINDOW = 60.0           # soniya
 SPIN_COOLDOWN_SECONDS = 24 * 3600
@@ -4771,6 +4772,8 @@ class ApiRateLimiter:
 
 
 api_rate_limiter = ApiRateLimiter()
+AI_CHAT_RATE_LIMIT = 6           # /api/ai/chat: har user_id uchun daqiqasiga
+ai_chat_rate_limiter = ApiRateLimiter(limit=AI_CHAT_RATE_LIMIT)
 
 
 def _api_json(data: dict, status: int = 200, headers: dict | None = None) -> web.Response:
@@ -4815,20 +4818,22 @@ def _spin_cooldown_seconds(last_spin, now: datetime | None = None) -> int:
         return 0
 
 
-async def _api_authenticate(request: web.Request):
+async def _api_authenticate(request: web.Request, max_body: int = API_MAX_BODY):
     """So'rovni tekshiradi. (user_id, None) yoki (None, xato javobi) qaytaradi.
     user_id FAQAT tekshirilgan initData ichidagi user.id dan olinadi, tanadagi boshqa maydonlar e'tiborga olinmaydi.
     Tekshiruvdan o'tmasa hech qanday DB chaqiruvi qilinmaydi."""
     if request.content_type != "application/json":
         return None, _api_error(415, "unsupported_media_type")
-    if request.content_length is not None and request.content_length > API_MAX_BODY:
+    if request.content_length is not None and request.content_length > max_body:
         return None, _api_error(413, "payload_too_large")
     try:
-        raw = await request.read()          # Application(client_max_size=API_MAX_BODY) chegarani qo'llaydi
+        raw = await request.read()          # Application(client_max_size) umumiy yuqori chegara
     except web.HTTPRequestEntityTooLarge:
         return None, _api_error(413, "payload_too_large")
     except Exception:
         return None, _api_error(400, "bad_request")
+    if len(raw) > max_body:                 # Content-Length bo'lmasa ham (chunked) route chegarasi
+        return None, _api_error(413, "payload_too_large")
     try:
         payload = json.loads(raw)
     except (ValueError, UnicodeDecodeError):
@@ -4869,6 +4874,7 @@ async def _api_state_action(user_id: int) -> dict:
     is_prem, _expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
     bonus = await asyncio.to_thread(database.get_daily_bonus_info, user_id)
     prize = await asyncio.to_thread(database.generate_or_get_spin_prize, user_id)
+    ai_remaining, ai_limit = await asyncio.to_thread(database.get_ai_quota, user_id)
     cooldown = 0
     if prize is None:
         last_spin, _ = await asyncio.to_thread(_read_spin_state, user_id)
@@ -4883,6 +4889,9 @@ async def _api_state_action(user_id: int) -> dict:
         # Header'dagi Premium ko'rsatkichi uchun (faqat o'qish; yuqoridagi maydonlar o'zgarmagan)
         "is_premium": bool(is_prem),
         "premium_type": (prem_type or "free") if is_prem else "free",
+        # AI tabi sarlavhasi ("Bugun: 12/15") — bot bilan umumiy kvota (faqat o'qish)
+        "ai_remaining": ai_remaining,
+        "ai_limit": ai_limit,
     }
 
 
@@ -4933,6 +4942,190 @@ async def _api_invoice_action(user_id: int, body: dict):
     return {"ok": True, "url": url}
 
 
+# ═══════════════════════════════════════════════════════════════════
+# /api/ai/chat — mini app ichidagi AI suhbat (G 3-bosqich)
+# Kvota va AI chaqiruvi botdagi bilan bir xil: try_consume_free_ai -> try_consume_daily_request (xato bo'lsa refund),
+# get_gemini_response (GEMINI_SYSTEM_INSTRUCTION, GEMINI_MODELS). Kvota faqat muvaffaqiyatli javobda kamayadi.
+# Loglarga init_data va xabar matni yozilmaydi (faqat user_id, uzunlik, natija kodi).
+# ═══════════════════════════════════════════════════════════════════
+AI_CHAT_TIMEOUT = 40             # soniya
+AI_MSG_MAX = 1000
+AI_HISTORY_MAX = 6
+AI_REPLY_MAX = 4000
+AI_ERRORS = {
+    "bad_request": (400, "So'rov noto'g'ri. Xabar 1–1000 belgidan iborat bo'lsin."),
+    "forbidden": (403, "Mini appni Telegram ichida oching."),
+    "limit": (429, "Bugungi AI so'rovlar limiti tugadi."),
+    "rate": (429, "Juda tez yozyapsiz. Bir daqiqadan so'ng qayta urinib ko'ring."),
+    "busy": (503, "Hozir band, qayta urinib ko'ring."),
+    "server": (500, "Xatolik yuz berdi. Qayta urinib ko'ring."),
+}
+
+# Tana hududi yorliqlari (bosh ekran) va body_map_data.json kalitlari — server tomonidagi ruxsat etilgan ro'yxat
+AI_BODY_HOTSPOTS = {"bosh": "Bosh", "qol": "Qo'l", "kokrak": "Ko'krak", "qorin": "Qorin", "oyoq": "Oyoq",
+                    "orqa": "Orqa", "bel": "Bel"}
+
+
+def _load_body_part_labels() -> dict:
+    labels = dict(AI_BODY_HOTSPOTS)
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "body_map_data.json")
+        with open(path, encoding="utf-8") as f:
+            for key, part in json.load(f).items():
+                title = re.sub(r"^[^\wА-Яа-я]+", "", str(part.get("title", key))).strip()
+                labels.setdefault(key, title or key)
+    except Exception:
+        logging.warning("body_map_data.json o'qilmadi — faqat yorliq kalitlari ishlatiladi")
+    return labels
+
+
+def _load_condition_labels() -> dict:
+    labels = {}
+    try:
+        from data import FIRST_AID_DATA
+        for key, text in FIRST_AID_DATA.items():
+            if key == "start":
+                continue
+            m = re.search(r"\*\*(.+?)\*\*", str(text))
+            labels[key] = re.sub(r"[^\w\s'ʻʼ‘’()\-]", "", m.group(1)).strip() if m else key
+    except Exception:
+        logging.warning("FIRST_AID_DATA o'qilmadi — holat konteksti ishlatilmaydi")
+    return labels
+
+
+AI_CONTEXT_LABELS = {"body_part": _load_body_part_labels(), "condition": _load_condition_labels()}
+AI_CONTEXT_PREFIX = {"body_part": "tana qismi", "condition": "holat"}
+
+
+def _ai_chat_error(code: str, headers: dict | None = None, extra: dict | None = None) -> web.Response:
+    status, message = AI_ERRORS[code]
+    public = "limit" if code == "limit" else ("busy" if code == "rate" else code)
+    return _api_json({"ok": False, "error": public, "message": message, **(extra or {})}, status, headers)
+
+
+def _ai_validate(body: dict):
+    """(message, history, context_label) yoki None (noto'g'ri tana). Kontekst — faqat ruxsat etilgan ro'yxatdan."""
+    message = body.get("message")
+    if not isinstance(message, str):
+        return None
+    message = message.strip()
+    if not 1 <= len(message) <= AI_MSG_MAX:
+        return None
+    history = body.get("history", [])
+    if history is None:
+        history = []
+    if not isinstance(history, list) or len(history) > AI_HISTORY_MAX:
+        return None
+    clean_history = []
+    for item in history:
+        if not isinstance(item, dict) or item.get("role") not in ("user", "ai"):
+            return None
+        text = item.get("text")
+        if not isinstance(text, str) or len(text) > AI_MSG_MAX:
+            return None
+        if text.strip():
+            clean_history.append((item["role"], text.strip()))
+    context_label = None
+    context = body.get("context")
+    if isinstance(context, dict):
+        ctype, key = context.get("type"), context.get("key")
+        if isinstance(ctype, str) and isinstance(key, str):
+            label = AI_CONTEXT_LABELS.get(ctype, {}).get(key)     # noma'lum kalit — e'tiborsiz
+            if label:
+                context_label = f"{AI_CONTEXT_PREFIX[ctype]} — {label}"
+    return message, clean_history, context_label
+
+
+def _ai_build_prompt(message: str, history: list, context_label, profile_context: str) -> str:
+    parts = []
+    if context_label:
+        parts.append(f"[Kontekst: {context_label}]")
+    if history:
+        lines = [("Foydalanuvchi: " if role == "user" else "AI: ") + text for role, text in history]
+        parts.append("Oldingi suhbat:\n" + "\n".join(lines))
+    parts.append(("Savol: " if history or context_label else "") + message)
+    return "\n\n".join(parts) + profile_context
+
+
+def _ai_clean_reply(text: str) -> str:
+    """Javob — oddiy matn (HTML teglari olib tashlanadi; klient textContent bilan chiqaradi)."""
+    cleaned = html.unescape(re.sub(r"<[^>]+>", "", text or "")).strip()
+    return cleaned[:AI_REPLY_MAX]
+
+
+async def api_ai_chat(request: web.Request) -> web.Response:
+    user_id, error = await _api_authenticate(request, max_body=AI_CHAT_MAX_BODY)
+    if error is not None:
+        status = error.status
+        code = "forbidden" if status == 403 else "rate" if status == 429 else "bad_request"
+        return _ai_chat_error(code, {"Retry-After": str(int(API_RATE_WINDOW))} if status == 429 else None)
+
+    result = "server"
+    consumed_free = consumed_daily = False
+    active = False
+    try:
+        banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
+        if banned:
+            result = "forbidden"
+            return _ai_chat_error("forbidden")
+        if not ai_chat_rate_limiter.allow(user_id):
+            result = "rate"
+            return _ai_chat_error("rate", {"Retry-After": str(int(API_RATE_WINDOW))})
+        parsed = _ai_validate(request["api_payload"])
+        if parsed is None:
+            result = "bad_request"
+            return _ai_chat_error("bad_request")
+        message, history, context_label = parsed
+
+        if user_id in _active_ai_users:                 # bot yoki boshqa oynada javob kutilmoqda
+            result = "busy"
+            return _ai_chat_error("busy")
+        _active_ai_users.add(user_id)
+        active = True
+
+        if await asyncio.to_thread(database.try_consume_free_ai, user_id):
+            consumed_free = True
+        elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
+            consumed_daily = True
+        else:
+            result = "limit"
+            remaining, limit = await asyncio.to_thread(database.get_ai_quota, user_id)
+            return _ai_chat_error("limit", extra={"remaining": remaining, "limit": limit})
+
+        profile = await asyncio.to_thread(database.get_medical_profile, user_id)
+        prompt = _ai_build_prompt(message, history, context_label, _build_profile_context(profile))
+        try:
+            reply = await asyncio.wait_for(get_gemini_response(prompt), timeout=AI_CHAT_TIMEOUT)
+        except Exception:                                # timeout yoki AI xatosi — ichki xabar qaytarilmaydi
+            reply = None
+        reply = _ai_clean_reply(reply) if reply else ""
+        if not reply:
+            result = "busy"
+            return _ai_chat_error("busy")
+
+        consumed_free = consumed_daily = False          # muvaffaqiyat: kvota yeyilgan holda qoladi
+        remaining, limit = await asyncio.to_thread(database.get_ai_quota, user_id)
+        result = "ok"
+        return _api_json({"ok": True, "reply": reply, "remaining": remaining, "limit": limit})
+    except Exception:
+        logging.error("API ai/chat xatosi (user=%s)", user_id)      # stack trace va matn loglanmaydi
+        result = "server"
+        return _ai_chat_error("server")
+    finally:
+        # Xato / timeout / band: kvota qaytariladi (faqat muvaffaqiyatli javob kvotani yeydi)
+        try:
+            if consumed_free:
+                await asyncio.to_thread(database.refund_free_ai, user_id)
+            if consumed_daily:
+                await asyncio.to_thread(database.refund_daily_request, user_id)
+        except Exception:
+            logging.error("API ai/chat: kvotani qaytarib bo'lmadi (user=%s)", user_id)
+        if active:
+            _active_ai_users.discard(user_id)
+        msg = request.get("api_payload", {}).get("message") if isinstance(request.get("api_payload"), dict) else None
+        logging.info("[AI_API] user=%s len=%s result=%s", user_id, len(msg) if isinstance(msg, str) else 0, result)
+
+
 async def api_state(request: web.Request) -> web.Response:
     return await _api_handle(request, "state", _api_state_action)
 
@@ -4950,7 +5143,7 @@ async def api_invoice(request: web.Request) -> web.Response:
 
 
 def create_web_app() -> web.Application:
-    app = web.Application(client_max_size=API_MAX_BODY)
+    app = web.Application(client_max_size=AI_CHAT_MAX_BODY)   # route chegaralari _api_authenticate da (4 KB / 16 KB)
     app.router.add_get("/", health_check)
     app.router.add_get("/health", health_check)
     # Faqat POST: boshqa metodlarga aiohttp o'zi 405 qaytaradi
@@ -4958,6 +5151,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/spin/claim", api_spin_claim)
     app.router.add_post("/api/bonus/claim", api_bonus_claim)
     app.router.add_post("/api/invoice", api_invoice)
+    app.router.add_post("/api/ai/chat", api_ai_chat)
     return app
 
 

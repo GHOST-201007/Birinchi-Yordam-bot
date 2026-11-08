@@ -197,9 +197,9 @@ class InvoiceEndpointTest(InvoiceBase):
 
     async def test_existing_endpoints_response_format_unchanged(self):
         resp, data = await self.post("/api/state")
-        # Avvalgi maydonlar o'zgarmagan; header uchun faqat is_premium va premium_type QO'SHILGAN
-        self.assertEqual(sorted(data), ["cooldown_seconds", "daily_claimed", "is_premium", "ok", "premium_type",
-                                        "prize", "score", "streak"])
+        # Avvalgi maydonlar o'zgarmagan; faqat QO'SHILGAN: is_premium, premium_type (header), ai_remaining, ai_limit (AI tab)
+        self.assertEqual(sorted(data), ["ai_limit", "ai_remaining", "cooldown_seconds", "daily_claimed", "is_premium", "ok",
+                                        "premium_type", "prize", "score", "streak"])
         resp, data = await self.post("/api/spin/claim")
         self.assertEqual(sorted(data), ["is_super", "message", "ok", "score"])
         resp, data = await self.post("/api/bonus/claim")

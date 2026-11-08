@@ -463,6 +463,44 @@ def refund_daily_request(user_id):
         # Always close safely
         _safe_close(c, conn)
 
+def get_ai_quota(user_id) -> tuple:
+    """Bugungi AI kvotasi: (qolgan, limit). FAQAT o'qiydi — hech narsa yozmaydi.
+    Qoida try_consume_free_ai + try_consume_daily_request bilan bir xil (bot va mini app bitta kvotani ulashadi):
+      * tarif limiti: FREE / PRO / PLUS / ULTRA_AI_DAILY_LIMIT (muddati o'tgan premium — free);
+      * bepul foydalanuvchida ishlatilmagan bitta bepul savol (free_ai_used = 0) limitga qo'shiladi;
+      * daily_requests faqat last_request_date bugun bo'lsa hisoblanadi."""
+    free_limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "1"))
+    tier_limits = {
+        "pro": int(os.environ.get("PRO_AI_DAILY_LIMIT", "15")),
+        "plus": int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30")),
+        "ultra": int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100")),
+    }
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "SELECT is_premium, premium_expires_at, premium_type, daily_requests, last_request_date, free_ai_used "
+            "FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+    if not row:
+        return free_limit + 1, free_limit + 1          # yangi foydalanuvchi: bepul savol + kunlik limit
+
+    is_premium, expires_at, premium_type, daily_requests, last_request_date, free_ai_used = row
+    active = bool(is_premium)
+    if active and expires_at:
+        active = get_uz_now() <= _to_uz_datetime(expires_at)
+    if active:
+        tier = premium_type if premium_type in tier_limits else "ultra"   # muddatsiz premium — ultra (try_consume_daily_request kabi)
+        tier_limit = tier_limits[tier]
+        bonus = 0
+    else:
+        tier_limit = free_limit
+        bonus = 0 if free_ai_used else 1
+
+    today = get_uz_now().date().isoformat()
+    used = int(daily_requests or 0) if last_request_date == today else 0
+    remaining = max(0, tier_limit - used) + bonus
+    return remaining, tier_limit + bonus
+
+
 def try_consume_free_ai(user_id) -> bool:
     """
     Foydalanuvchining bepul 1 ta AI savolini atomar band qiladi.
