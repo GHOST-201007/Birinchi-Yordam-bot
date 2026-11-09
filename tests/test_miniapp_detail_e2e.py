@@ -153,7 +153,12 @@ class DetailE2ETest(MiniAppE2EBase):
         self.assertEqual(page.locator("#detail-bar-chip .chip").count(), 1)
         page.evaluate("const o = document.getElementById('overlay-details'); o.scrollTop = 600; o.dispatchEvent(new Event('scroll'))")
         page.wait_for_function("document.getElementById('detail-bar').classList.contains('compact')")
-        self.assertAlmostEqual(page.locator("#detail-bar").bounding_box()["y"], 0, delta=1)   # sticky: tepada qoladi
+        # Overlay ochilish o'tishi (translateY 8px -> 0, 180 ms) tugagach o'lchanadi: aks holda mashina tezligiga
+        # qarab o'tish o'rtasida o'lchanib, sub-piksel / 1+ px farq chiqardi
+        page.wait_for_function("document.getElementById('overlay-details').getAnimations().length === 0")
+        top = page.evaluate("document.getElementById('detail-bar').getBoundingClientRect().top"
+                            " - document.getElementById('overlay-details').getBoundingClientRect().top")
+        self.assertAlmostEqual(top, 0, delta=1)                                       # sticky: tepada qoladi
         page.wait_for_function("getComputedStyle(document.querySelector('.detail-bar-title')).opacity === '1'")
         page.evaluate("const o = document.getElementById('overlay-details'); o.scrollTop = 0; o.dispatchEvent(new Event('scroll'))")
         page.wait_for_function("!document.getElementById('detail-bar').classList.contains('compact')")
