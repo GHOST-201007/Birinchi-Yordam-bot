@@ -1,12 +1,15 @@
 # G relizi: `review-g-home` → `main`
 
 **Kim uchun:** loyiha egasi (server va GitHub'da qo'lda bajariladigan qadamlar).
-**Holat:** `review-g-home` da 0–5-bosqichlar tayyor, testlar yashil. `main` hozir `26150b4` da (G dan oldingi oxirgi commit).
+**Holat:** `main` hozir `07f2ff3` da — 0–4-bosqichlar (AI suhbat tabigacha) allaqachon chiqarilgan (2026-11-09).
+Navbatdagi chiqish — 5-bosqich va keyingi tuzatishlar: `07f2ff3..review-g-home`. G dan oldingi oxirgi commit — `26150b4`.
 **Eslatma:** `main` ga push = production deploy (GitHub Actions serverni yangilaydi va botni qayta ishga tushiradi).
 
 Tartib: **1 → 2 → 3 → 4**. Muammo bo'lsa — 5 (rollback).
 
-### Nimalar chiqadi (`26150b4..review-g-home`)
+### G commitlari (`26150b4..review-g-home`)
+
+`7f650f4` … `07f2ff3` — **allaqachon `main` da** (chiqarilgan). `7099a32` dan boshlab — **navbatdagi chiqish**.
 
 | Commit | Nima |
 |---|---|
@@ -26,14 +29,17 @@ Tartib: **1 → 2 → 3 → 4**. Muammo bo'lsa — 5 (rollback).
 | `ab6e8c2` | Detal / kasallik "AI'dan so'rash" → AI tabi (holat chipi) |
 | `ae09271` | `FREE_AI_DAILY_LIMIT` o'qilishi olib tashlandi |
 | `1bc74ba` | Beqaror test barqarorlashtirildi |
-| (oxirgi) | Shu hujjat |
+| `f024c0f` | Shu hujjat (birinchi varianti) |
+| `a7aa726` | AI tabidan 103 tugmasi olib tashlandi (103 — faqat headerda) |
+| `b797789` | Scrollbar (yupqa, mavzuga mos) va Kasalliklar A–Z paneli sayqali |
+| (oxirgi) | Shu hujjat: `main` holati (`07f2ff3`), qisman rollback, yangi sinov bandlari |
 
 ---
 
-## 1. Server: nginx `/api/` bloki (deploydan OLDIN)
+## 1. Server: nginx `/api/` bloki (DARHOL — AI tabi allaqachon productionda)
 
 AI javobi 40 soniyagacha kutilishi mumkin (`/api/ai/chat`). nginx standart `proxy_read_timeout` 60 s — chegarada.
-`70s` qo'yish tavsiya etiladi.
+`70s` qo'yish tavsiya etiladi. Hali qilinmagan bo'lsa — keyingi deployni kutmasdan bajaring.
 
 Blok qaysi faylda ekanini topish:
 
@@ -130,6 +136,14 @@ Mini App'ni bot menyusidan oching. Har bandni light va dark mavzuda ko'ring.
 - [ ] Sheet: holatlar ro'yxati, "Tezkor" belgisi, pastda "AI'dan so'rash" (Telegram'ning pastki tugmasi)
 - [ ] Holat chiplari bosilganda detal ochiladi; "Hammasi" — to'liq ro'yxat va qidiruv
 - [ ] Detal: "AI'dan so'rash" → AI tabi "Holat: ..." chipi bilan (xabar o'zi ketmaydi)
+- [ ] 103 — faqat headerdagi dumaloq tugma; AI va boshqa tablarda qo'shimcha 103 tugma yo'q
+
+**Kasalliklar**
+- [ ] A–Z paneli ro'yxatni yopmaydi, qidiruv paneli va pastki menyu bilan to'qnashmaydi
+- [ ] Skroll qilinganda faol harf (to'q yashil fon) ko'rinib turgan bo'limga mos
+- [ ] Harf bosilsa — silliq o'tadi; panel bo'ylab barmoqni sudrasa — harfma-harf o'tadi
+- [ ] Kasallik detali: "AI'dan so'rash" → AI tabi "Kasallik: ..." chipi bilan
+- [ ] Telegram Desktop'da scrollbar yupqa va mavzuga mos (telefonda o'zgarish yo'q)
 
 **Bonus va baraban (mantiq o'zgarmagan)**
 - [ ] Kunlik bonus: "Olish" → ball qo'shiladi, karta "Olindi" bo'ladi
@@ -169,6 +183,13 @@ git checkout main
 git pull --ff-only origin main
 git revert --no-edit 26150b4..HEAD
 git push origin main                              # = deploy (G dan oldingi holat)
+```
+
+Faqat 5-bosqich va keyingi tuzatishlarni bekor qilish (0–4-bosqichlar qoladi):
+
+```bash
+git revert --no-edit 07f2ff3..HEAD
+git push origin main
 ```
 
 - `26150b4..HEAD` — G'ning barcha commitlari teskari tartibda bekor qilinadi (tarix saqlanadi, force push yo'q).
