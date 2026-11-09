@@ -1062,30 +1062,51 @@ body.dark-mode .disease-groups mark { background: rgba(245, 165, 36, 0.32); }
 }
 
 /* A–Z tezkor indeks */
+/* Vertikal: qidiruv paneli ostidan (--az-top, JS) pastki nav ustigacha (safe-area bilan) oraliqda markazda.
+   Harflar sig'masa — oraliq kichrayadi (flex-shrink). Gorizontal: ilova konteyneri (max 500px) o'ng chetida. */
+#tab-diseases { --az-w: 28px; }              /* panel kengligi: panel va ro'yxat chekinishi uchun umumiy */
 .az-index {
+    --az-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 8px);
     position: fixed;
-    top: 50%;
-    right: 0;
+    top: var(--az-top, 200px);
+    bottom: var(--az-bottom);
+    right: max(4px, calc((100vw - 500px) / 2 + 4px));
     z-index: 6;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 4px 0;
-    transform: translateY(-38%);
+    box-sizing: border-box;
+    width: var(--az-w);
+    height: max-content;
+    max-height: calc(100vh - var(--az-top, 200px) - var(--az-bottom));
+    max-height: calc(100dvh - var(--az-top, 200px) - var(--az-bottom));
+    margin: auto 0;
+    padding: 4px 2px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 .az-index[hidden] { display: none; }
 .az-index button {
-    width: 24px;
-    height: 17px;
+    flex: 0 1 18px;
+    min-height: 10px;
+    width: 22px;
     padding: 0;
     border: 0;
+    border-radius: var(--r-pill);
     background: transparent;
     color: var(--primary);
-    font: 700 11px/17px var(--font);
+    font: 800 11px/1 var(--font);
     cursor: pointer;
 }
-#tab-diseases.az-on .disease-groups { margin-right: 10px; }
+.az-index button.is-active { background: var(--primary); color: var(--on-primary); }
+/* Ro'yxat panel ostida qolmaydi: o'ngdan panel kengligicha joy (panel o'ng cheti 4px, oraliq 4px) */
+#tab-diseases.az-on .disease-groups { padding-right: calc(var(--az-w) + 8px - var(--s-4)); }
 
 /* Bo'sh holat */
 .empty-state {
@@ -2478,3 +2499,22 @@ body.kb-open .app-nav { display: none; }
         transition-delay: 0s !important;
     }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   Scrollbar: yupqa, mavzuga mos — faqat sichqoncha / trackpad (Telegram Desktop, brauzer).
+   Telefonda (hover: none) tizim scrollbar'i o'zgarmaydi. Chromium/Safari: ::-webkit-scrollbar (hoverda --primary);
+   Firefox: standart scrollbar-width / scrollbar-color (Chromium'da ular ::-webkit-scrollbar ni o'chirib qo'yardi).
+   ═══════════════════════════════════════════════════════════════════ */
+@media (hover: hover) and (pointer: fine) {
+    @supports not selector(::-webkit-scrollbar) {
+        * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--line-strong); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+}
+/* Gorizontal chiplar qatori va alifbo panelida scrollbar yo'q */
+.chip-scroll, .az-index { scrollbar-width: none; }
+.chip-scroll::-webkit-scrollbar, .az-index::-webkit-scrollbar { display: none; }

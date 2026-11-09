@@ -1468,7 +1468,18 @@ function compareDiseaseNames(p, r) {
 function syncStickyToolsHeight() {
     const tab = document.getElementById('tab-diseases');
     const tools = tab && tab.querySelector('.sticky-tools');
-    if (tools && tools.offsetHeight) tab.style.setProperty('--tools-h', tools.offsetHeight + 'px');
+    if (!tools || !tools.offsetHeight) return;
+    tab.style.setProperty('--tools-h', tools.offsetHeight + 'px');
+    // A–Z panel yuqori chegarasi: qidiruv panelining skrollsiz holatdagi pastki cheti (header va chiplar bilan to'qnashmaydi)
+    const content = document.querySelector('.app-content');
+    const head = tab.querySelector('.screen-head');
+    let bottom = tools.getBoundingClientRect().bottom;
+    if (content && content.scrollTop > 0 && head) {
+        bottom = head.getBoundingClientRect().bottom + content.scrollTop
+            + (parseFloat(getComputedStyle(head).marginBottom) || 0) + tools.offsetHeight;
+    }
+    tab.style.setProperty('--az-top', Math.round(bottom + 8) + 'px');
+    updateAzActive();
 }
 
 function renderDiseases(data, opts) {
@@ -1534,13 +1545,21 @@ function renderDiseases(data, opts) {
 }
 
 // ── A–Z tezkor indeks (o'ng chetda). Qidiruv yoki kategoriya faol bo'lsa yashirin. ──
-function scrollToLetter(letter, focusRow) {
+// smooth — bosilganda silliq (prefers-reduced-motion da darhol); sudrab tanlashda (scrub) darhol
+let azPending = null;                  // silliq o'tish davomida faol harf o'zgarib-o'zgarib turmaydi
+
+function scrollToLetter(letter, focusRow, smooth) {
     const header = document.querySelector(`#disease-list-container .letter-header[data-letter="${CSS.escape(letter)}"]`);
     const content = document.querySelector('.app-content');
     if (!header || !content) return;
     const tools = document.querySelector('#tab-diseases .sticky-tools');
     const offset = header.getBoundingClientRect().top - content.getBoundingClientRect().top - (tools ? tools.offsetHeight : 0) - 4;
-    content.scrollTop += offset;
+    const target = Math.max(0, Math.min(content.scrollTop + offset, content.scrollHeight - content.clientHeight));
+    setAzActive(letter);
+    // Skroll manziliga yetguncha (ro'yxat oxirida ham) tanlangan harf faol qoladi
+    azPending = Math.abs(target - content.scrollTop) > 1 ? target : null;
+    if (smooth && !prefersReducedMotion() && content.scrollTo) content.scrollTo({ top: target, behavior: 'smooth' });
+    else content.scrollTop = target;
     if (focusRow) {
         const row = header.nextElementSibling && header.nextElementSibling.querySelector('.list-row');
         if (row) row.focus({ preventScroll: true });
@@ -1561,35 +1580,77 @@ function renderAzIndex(letters, visible) {
         btn.textContent = letter;
         btn.setAttribute('data-letter', letter);
         btn.setAttribute('aria-label', `${letter} harfiga o'tish`);
-        // Klaviatura (detail === 0) — fokus ham guruhning birinchi qatoriga o'tadi
-        btn.addEventListener('click', (e) => scrollToLetter(letter, e.detail === 0));
+        // Klaviatura (detail === 0) — fokus ham guruhning birinchi qatoriga o'tadi.
+        // Sichqoncha / barmoq bosishi pointerup da (initAzScrub) bajariladi.
+        btn.addEventListener('click', (e) => { if (e.detail === 0) scrollToLetter(letter, true, true); });
         nav.appendChild(btn);
+    });
+    updateAzActive();
+}
+
+// Faol harf: hozir ko'rinib turgan bo'lim (--primary fon). Ro'yxatda yo'q harflar panelda umuman chiqmaydi.
+function setAzActive(letter) {
+    document.querySelectorAll('#disease-az button').forEach(b => {
+        const on = b.getAttribute('data-letter') === letter;
+        b.classList.toggle('is-active', on);
+        if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
     });
 }
 
+function updateAzActive() {
+    const nav = document.getElementById('disease-az');
+    const content = document.querySelector('.app-content');
+    if (!nav || nav.hidden || !content) return;
+    if (azPending !== null) {                       // panel orqali o'tish: manzilga yetguncha tanlangan harf qoladi
+        if (Math.abs(content.scrollTop - azPending) <= 2) azPending = null;
+        return;
+    }
+    const tools = document.querySelector('#tab-diseases .sticky-tools');
+    const line = content.getBoundingClientRect().top + (tools ? tools.offsetHeight : 0) + 8;
+    const headers = document.querySelectorAll('#disease-list-container .letter-header');
+    let current = headers.length ? headers[0].getAttribute('data-letter') : null;
+    headers.forEach(h => { if (h.getBoundingClientRect().top <= line) current = h.getAttribute('data-letter'); });
+    if (current) setAzActive(current);
+}
+
+// Barmoq / sichqoncha: bosish — tegishli bo'limga silliq o'tish; sudrab o'tish (scrub) — harf almashganda darhol
 function initAzScrub() {
     const nav = document.getElementById('disease-az');
     if (!nav) return;
-    let active = false, last = null;
-    const pick = (e) => {
+    let active = false, start = null, last = null, moved = false;
+    const letterAt = (e) => {
         const el = document.elementFromPoint(e.clientX, e.clientY);
         const btn = el && el.closest && el.closest('#disease-az button');
-        if (!btn) return;
-        const letter = btn.getAttribute('data-letter');
-        if (letter === last) return;
-        last = letter;
-        scrollToLetter(letter, false);
-        try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (err) { /* yo'q */ }
+        return btn ? btn.getAttribute('data-letter') : null;
     };
     nav.addEventListener('pointerdown', (e) => {
-        active = true; last = null;
+        active = true;
+        moved = false;
+        start = last = letterAt(e);
         try { nav.setPointerCapture(e.pointerId); } catch (err) { /* eski brauzer */ }
-        pick(e);
+        if (start) setAzActive(start);
     });
-    nav.addEventListener('pointermove', (e) => { if (active) pick(e); });
-    const stop = () => { active = false; };
-    nav.addEventListener('pointerup', stop);
-    nav.addEventListener('pointercancel', stop);
+    nav.addEventListener('pointermove', (e) => {
+        if (!active) return;
+        const letter = letterAt(e);
+        if (!letter || letter === last) return;
+        moved = true;
+        last = letter;
+        scrollToLetter(letter, false, false);
+        try { if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged(); } catch (err) { /* yo'q */ }
+    });
+    nav.addEventListener('pointerup', () => {
+        if (active && !moved && start) scrollToLetter(start, false, true);
+        active = false;
+    });
+    nav.addEventListener('pointercancel', () => { active = false; });
+    // Faol harf skroll bo'yicha; foydalanuvchi o'zi skroll qilsa silliq o'tish kutilmaydi
+    const content = document.querySelector('.app-content');
+    if (content) {
+        content.addEventListener('scroll', updateAzActive, { passive: true });
+        ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(ev =>
+            content.addEventListener(ev, () => { azPending = null; }, { passive: true }));
+    }
 }
 
 // OPEN DISEASE DETAILS

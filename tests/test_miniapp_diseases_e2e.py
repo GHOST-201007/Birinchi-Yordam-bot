@@ -98,9 +98,11 @@ class DiseasesE2ETest(MiniAppE2EBase):
         self.assertTrue(page.is_visible("#disease-az"))
         self.assertEqual(page.get_attribute('#disease-az [data-letter="K"]', "aria-label"), "K harfiga o'tish")
         page.click('#disease-az [data-letter="K"]')
-        header = page.locator('#disease-list-container .letter-header[data-letter="K"]').bounding_box()
-        tools = page.locator("#tab-diseases .sticky-tools").bounding_box()
-        self.assertAlmostEqual(header["y"], tools["y"] + tools["height"], delta=12)   # sarlavha sticky panel ostida
+        # Silliq o'tish tugashini kutamiz (batafsil: test_miniapp_scrollbar_az_e2e.py)
+        page.wait_for_function("""(() => { const h = document.querySelector('#disease-list-container .letter-header[data-letter="K"]');
+            const t = document.querySelector('#tab-diseases .sticky-tools'); return Math.abs(h.getBoundingClientRect().top
+            - t.getBoundingClientRect().bottom) <= 12; })()""")
+        self.assertEqual(page.get_attribute('#disease-az [data-letter="K"]', "aria-current"), "true")
 
     def test_az_index_keyboard_moves_focus_to_group(self):
         page = self.open_tab()
