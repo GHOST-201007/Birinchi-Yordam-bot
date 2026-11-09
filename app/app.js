@@ -406,6 +406,8 @@ function applyTheme(mode) {
     // Telegram'ning yorug' mavzu ranglari faqat Telegram ham yorug' bo'lsa ishlatiladi (aks holda aralash ranglar)
     body.classList.toggle('tg-light', mode === 'light' && !!tg && tg.colorScheme === 'light');
     syncTelegramChrome();
+    // Ko'rinib turgan MainButton ham yangi mavzu ranglarini oladi (--primary / --on-primary)
+    try { MainButtonCtl.refreshColors(); } catch (e) { /* hali e'lon qilinmagan */ }
     // Grafik ranglari CSS tokenlaridan olinadi — mavzu o'zgarsa qayta chiziladi
     if (document.getElementById('bmi-chart')) { try { drawChart(currentHistory); } catch (e) { /* hali tayyor emas */ } }
 }
@@ -1056,6 +1058,7 @@ document.addEventListener('DOMContentLoaded', () => {
 const MainButtonCtl = {
     handler: null,
     owner: null,
+    active: true,
     opts: null,
     fallback: null,
     available() {
@@ -1074,6 +1077,7 @@ const MainButtonCtl = {
         this.clear();
         this.opts = opts;
         this.owner = opts.owner || null;
+        this.active = true;
         const useTg = this.available();
         document.body.classList.toggle('tg-main', useTg);
         if (fallbackEl) {
@@ -1102,8 +1106,17 @@ const MainButtonCtl = {
             return false;
         }
     },
+    // Mavzu almashganda: joriy holat (faol / nofaol) bo'yicha ranglarni qayta qo'yadi
+    refreshColors() {
+        if (!this.handler || !this.available() || !tg.MainButton.setParams) return;
+        try {
+            const c = this.colors(this.active !== false);
+            if (/^#[0-9a-f]{6}$/i.test(c.color)) tg.MainButton.setParams({ color: c.color, text_color: c.text_color });
+        } catch (e) { /* eski klient */ }
+    },
     // Input to'g'ri bo'lsagina tugma faol (4.4-E)
     setActive(on) {
+        this.active = !!on;
         if (this.fallback) this.fallback.disabled = !on;
         if (!this.handler || !this.available()) return;
         const mb = tg.MainButton;

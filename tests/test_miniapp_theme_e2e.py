@@ -121,6 +121,22 @@ class ThemePickerE2ETest(MiniAppE2EBase):
         self.assertEqual(self.checked(page), ["auto"])
         self.assertEqual(page.evaluate("[...document.querySelectorAll('.theme-seg [role=radio]')].filter(b => b.tabIndex === 0).length"), 1)
 
+    def test_visible_main_button_recolored_on_theme_switch(self):
+        # Sog'liq tabida "Hisoblash" MainButton ko'rinib turadi — mavzu almashsa uning rangi ham almashadi
+        page = self.open_health(scheme("light"))
+        self.assertEqual((self.tg(page)["mainVisible"], self.tg(page)["mainText"]), (True, "Hisoblash"))
+        page.click(BTN.format("dark"))
+        p = self.tg(page)["mainParams"]
+        self.assertEqual((p["color"].upper(), p["text_color"].upper()), ("#8FA9A9", "#06211E"))   # nofaol (--text-2)
+        page.evaluate("MainButtonCtl.setActive(true)")
+        page.click(BTN.format("light"))
+        p = self.tg(page)["mainParams"]
+        self.assertEqual((p["color"].upper(), p["text_color"].upper()), ("#0E7C72", "#FFFFFF"))   # faol (--primary)
+        page.evaluate("window.Telegram.WebApp.colorScheme = 'dark';")
+        page.click(BTN.format("auto"))                                          # Avto -> Telegram (dark)
+        p = self.tg(page)["mainParams"]
+        self.assertEqual((p["color"].upper(), p["text_color"].upper()), ("#3DC2B3", "#06211E"))
+
     def test_contrast_both_themes(self):
         for mode in ("light", "dark"):
             with self.subTest(mode=mode):
