@@ -142,34 +142,6 @@ body {
     position: relative;
 }
 
-/* HEADER */
-
-
-/* Universal Header Back Button */
-
-
-
-
-
-
-
-
-
-/* Theme Toggle Button */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* MAIN CONTENT */
 .app-content {
@@ -188,149 +160,8 @@ body {
     animation: fadeIn 0.3s ease-in-out;
 }
 
-.section-title {
-    margin-bottom: 20px;
-}
-
-.section-title h2 {
-    font-size: 22px;
-    font-weight: 700;
-}
-
-.section-title p {
-    font-size: 14px;
-    color: var(--hint-color);
-}
-
-/* FIRST AID GRID */
-
-
-
-
-
-
-
-
-
-
-
-
-/* SEARCH BOX */
-
-
-
-
-
-
-
-
-
-
-/* DISEASE LIST */
-
-
-
-
-
-
-
-
-
-
-
-
-/* CALCULATORS */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.action-btn {
-    width: 100%;
-    padding: var(--space-3);
-    background-color: var(--color-primary);
-    color: var(--button-text-color);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition: background-color 0.2s, transform 0.1s;
-}
-.action-btn:hover { background-color: var(--color-primary-light); }
-.action-btn:active { transform: scale(0.97); }
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Gauge visualizer */
-
-
-
-
-
-
-
-
-
-
-/* BOTTOM NAVIGATION */
-
-
-
-
-
-
-
-
-
-
-/* FULL-SCREEN OVERLAY FOR DETAILS */
-
-
-
-
-
-
 
 .overlay-title { font-size: 18px; font-weight: 700; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /* ANIMATIONS */
@@ -339,149 +170,15 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-@keyframes wave {
-    0%, 100% { transform: translateY(0) rotate(0); }
-    50% { transform: translateY(-4px) rotate(2deg); }
-}
 
 /* ── QUIZ ──────────────────────────────────────────── */
 .quiz-screen { display: none; }
 .quiz-screen.active { display: block; animation: fadeIn 0.3s ease; }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ── HISTORY ───────────────────────────────────────── */
-
-
-
-
 .history-section { display: none; }
 .history-section.active { display: block; animation: fadeIn 0.3s ease; }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 6 ta nav uchun moslashtirish */
-
-
-
-
-/* ── BODY MAP — Premium Medical Design ──────────── */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Back button special shape */
-.back-btn-shape {
-    fill: #f0fdf4;
-    stroke: #86efac;
-    stroke-width: 1.5;
-}
-
-.back-btn:hover .back-btn-shape,
-.back-btn:active .back-btn-shape {
-    fill: #22c55e;
-    stroke: #16a34a;
-}
-
-
-
-
-
-.floating-label {
-    fill: #94a3b8;
-    font-size: 9px;
-    font-weight: 600;
-    font-family: var(--font);
-    text-anchor: middle;
-    pointer-events: none;
-    opacity: 0.7;
-}
-
-
-
-
-
-
-
-body.dark-mode .floating-label {
-    fill: #64748b;
-}
-
-body.dark-mode .back-btn-shape {
-    fill: #1a2e23;
-    stroke: #4ade80;
-}
-
-body.dark-mode .back-btn:hover .back-btn-shape {
-    fill: #22c55e;
-    stroke: #4ade80;
-}
 
 /* Modal styles */
 .modal {
@@ -502,161 +199,10 @@ body.dark-mode .back-btn:hover .back-btn-shape {
     display: none;
 }
 
-.modal-content {
-    background: var(--bg-color);
-    color: var(--text-color);
-    width: 90%;
-    max-width: 400px;
-    border-radius: var(--border-radius-md);
-    padding: 20px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-    animation: zoomIn 0.25s ease-out;
-}
-
-@keyframes zoomIn {
-    from { transform: scale(0.9); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--secondary-bg-color);
-    padding-bottom: 10px;
-    margin-bottom: 12px;
-}
-
-.close-btn {
-    font-size: 24px;
-    cursor: pointer;
-    color: var(--hint-color);
-}
-
-
-
-
-
-
-
-.modal-footer {
-    margin-top: 16px;
-}
-
-
 
 /* ═══════════════════════════════════════════
    ENRICHED DETAIL OVERLAY STYLES
 ═══════════════════════════════════════════ */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ── BODY MAP — Futuristic Medical Scanner Design ──────────── */
-
-
-
-
-
-
-
-
-
-
-/* Scanner HUD Grid & Laser */
-
-
-
-
-@keyframes scanner-sweep {
-    0%, 100% { top: 6%; opacity: 0.2; }
-    50% { top: 92%; opacity: 0.8; }
-}
-
-
-
-
-
-
-
-
-
-/* Anatomical Body Parts */
-
-
-
-
-
-
-/* Hover & Active Glowing Neon Effect */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Pulsing Pins on Organs */
-
-
-@keyframes pin-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.4); opacity: 1; filter: drop-shadow(0 0 6px #14b8a6); }
-}
-
-/* Quick Chips */
-
-
-
-
 
 
 /* Modal Base — Body Map */
@@ -676,190 +222,10 @@ body.dark-mode .back-btn:hover .back-btn-shape {
     display: none !important;
 }
 
-/* Modal styles for Body Map Diseases */
-
-
-@keyframes modal-slide-up {
-    from { transform: translateY(100%); opacity: 0.5; }
-    to   { transform: translateY(0);   opacity: 1;   }
-}
-
-/* Drag handle */
-
-
-
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px 0;
-    flex-shrink: 0;
-}
-
-
-
-
-
-.modal-header h3 {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0;
-}
-
-.close-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--secondary-bg-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--hint-color);
-    font-size: 14px;
-    flex-shrink: 0;
-    transition: background 0.15s, transform 0.15s;
-}
-
-.close-btn:active {
-    background: rgba(13, 148, 136, 0.15);
-    transform: scale(0.9);
-}
-
-.modal-body {
-    padding: 8px 20px 0;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-}
-
-
-
-
-
-
-
-
-
-/* Urgent variant */
-
-
-
-
-
-
-/* Urgent badge */
-
-
-
-
-/* Tip block */
-
-
-
-
-
-
-/* Disclaimer */
-
-
-
-
-
-
-/* Footer */
-.modal-footer {
-    padding: 12px 20px 20px;
-    flex-shrink: 0;
-}
-
-
-
-@keyframes ai-btn-glow {
-    0%, 100% { box-shadow: 0 6px 24px rgba(13, 148, 136, 0.4), 0 0 0 0 rgba(13, 148, 136, 0); }
-    50%       { box-shadow: 0 8px 28px rgba(13, 148, 136, 0.6), 0 0 0 4px rgba(13, 148, 136, 0.12); }
-}
-
-
-
-
 
 /* ═══════════════════════════════════════════
    OMAD BARABANI — Luxury Fortune Wheel
 ═══════════════════════════════════════════ */
-
-/* --- Promo Card on Home Screen --- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* --- Full-Screen Wheel Modal --- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* --- Wheel Stage with Gold Bezel & LED Lights --- */
-
-
-
-
-
-
-
-
-@keyframes led-flash {
-    0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
-    100% { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
-}
-
-/* --- Golden 3D Pointer Arrow (Top) --- */
-
-
-
-
-
-
-
-
-/* --- Canvas Wrap --- */
 
 
 #wheel-canvas {
@@ -869,77 +235,8 @@ body.dark-mode .back-btn:hover .back-btn-shape {
     transform-origin: center center;
 }
 
-/* --- Center Button --- */
-
-
-@keyframes btn-breathing {
-    0%, 100% { box-shadow: 0 6px 20px rgba(0,0,0,0.5), 0 0 15px rgba(234, 179, 8, 0.3); }
-    50% { box-shadow: 0 6px 25px rgba(0,0,0,0.6), 0 0 30px rgba(20, 184, 166, 0.7); }
-}
-
-
-
-
-
-
-
-
-
-
-
-/* --- Result Card --- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@keyframes result-pop {
-    0% { opacity: 0; transform: scale(0.8) translateY(10px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-/* Remove old unused classes */
-.doctor-modal, .wheel-body, .wheel-instruction, .wheel-container,
-.wheel-canvas-container, .spin-btn { display: none; }
 
 /* --- RESPONSIVE ADJUSTMENTS FOR SMALL SCREENS --- */
-@media (max-width: 360px) {
-    .section-title h2 { font-size: 18px; }
-
-
-
-
-
-
-
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ═══════════════════════════════════════════════════
    PREMIUM MODAL — Full Responsive Design
    ═══════════════════════════════════════════════════ */
@@ -949,50 +246,12 @@ body.dark-mode .back-btn:hover .back-btn-shape {
     padding: 0;
 }
 
-@keyframes pm-slide-up {
-    from { transform: translateY(100%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @media (min-width: 520px) {
     #premium-modal { align-items: center; }
 
 
 }
-@media (min-width: 900px) {
-
-
-}
-
-
-
-
 /* =========================================
    PERFECT REFERENCE MATCH OVERRIDE
    ========================================= */
@@ -1022,94 +281,6 @@ html, body {
     -webkit-overflow-scrolling: touch;
     padding: 0 16px 24px 16px !important; 
 }
-
-/* Floating Header Pill */
-
-
-
-
-
-
-
-
-
-
-
-/* Titles */
-.section-title {
-    margin-bottom: 20px !important;
-}
-.section-title h2 {
-    font-size: 24px !important;
-    font-weight: 800 !important;
-    color: var(--color-primary-dark) !important;
-    margin-bottom: 4px !important;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.section-title p {
-    font-size: 14px !important;
-    color: var(--hint-color) !important;
-}
-
-/* Promo Cards (Solid Gradients like image) */
-
-
-
-
-
-
-
-
-
-/* First Aid Grid (2 Columns, matching image) */
-
-
-
-
-
-
-
-/* Chevron arrow */
-
-
-
-
-
-
-/* Floating Bottom Navigation matching image */
-
-
-
-
-
-
-
-
-
-
-/* Other sections matching the vibe */
-
-
-
-
-
-.action-btn {
-    background: var(--color-primary) !important;
-    border-radius: 100px !important;
-    box-shadow: 0 4px 16px rgba(21, 155, 138, 0.25) !important;
-}
-
-
-
-
-
-/* Foydalanuvchi avatari rasmi (app.js da DOM orqali yaratiladi) */
-
-
-/* Kunlik bonus: mini app ichida olingan natija ("+3 ball, 3-kun") */
-
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1284,21 +455,6 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
 /* ═══════════════════════════════════════════════════════════════════
    REDESIGN — BOSH EKRAN (4.4-B)
    ═══════════════════════════════════════════════════════════════════ */
-/* 1. SOS kartasi. Oq matn kontrasti >= 4.5:1 bo'lishi uchun --danger dan biroz to'qroq gradient */
-
-
-
-
-
-
-
-
-
-
-/* 2. Tezkor harakatlar */
-
-
-
 
 
 /* Guruhlangan ro'yxatlar (inset grouped) */
@@ -1356,7 +512,7 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
 }
 .row-icon--danger { background: var(--danger-soft); color: var(--danger); }
 .row-icon--primary { background: var(--primary-soft); color: var(--primary); }
-.row-icon--warning { background: var(--warning-soft); color: var(--warning); }
+
 .row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .row-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 .row-sub {
@@ -1370,22 +526,6 @@ body.dark-mode .segmented button[aria-selected="true"] { background: rgba(255, 2
     text-overflow: ellipsis;
 }
 .row-chevron { font-size: 16px; color: var(--text-2); opacity: 0.6; }
-.pill {
-    flex-shrink: 0;
-    padding: 6px 14px;
-    border-radius: 999px;
-    background: var(--primary);
-    color: var(--on-primary);
-    font-size: 13px;
-    font-weight: 600;
-}
-.pill--ghost { background: var(--primary-soft); color: var(--primary); }
-.pill--done { background: var(--primary-soft); color: var(--primary); }
-
-/* 4. Premium banner (bir qator) */
-
-
-
 
 
 /* 5. Qidiruv maydoni */
@@ -2460,17 +1600,6 @@ body.dark-mode .result-saved { color: var(--primary); }
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   REDESIGN — TANA XARITASI (4.4-H)
-   ═══════════════════════════════════════════════════════════════════ */
-.body-map-card {
-    margin-bottom: var(--s-4);
-    padding: var(--s-4) var(--s-2);
-    border-radius: var(--r-lg);
-    background: var(--surface);
-    box-shadow: var(--shadow-card);
-}
-.human-body-svg { display: block; width: 100%; max-width: 300px; height: auto; margin: 0 auto; }
 .body-part { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
 .body-part .fat-hotspot { fill: transparent; }
 .body-part .part-shape {
@@ -2485,7 +1614,7 @@ body.dark-mode .body-part:hover .part-shape { fill: var(--primary-soft); }
 .body-part:focus-visible .part-shape { stroke: var(--primary); stroke-width: 2.5; }
 .body-part.selected .part-shape,
 body.dark-mode .body-part.selected .part-shape { fill: var(--primary); stroke: var(--primary); }
-.body-quick-chips { margin-bottom: var(--s-4); }
+
 
 /* Bottom sheet: pastdan chiqadi, xarita ustida — lekin modal emas (fon qoraytirilmaydi, menyu ishlaydi) */
 .sheet {

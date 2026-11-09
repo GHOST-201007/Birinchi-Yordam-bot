@@ -2712,16 +2712,6 @@ function sendAiConsultToBot(title, startKey) {
     }
 }
 
-// A'zo nomi (chap/o'ng bilan) — aria-label va sarlavha uchun
-function bodyPartName(partKey) {
-    const mapKey = partKey.replace('left_', '').replace('right_', '');
-    const d = bodyMapData && (bodyMapData[partKey] || bodyMapData[mapKey]);
-    let name = d ? (d.name || (d.title || mapKey).replace(/^[^\w\s\u0400-\u04FF]+/, '').trim()) : mapKey;
-    if (partKey.startsWith('left_')) name = "Chap " + name.toLowerCase();
-    else if (partKey.startsWith('right_')) name = "O'ng " + name.toLowerCase();
-    return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
 function markSelectedBodyPart() {
     document.querySelectorAll('#body-figure .fig-label').forEach(btn => {
         const on = !!selectedHotspotId && btn.id === selectedHotspotId;

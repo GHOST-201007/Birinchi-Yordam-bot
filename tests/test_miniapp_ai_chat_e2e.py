@@ -484,7 +484,7 @@ class AiChatStaticTest(unittest.TestCase):
         self.assertEqual(chat.count("innerHTML"), 0)
         self.assertEqual(chat.count("insertAdjacentHTML") + chat.count("outerHTML"), 0)
         self.assertIn("textContent", chat)
-        bridge = self.section("function openAiChatFromBodySheet()", "// A'zo nomi (chap/o'ng bilan)")
+        bridge = self.section("function openAiChatFromBodySheet()", "function markSelectedBodyPart()")
         self.assertEqual(bridge.count("innerHTML"), 0)
 
     def test_old_send_data_path_kept_as_fallback(self):
