@@ -1173,10 +1173,40 @@ def get_premium_keyboard():
 # PREMIUM UPSELL
 # ═══════════════════════════════════════════════════════════════════
 
-async def premium_upsell(event):
+AI_TIER_NAMES = {"pro": "Pro", "plus": "Plus", "ultra": "Ultra"}
+
+
+def ai_tier_limits() -> dict:
+    """Premium tariflarining kunlik AI limitlari — database.try_consume_daily_request bilan bir xil env va standart."""
+    return {"pro": int(os.environ.get("PRO_AI_DAILY_LIMIT", "15")),
+            "plus": int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30")),
+            "ultra": int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100"))}
+
+
+def premium_upsell_text(is_premium: bool, premium_type: str | None) -> tuple[str, bool]:
+    """(matn, Premium tugmasi kerakmi). Bepul — bir martalik savol ishlatilgan; Premium — bugungi limit tugagan."""
+    limits = ai_tier_limits()
+    if is_premium:
+        # Muddatsiz premium (premium_type yo'q / 'free') — database'dagidek Ultra hisoblanadi
+        tier = premium_type if premium_type in limits else "ultra"
+        text = (
+            "⏳ <b>Bugungi AI so'rovlaringiz tugadi.</b>\n\n"
+            f"Premium {AI_TIER_NAMES[tier]}: kuniga {limits[tier]} ta AI so'rov.\n"
+            "Yangi so'rovlar ertaga soat 00:00 dan (Toshkent vaqti) beriladi."
+        )
+        higher = [t for t in ("plus", "ultra") if limits[t] > limits[tier]]
+        if not higher:
+            return text, False
+        text += ("\n\nKo'proq kerak bo'lsa — yuqoriroq tarif: "
+                 + ", ".join(f"{AI_TIER_NAMES[t]} — kuniga {limits[t]} ta" for t in higher)
+                 + ".\n\nQuyidagi tugmani bosing:")
+        return text, True
     text = (
         "🛑 <b>Bepul AI so'rovlar limiti tugadi!</b>\n\n"
-        "AI bilan cheksiz ishlash uchun <b>Premium</b> xarid qiling.\n\n"
+        "AI bilan ishlashni davom ettirish uchun <b>Premium</b> xarid qiling:\n"
+        f"• Pro — kuniga {limits['pro']} ta AI so'rov\n"
+        f"• Plus — kuniga {limits['plus']} ta AI so'rov\n"
+        f"• Ultra — kuniga {limits['ultra']} ta AI so'rov\n\n"
         "🎁 <b>Bepul Premium olish yo'li:</b>\n"
         "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
         "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
@@ -1184,10 +1214,24 @@ async def premium_upsell(event):
         f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> dan boshlab yoki karta orqali.\n\n"
         "Quyidagi tugmani bosing:"
     )
+    return text, True
+
+
+async def premium_upsell(event):
+    """AI limiti tugaganda: bepul foydalanuvchiga Premium taklifi, Premium'ga — limit vaqti (va yuqoriroq tarif)."""
+    is_prem, prem_type = False, None
+    user = getattr(event, "from_user", None)
+    if user is not None:
+        try:
+            is_prem, _exp, prem_type = await asyncio.to_thread(database.get_premium_info, user.id)
+        except Exception:
+            logging.exception("premium_upsell: premium holatini o'qib bo'lmadi (user=%s)", user.id)
+    text, with_button = premium_upsell_text(bool(is_prem), prem_type)
+    markup = get_premium_keyboard() if with_button else None
     if isinstance(event, types.Message):
-        await event.answer(text, reply_markup=get_premium_keyboard(), parse_mode="HTML")
+        await event.answer(text, reply_markup=markup, parse_mode="HTML")
     else:
-        await event.message.edit_text(text, reply_markup=get_premium_keyboard(), parse_mode="HTML")
+        await event.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
 
 # ═══════════════════════════════════════════════════════════════════
 # START VA MENYU
