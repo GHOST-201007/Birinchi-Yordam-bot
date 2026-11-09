@@ -3329,3 +3329,37 @@ body.kb-open .app-nav { display: none; }
 @media (prefers-reduced-motion: reduce) {
     .ai-dot { animation: none; opacity: .7; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   G 5-bosqich — a11y: bosish zonasi >= 44x44 (ko'rinish o'zgarmaydi), kamaytirilgan harakat
+   ═══════════════════════════════════════════════════════════════════ */
+/* Kichik ko'rinadigan tugmalar: ::after markazdan 44x44 bosish zonasi (.cat-chip, .fig-label dagi uslub) */
+.segmented button, .search-clear, .ai-context-clear, .header-back-btn, .home-chip, .today-btn { position: relative; }
+.segmented button::after, .search-clear::after, .ai-context-clear::after,
+.header-back-btn::after, .home-chip::after, .today-btn::after, .cat-chip::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+}
+/* Gorizontal skroll qatori kengaytmani qirqmasin (.cat-chip 34px + 2 x 5px) */
+.chip-scroll { padding-top: 5px; padding-bottom: 5px; }
+/* input'ga ::after qo'yib bo'lmaydi — maydonning o'zi 44px */
+.search-field { height: 44px; }
+.ai-chip, .ai-action { min-height: 44px; }
+
+/* Kamaytirilgan harakat: barcha o'tish va animatsiyalar o'chadi.
+   Istisno: baraban (JS o'zi 600 ms qisqa aylanish beradi) va yuklanish ikonkasi (holat ko'rsatkichi) */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *:not(#wheel-canvas):not(.icon-spin), *::before, *::after {
+        animation-duration: 0s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+    }
+}

@@ -3451,7 +3451,7 @@ function initWheelOfFortune() {
 // Confetti Particle Explosion Engine
 function fireConfetti() {
     const canvas = document.getElementById('wheel-confetti-canvas');
-    if (!canvas) return;
+    if (!canvas || prefersReducedMotion()) return;          // kamaytirilgan harakat: konfetti yo'q
 
     const ctx = canvas.getContext('2d');
     canvas.width = window.innerWidth;
