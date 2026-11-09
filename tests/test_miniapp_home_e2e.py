@@ -34,6 +34,19 @@ class HomeE2ETest(MiniAppE2EBase):
         self.assertEqual((round(box["width"]), round(box["height"])), (48, 48))
         self.assertGreaterEqual(page.evaluate(CONTRAST_JS, ".emergency-btn"), 4.5)
 
+    def test_only_header_103_button_on_every_tab(self):
+        # Faqat headerdagi dumaloq 103; tablarda (Kasalliklar, Sog'liq, AI) qo'shimcha 103 tugma yo'q
+        page, _ = self.open_app({"state": (200, STATE)})
+        page.wait_for_selector("#global-score:not([hidden])")
+        visible = ("[...document.querySelectorAll('a[href=\"tel:103\"], [aria-label*=\"103\"]')]"
+                   ".filter(a => a.getClientRects().length && getComputedStyle(a).visibility !== 'hidden')"
+                   ".map(a => a.className)")
+        for tab in ("tab-first-aid", "tab-diseases", "tab-health", "tab-ai"):
+            with self.subTest(tab=tab):
+                page.click(f'nav [data-tab="{tab}"]')
+                self.assertEqual(page.evaluate(visible), ["emergency-btn"])
+        self.assertEqual(page.locator("#tab-ai a[href='tel:103'], .ai-103").count(), 0)
+
     def test_old_home_blocks_removed(self):
         page, _ = self.open_app({})
         for sel in (".sos-card", ".quick-actions", ".qa", ".premium-banner"):

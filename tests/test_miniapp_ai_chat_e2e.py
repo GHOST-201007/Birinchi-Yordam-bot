@@ -71,7 +71,7 @@ class AiChatE2ETest(MiniAppE2EBase):
         self.assertEqual(page.inner_text(".ai-head-title"), "AI maslahat")
         self.assertEqual(page.inner_text("#ai-quota"), "Bepul savol: 1/1")             # bepul: jami 1 ta
         self.assertEqual(page.get_attribute(".ai-head-badge use", "href"), "#i-sparkles")
-        self.assertEqual(page.get_attribute(".ai-103", "href"), "tel:103")
+        self.assertEqual(page.locator("#tab-ai a[href='tel:103']").count(), 0)          # AI tabida alohida 103 yo'q
         self.assertEqual(page.get_attribute("#ai-thread", "role"), "log")
         self.assertEqual(page.get_attribute("#ai-input", "maxlength"), "1000")
         self.assertTrue(page.is_disabled("#ai-send"))                                    # bo'sh matn
@@ -491,7 +491,7 @@ class AiChatE2ETest(MiniAppE2EBase):
                                        init_script=f"window.Telegram.WebApp.colorScheme = '{scheme}';")
                 page.evaluate("aiSetContext({ type: 'body_part', key: 'kokrak', label: \"Ko'krak\" })")
                 for sel in (".ai-greeting .ai-bubble p", ".ai-chip span", ".ai-disclaimer span", "#ai-quota",
-                            ".ai-head-title", ".ai-103 span", "#ai-context-label"):
+                            ".ai-head-title", "#ai-context-label"):
                     self.assertGreaterEqual(page.evaluate(CONTRAST_JS, sel), 4.5, sel)
                 self.send(page, "Savol")
                 page.wait_for_selector(".ai-msg--notice")

@@ -2296,20 +2296,6 @@ body.ai-tab-on .app-content { display: flex; flex-direction: column; overflow: h
 .ai-icon-btn .icon { width: 20px; height: 20px; }
 .ai-icon-btn:disabled { color: var(--text-2); box-shadow: none; cursor: default; }
 .ai-icon-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.ai-103 {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-    min-height: 44px;
-    padding: 0 var(--s-1);
-    color: var(--danger);
-    font: 800 15px var(--font);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-}
-.ai-103 .icon { width: 16px; height: 16px; }
-.ai-103:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; border-radius: var(--r-sm); }
 
 /* Xabarlar */
 .ai-log {
