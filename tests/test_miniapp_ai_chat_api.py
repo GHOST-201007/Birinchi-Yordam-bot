@@ -155,6 +155,16 @@ class AiChatValidationTest(AiChatTestBase):
         self.assertEqual(resp.status, 200)
         self.assertIn("[Kontekst: holat — Kuyish", self.ai.call_args.args[0])
 
+    async def test_condition_context_accepts_disease_keys(self):
+        # Kasallik detali "AI'dan so'rash": kalit — data.DISEASES nomidan (app.js aiDiseaseKey bilan bir xil)
+        for key, label in (("gripp", "Gripp"), ("covid_19", "COVID-19"),
+                           ("otit_quloq_yalliglanishi", "Otit (quloq yallig'lanishi)")):
+            with self.subTest(key=key):
+                resp, _ = await self.chat(context={"type": "condition", "key": key})
+                self.assertEqual(resp.status, 200)
+                self.assertIn(f"[Kontekst: holat — {label}]", self.ai.call_args.args[0])
+            self.q.used = 0
+
     async def test_body_over_16kb_413_but_route_accepts_more_than_4kb(self):
         history = [{"role": "user", "text": "x" * 1000}] * 4
         resp, _ = await self.chat(history=history)                              # ~4.2 KB — boshqa route'larda 413
@@ -357,6 +367,37 @@ class AiChatThrottleTest(AiChatTestBase):
         self.assertEqual(results[:2], [(409, "inflight", None)] * 2)
         self.assertEqual(results[2], (429, "rate", 30))                          # 3-urinish — 30 s blok
         self.assertEqual(self.q.used, 0)
+
+
+class AiConditionKeysTest(unittest.TestCase):
+    """Holat konteksti ro'yxati: FIRST_AID_DATA kalitlari + data.DISEASES (100 ta) nomidan kalitlar."""
+
+    def test_every_first_aid_and_disease_key_allowed(self):
+        from data import DISEASES, FIRST_AID_DATA
+        labels = bot.AI_CONTEXT_LABELS["condition"]
+        names = [n for page in DISEASES for n in page]
+        keys = [bot.ai_disease_key(n) for n in names]
+        self.assertEqual(len(names), 100)
+        self.assertEqual(len(set(keys)), len(keys))                              # to'qnashuv yo'q
+        for key in keys:
+            self.assertRegex(key, r"^[a-z0-9]+(_[a-z0-9]+)*$")
+            self.assertIn(key, labels)
+        for key in FIRST_AID_DATA:
+            if key != "start":
+                self.assertIn(key, labels)
+
+    def test_first_aid_label_wins_on_same_key(self):
+        import re
+        from data import FIRST_AID_DATA
+        self.assertEqual(bot.ai_disease_key("Allergiya"), "allergiya")            # kasallik bilan bir xil kalit
+        m = re.search(r"\*\*(.+?)\*\*", FIRST_AID_DATA["allergiya"])
+        expected = re.sub(r"[^\w\s'ʻʼ‘’()\-]", "", m.group(1)).strip()
+        self.assertEqual(bot.AI_CONTEXT_LABELS["condition"]["allergiya"], expected)   # birinchi yordam nomi ustun
+
+    def test_key_rule(self):
+        self.assertEqual(bot.ai_disease_key("Otit (quloq yallig'lanishi)"), "otit_quloq_yalliglanishi")
+        self.assertEqual(bot.ai_disease_key("  COVID-19 "), "covid_19")
+        self.assertEqual(bot.ai_disease_key("Qazg‘oq"), "qazgoq")
 
 
 class AiQuotaReadTest(unittest.TestCase):

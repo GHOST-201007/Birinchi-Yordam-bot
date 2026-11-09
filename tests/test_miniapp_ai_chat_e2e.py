@@ -9,6 +9,9 @@ import os
 import re
 import unittest
 
+os.environ.setdefault("BOT_TOKEN", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890")   # bot import (kalit qoidasi testi)
+os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
+
 from tests.e2e_base import CONTRAST_JS, STATE_OK, MiniAppE2EBase, sequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -392,6 +395,59 @@ class AiChatE2ETest(MiniAppE2EBase):
         self.assertEqual(tg["sent"], ['{"action":"ai_consult","title":"Tizza"}'])
         self.assertEqual(tg["links"], ["https://t.me/Birinchiyordam1Bot?start=ai_consult_left_knee"])
         self.assertEqual(tg["closed"], 1)
+
+    # ---- 6b. Detal / kasallik "AI'dan so'rash" (holat konteksti) -----------------------------------------
+    def test_first_aid_detail_opens_ai_with_condition_chip(self):
+        page, calls = self.open_app({"state": (200, PREMIUM), "ai/chat": ok()})
+        page.click('#home-chips [data-id="kuyish"]')
+        page.wait_for_selector("#overlay-details.active")
+        self.assertEqual(self.tg(page)["mainText"], "AI'dan so'rash")
+        page.evaluate("window.__mainCb()")
+        page.wait_for_selector("#tab-ai.active")
+        self.assertFalse(page.evaluate("document.getElementById('overlay-details').classList.contains('active')"))
+        self.assertEqual(page.inner_text("#ai-context-label"), "Holat: Kuyish")
+        self.assertEqual(page.evaluate("document.activeElement.id"), "ai-input")
+        tg = self.tg(page)
+        self.assertEqual((tg["links"], tg["sent"], tg["mainVisible"], tg["backVisible"]), ([], [], False, False))
+        self.assertEqual(self.chat_calls(calls), [])                                     # avtomatik yuborilmaydi
+        self.send(page, "Nima qilay?")
+        self.wait_replies(page)
+        self.assertEqual(self.chat_calls(calls)[0]["context"], {"type": "condition", "key": "kuyish"})
+
+    def test_critical_detail_secondary_ai_button(self):
+        page, _ = self.open_app({"state": (200, PREMIUM), "ai/chat": ok()})
+        page.click('#home-chips [data-id="qon_ketishi"]')
+        page.wait_for_selector("#overlay-details.active")
+        self.assertEqual(self.tg(page)["mainText"], "103 ga qo'ng'iroq")                # MainButton — 103
+        page.evaluate("document.getElementById('overlay-details').scrollTop = 99999")
+        page.click("#detail-ai-btn")
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Holat: Qon ketishi")
+
+    def test_disease_detail_opens_ai_with_disease_key(self):
+        page, calls = self.open_app({"state": (200, PREMIUM), "ai/chat": ok()})
+        page.click('nav [data-tab="tab-diseases"]')
+        page.fill("#disease-search-input", "gripp")
+        page.locator("#disease-list-container .list-row", has_text="Gripp").first.click()
+        page.wait_for_selector("#overlay-details.active")
+        page.evaluate("window.__mainCb()")
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Kasallik: Gripp")
+        self.assertEqual(self.chat_calls(calls), [])
+        self.send(page, "Isitmam bor")
+        self.wait_replies(page)
+        self.assertEqual(self.chat_calls(calls)[0]["context"], {"type": "condition", "key": "gripp"})
+
+    def test_disease_keys_match_server_rule(self):
+        import bot                                                                      # noqa: E402 (env — test_free_ai_limit)
+        page, _ = self.open_app({})
+        pairs = page.evaluate("DISEASES_DATA.map(d => [d.name, aiDiseaseKey(d.name)])")
+        self.assertGreater(len(pairs), 100)
+        for name, key in pairs:
+            self.assertEqual(key, bot.ai_disease_key(name), name)
+        labels = bot.AI_CONTEXT_LABELS["condition"]
+        known = [n for n, k in pairs if k in labels]
+        self.assertGreaterEqual(len(known), 100)                                        # serverdagi 100 tasi ruxsat etilgan
 
     # ---- 7. Joylashuv, klaviatura ----------------------------------------------------------------
     def test_composer_pinned_above_nav_messages_scroll(self):

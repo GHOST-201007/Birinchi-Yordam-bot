@@ -183,7 +183,9 @@ class DiseasesE2ETest(MiniAppE2EBase):
         self.assertEqual(page.inner_text("#disease-empty .empty-title"), "Topilmadi")
         self.assertFalse(page.is_visible("#disease-count"))
         page.click("#disease-ask-ai")
-        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
+        page.wait_for_selector("#tab-ai.active")                                        # AI tabi, so'rov yozilgan
+        self.assertEqual(page.input_value("#ai-input"), "xyzxyz")
+        self.assertEqual(self.tg(page)["links"], [])
 
     def test_entry_animation_respects_reduced_motion(self):
         page = self.open_tab()

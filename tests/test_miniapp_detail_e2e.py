@@ -70,15 +70,17 @@ class DetailE2ETest(MiniAppE2EBase):
         self.assertEqual(tg["mainText"], "103 ga qo'ng'iroq")
         self.assertEqual(tg["mainParams"]["color"].upper(), "#C9343A")
 
-    def test_non_critical_item_main_button_asks_ai_in_bot(self):
+    def test_non_critical_item_main_button_opens_ai_tab(self):
+        # 5-bosqich: botga emas — AI tabi, "Holat: Kuyish" kontekst chipi (batafsil: test_miniapp_ai_chat_e2e.py)
         page, _ = self.open_app({})
         self.open_item(page, "kuyish")
         self.assertEqual(page.inner_text("#overlay-chips .chip"), "Muhim holat")
         tg = self.tg(page)
         self.assertEqual(tg["mainText"], "AI'dan so'rash")
         page.evaluate("window.__mainCb()")
-        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
-        self.assertEqual(self.tg(page)["closed"], 0)
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Holat: Kuyish")
+        self.assertEqual((self.tg(page)["links"], self.tg(page)["closed"]), ([], 0))
 
     def test_back_closes_detail_and_hides_main_button(self):
         page, _ = self.open_app({})
@@ -128,7 +130,8 @@ class DetailE2ETest(MiniAppE2EBase):
         self.open_item(page, "kuyish")
         self.assertEqual(page.inner_text("#detail-main-fallback"), "AI'dan so'rash")
         page.click("#detail-main-fallback")
-        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Holat: Kuyish")
 
     def test_inside_telegram_fallback_hidden_and_bottom_padding(self):
         page, _ = self.open_app({})
@@ -261,7 +264,8 @@ class DetailE2ETest(MiniAppE2EBase):
         page.evaluate("document.getElementById('overlay-details').scrollTop = 99999")
         self.assertTrue(page.is_visible("#detail-ai-btn"))
         page.click("#detail-ai-btn")
-        self.assertEqual(self.tg(page)["links"], ["https://t.me/Birinchiyordam1Bot"])
+        page.wait_for_selector("#tab-ai.active")
+        self.assertEqual(page.inner_text("#ai-context-label"), "Holat: Qon ketishi")
 
     def test_text_contrast_aa_and_min_16px_in_both_themes(self):
         for scheme in ("light", "dark"):

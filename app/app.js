@@ -1148,9 +1148,25 @@ function dial103() {
     window.location.href = 'tel:103';
 }
 
-// AI bilan suhbat: botga o'tadi (botda oddiy matn AI ga yuboriladi). Mantiq o'zgarmagan, faqat havola.
-function askAiInBot() {
-    if (tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/' + BOT_USERNAME);
+// "AI'dan so'rash" (detal / kasallik): AI tabi shu holat konteksti bilan ochiladi, xabar avtomatik YUBORILMAYDI.
+// Zaxira (API ishlamasa): AI tabidagi "Botda davom etish" — eski tg.sendData yo'li.
+let detailAiContext = null;
+
+// Kasallik nomidan kontekst kaliti — bot.py ai_disease_key bilan AYNAN bir xil qoida
+function aiDiseaseKey(name) {
+    return String(name || '').toLowerCase().replace(/['ʻʼ‘’`]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function askAiFromDetail() {
+    const ctx = detailAiContext;
+    closeDetail();
+    openAiChat(ctx);
+}
+
+// Kasalliklar: qidiruv natija bermasa — AI tabi, so'rov matni yozish maydoniga qo'yiladi (yuborilmaydi)
+function askAiFromSearch() {
+    const input = document.getElementById('disease-search-input');
+    openAiChat(null, input ? input.value.trim() : '');
 }
 
 const URGENCY_CHIPS = {
@@ -1323,6 +1339,7 @@ function openFirstAidDetail(item) {
     const chips = `<span class="chip ${urg.cls}">${urg.label}</span>`;
     const severe = item.urgency === 'critical';
     detailSevere = severe;
+    detailAiContext = { type: 'condition', key: item.id, label: displayTitle(item.title), prefix: 'Holat' };
     const has103 = item.whenToCall103 && item.whenToCall103.length;
     const hasSymptoms = item.symptoms && item.symptoms.length;
 
@@ -1386,7 +1403,7 @@ function openFirstAidDetail(item) {
 
     showDetail(item.title, chips, html, severe
         ? { text: "103 ga qo'ng'iroq", color: '#C9343A', textColor: '#FFFFFF', onClick: dial103 }
-        : { text: "AI'dan so'rash", onClick: askAiInBot },
+        : { text: "AI'dan so'rash", onClick: askAiFromDetail },
         { shareText: share.join('\n'), secondaryAi: severe });
 }
 
@@ -1578,13 +1595,14 @@ function initAzScrub() {
 // OPEN DISEASE DETAILS
 function openDiseaseDetail(item) {
     detailSevere = false;
+    detailAiContext = { type: 'condition', key: aiDiseaseKey(item.name), label: item.name, prefix: 'Kasallik' };
     const chips = `<span class="chip chip--primary">${item.cat}</span>`;
     let html = detailSection('Kasallik tavsifi', `<p>${item.desc}</p>`);
     html += detailSection('Birinchi yordam va chora', `<div class="aid-card"><p>${item.aid}</p></div>`);
     html += `<p class="detail-note">Har qanday kasallikda o'z-o'zini davolashdan ko'ra, malakali shifokor ko'rigidan o'tish tavsiya etiladi.</p>`;
     const share = [item.name, '', 'Kasallik tavsifi: ' + plainText(item.desc), '', 'Birinchi yordam va chora: ' + plainText(item.aid),
                    '', 'Birinchi Yordam bot: https://t.me/' + BOT_USERNAME].join('\n');
-    showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiInBot }, { shareText: share, secondaryAi: false });
+    showDetail(item.name, chips, html, { text: "AI'dan so'rash", onClick: askAiFromDetail }, { shareText: share, secondaryAi: false });
 }
 
 // SEARCH + KATEGORIYA CHIPLARI
@@ -1741,7 +1759,7 @@ function initSearch() {
     });
 
     const ask = document.getElementById('disease-ask-ai');
-    if (ask) ask.addEventListener('click', askAiInBot);
+    if (ask) ask.addEventListener('click', askAiFromSearch);
     // Tab birinchi marta ko'ringanda chiplar o'lchami ma'lum bo'ladi
     document.querySelectorAll('.nav-btn[data-tab="tab-diseases"]').forEach(b =>
         b.addEventListener('click', () => { updateChipFade(document.getElementById('disease-cats')); syncStickyToolsHeight(); }));
@@ -1756,7 +1774,7 @@ function initOverlay() {
     closeBtn.addEventListener('click', closeDetail);
     overlay.addEventListener('scroll', updateDetailBar, { passive: true });
     document.getElementById('detail-share-btn').addEventListener('click', shareDetail);
-    document.getElementById('detail-ai-btn').addEventListener('click', askAiInBot);
+    document.getElementById('detail-ai-btn').addEventListener('click', askAiFromDetail);
     // Klaviatura: Esc — detalni yopadi
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && overlay.classList.contains('active')) closeDetail();
@@ -3843,7 +3861,7 @@ const aiChat = {
     sending: false,       // javob kutilmoqda: yuborish o'chiq (ikki marta bosib bo'lmaydi)
     waitUntil: 0,         // "Juda tez yozyapsiz": shu vaqtgacha yuborish o'chiq (ms)
     waitTimer: null,
-    context: null,        // { type: 'body_part', key, label, partKey } — birinchi yuborishda uzatiladi
+    context: null,        // { type: 'body_part' | 'condition', key, label, prefix?, partKey? } — birinchi yuborishda
     pending: null,        // javobsiz qolgan oxirgi xabar { text } — "Qayta urinish" uchun
     quota: null,          // { remaining, limit } — /api/state yuklanmagan bo'lsa
     offerShown: false,    // bepul savol ishlatilgan: Premium taklif kartasi, yozish o'chiq
@@ -4059,7 +4077,7 @@ function aiSetContext(ctx) {
     const box = document.getElementById('ai-context');
     const label = document.getElementById('ai-context-label');
     if (!box || !label) return;
-    label.textContent = ctx ? `Tana qismi: ${ctx.label}` : '';
+    label.textContent = ctx ? `${ctx.prefix || 'Tana qismi'}: ${ctx.label}` : '';
     box.hidden = !ctx;
 }
 
@@ -4208,11 +4226,17 @@ function onAiTabShown() {
     aiScrollBottom();
 }
 
-// Bosh ekrandagi tana sheet'idan va boshqa joylardan: AI tabi, kontekst chipi, fokus (avtomatik yuborilmaydi)
-function openAiChat(context) {
+// Tana sheet'i, detal, kasalliklar: AI tabi, kontekst chipi, fokus (avtomatik yuborilmaydi).
+// draft — yozish maydoni bo'sh bo'lsa unga qo'yiladigan matn (masalan qidiruv so'rovi)
+function openAiChat(context, draft) {
     showTab('tab-ai');
     if (context) aiSetContext(context);
     const input = document.getElementById('ai-input');
+    if (input && draft && !input.disabled && !input.value.trim()) {
+        input.value = String(draft).slice(0, AI_MSG_MAX);
+        aiAutosize();
+        aiSync();
+    }
     if (input && !input.disabled) {
         try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
     }

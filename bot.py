@@ -5084,7 +5084,13 @@ def _load_body_part_labels() -> dict:
     return labels
 
 
+def ai_disease_key(name: str) -> str:
+    """Kasallik nomidan kontekst kaliti (app.js aiDiseaseKey bilan AYNAN bir xil qoida): "Otit (quloq ...)" -> "otit_quloq_..."."""
+    return re.sub(r"[^a-z0-9]+", "_", re.sub(r"['ʻʼ‘’`]", "", str(name).lower())).strip("_")
+
+
 def _load_condition_labels() -> dict:
+    """Holat konteksti: FIRST_AID_DATA kalitlari + data.DISEASES nomlaridan kalit (birinchi yordam ustun)."""
     labels = {}
     try:
         from data import FIRST_AID_DATA
@@ -5095,6 +5101,15 @@ def _load_condition_labels() -> dict:
             labels[key] = re.sub(r"[^\w\s'ʻʼ‘’()\-]", "", m.group(1)).strip() if m else key
     except Exception:
         logging.warning("FIRST_AID_DATA o'qilmadi — holat konteksti ishlatilmaydi")
+    try:
+        from data import DISEASES
+        for page in DISEASES:
+            for name in page:
+                key = ai_disease_key(name)
+                if key:
+                    labels.setdefault(key, str(name).strip())
+    except Exception:
+        logging.warning("DISEASES o'qilmadi — kasallik konteksti ishlatilmaydi")
     return labels
 
 
