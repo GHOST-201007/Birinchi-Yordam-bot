@@ -438,6 +438,7 @@ function initTheme() {
         } catch (e) { /* eski brauzer */ }
     }
     initThemePicker();
+    initThemeToggle();
 }
 
 // "Ko'rinish" — radiogroup (roving tabindex, ←/→/↑/↓, Home/End)
@@ -448,6 +449,33 @@ function renderThemePicker() {
         btn.setAttribute('aria-checked', on ? 'true' : 'false');
         btn.tabIndex = on ? 0 : -1;
     });
+    renderThemeToggle();                     // headerdagi tugma ham shu tanlovni ko'rsatadi (ikki tomonlama sinxron)
+}
+
+// Headerdagi rejim tugmasi (ism yonida): joriy tanlov ikonkasi; bosilganda Avto -> Kunduzgi -> Tungi -> Avto.
+// Saqlash, qo'llash, haptic, MainButton ranglari — mavjud setThemePref() orqali (mantiq o'zgarmagan).
+const THEME_NAMES = { auto: 'Avto', light: 'Kunduzgi', dark: 'Tungi' };
+const THEME_ICONS = { auto: 'monitor', light: 'sun', dark: 'moon' };
+
+function renderThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const pref = readThemePref();
+    btn.setAttribute('aria-label', `Rejim: ${THEME_NAMES[pref]}. Almashtirish uchun bosing`);
+    btn.setAttribute('data-theme-pref', pref);
+    const use = btn.querySelector('use');
+    if (use) use.setAttribute('href', '#i-' + THEME_ICONS[pref]);
+}
+
+function initThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        const next = THEME_MODES[(THEME_MODES.indexOf(readThemePref()) + 1) % THEME_MODES.length];
+        setThemePref(next, false);
+        showToast(`Rejim: ${THEME_NAMES[next]}`);          // #toast — role="status", aria-live="polite"
+    });
+    renderThemeToggle();
 }
 
 function setThemePref(value, focus) {

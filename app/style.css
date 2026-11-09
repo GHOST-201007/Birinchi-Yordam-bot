@@ -2518,3 +2518,38 @@ body.kb-open .app-nav { display: none; }
 /* Gorizontal chiplar qatori va alifbo panelida scrollbar yo'q */
 .chip-scroll, .az-index { scrollbar-width: none; }
 .chip-scroll::-webkit-scrollbar, .az-index::-webkit-scrollbar { display: none; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   Header: rejim tugmasi (Avto / Kunduzgi / Tungi) — ism bloki va 103 orasida
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.theme-toggle .icon { width: 20px; height: 20px; }
+.theme-toggle::after {                       /* bosish zonasi 44x44 (ko'rinish 40x40) */
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+}
+.theme-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.theme-toggle:active { background: var(--seg-bg); }
+/* Tor ekran: ism / ball qatori qisqaradi (ellipsis), tugmalar siqilmaydi */
+.hdr-meta { min-width: 0; overflow: hidden; white-space: nowrap; }
