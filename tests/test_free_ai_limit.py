@@ -26,6 +26,16 @@ class FreeLimitSourceTest(unittest.TestCase):
         for tier, default in (("PRO", "15"), ("PLUS", "30"), ("ULTRA", "100")):
             self.assertIn(f'os.environ.get("{tier}_AI_DAILY_LIMIT", "{default}")', src)    # premium limitlar o'zgarmagan
 
+    def test_free_ai_daily_limit_env_not_read_anywhere(self):
+        # Eski FREE_AI_DAILY_LIMIT o'zgaruvchisi kodda o'qilmaydi (serverdagi .env da qolgan bo'lsa — ta'sirsiz)
+        skip = {"venv", ".venv", ".git", "tests", "__pycache__", "node_modules"}
+        for dirpath, dirs, files in os.walk(PROJECT_DIR):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for name in files:
+                if name.endswith(".py"):
+                    with open(os.path.join(dirpath, name), encoding="utf-8", errors="ignore") as f:
+                        self.assertNotIn("FREE_AI_DAILY_LIMIT", f.read(), os.path.join(dirpath, name))
+
     def test_bot_has_no_try_tomorrow_message(self):
         with open(os.path.join(PROJECT_DIR, "bot.py"), encoding="utf-8") as f:
             self.assertNotIn("ertaga urining", f.read())          # bepul uchun "ertaga" yo'q — Premium taklifi

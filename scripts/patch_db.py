@@ -22,7 +22,6 @@ PRO_MONTHLY_DAYS=30
 ULTRA_MONTHLY_STARS=300
 ULTRA_MONTHLY_DAYS=30
 
-FREE_AI_DAILY_LIMIT=2
 PRO_AI_DAILY_LIMIT=10
 ULTRA_AI_DAILY_LIMIT=100
 
@@ -62,7 +61,7 @@ def patch_database():
     old_limit = """    c.execute("UPDATE users SET daily_requests = daily_requests + 1 WHERE user_id = %s AND daily_requests < 5", (user_id,))"""
     new_limit = """    
     import os
-    limit = int(os.environ.get("FREE_AI_DAILY_LIMIT", "2"))
+    limit = 0  # bepul: kunlik limit yo'q (jami 1 ta bir martalik savol, database.try_consume_free_ai)
     if premium_type == 'pro':
         limit = int(os.environ.get("PRO_AI_DAILY_LIMIT", "10"))
     elif premium_type == 'ultra':
