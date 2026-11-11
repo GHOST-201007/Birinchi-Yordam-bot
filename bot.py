@@ -9,10 +9,12 @@ import hashlib
 import hmac
 import urllib.parse
 import math
+import signal
 from datetime import datetime, time as dtime, timedelta, timezone  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
     LabeledPrice, ContentType, TelegramObject
@@ -4775,6 +4777,10 @@ async def health_check(request):
 WEB_BIND_HOST = "127.0.0.1"      # internetga ochiq emas; faqat nginx (localhost) orqali
 API_MAX_BODY = 4096              # so'rov tanasi hajmi (bayt) — /api/ai/chat dan tashqari hammasi
 AI_CHAT_MAX_BODY = 16 * 1024     # /api/ai/chat: xabar + tarix (6 x 1000 belgi)
+WEB_MAX_BODY = 1024 * 1024       # ilovaning umumiy yuqori chegarasi (Telegram webhook update uchun).
+                                 # /api/* route'lari o'z (4 KB / 16 KB) chegarasini _api_authenticate da o'zi qo'llaydi.
+WEBHOOK_PATH = "/api/tg/webhook"
+WEBHOOK_SHUTDOWN_GRACE = 30.0    # soniya: to'xtatishda hali ishlayotgan update'larni kutish
 API_RATE_LIMIT = 20              # bitta foydalanuvchi uchun
 API_RATE_WINDOW = 60.0           # soniya
 SPIN_COOLDOWN_SECONDS = 24 * 3600
@@ -4921,6 +4927,18 @@ def _spin_cooldown_seconds(last_spin, now: datetime | None = None) -> int:
         return 0
 
 
+async def _read_body_limited(request: web.Request, max_body: int) -> bytes | None:
+    """Tanani ko'pi bilan max_body bayt o'qiydi; oshsa None qaytaradi va qolganini o'qimaydi.
+    Ilovaning umumiy chegarasi (WEB_MAX_BODY) katta, shuning uchun chunked (Content-Length'siz)
+    so'rovda ham xotiraga route chegarasidan ortiq narsa yig'ilmasligi shu yerda ta'minlanadi."""
+    buf = bytearray()
+    async for chunk in request.content.iter_chunked(8192):
+        buf += chunk
+        if len(buf) > max_body:
+            return None
+    return bytes(buf)
+
+
 async def _api_authenticate(request: web.Request, max_body: int = API_MAX_BODY):
     """So'rovni tekshiradi. (user_id, None) yoki (None, xato javobi) qaytaradi.
     user_id FAQAT tekshirilgan initData ichidagi user.id dan olinadi, tanadagi boshqa maydonlar e'tiborga olinmaydi.
@@ -4930,12 +4948,10 @@ async def _api_authenticate(request: web.Request, max_body: int = API_MAX_BODY):
     if request.content_length is not None and request.content_length > max_body:
         return None, _api_error(413, "payload_too_large")
     try:
-        raw = await request.read()          # Application(client_max_size) umumiy yuqori chegara
-    except web.HTTPRequestEntityTooLarge:
-        return None, _api_error(413, "payload_too_large")
+        raw = await _read_body_limited(request, max_body)   # Content-Length bo'lmasa ham (chunked) route chegarasi
     except Exception:
         return None, _api_error(400, "bad_request")
-    if len(raw) > max_body:                 # Content-Length bo'lmasa ham (chunked) route chegarasi
+    if raw is None:
         return None, _api_error(413, "payload_too_large")
     try:
         payload = json.loads(raw)
@@ -5277,8 +5293,54 @@ async def api_invoice(request: web.Request) -> web.Response:
     return await _api_handle(request, "invoice", _api_invoice_action, with_body=True)
 
 
-def create_web_app() -> web.Application:
-    app = web.Application(client_max_size=AI_CHAT_MAX_BODY)   # route chegaralari _api_authenticate da (4 KB / 16 KB)
+# ═══════════════════════════════════════════════════════════════════
+# TELEGRAM WEBHOOK (ixtiyoriy rejim)
+# WEBHOOK_BASE_URL va WEBHOOK_SECRET ikkalasi ham berilsa — webhook, aks holda polling (avvalgidek).
+# Route mavjud aiohttp ilovasida (yangi port yo'q); nginx /api/ ni allaqachon shu portga uzatadi.
+# Himoya — faqat X-Telegram-Bot-Api-Secret-Token sarlavhasi (initData va /api/ rate-limit bu yerda ishlamaydi).
+# ═══════════════════════════════════════════════════════════════════
+_WEBHOOK_SECRET_RE = re.compile(r"[A-Za-z0-9_-]{1,256}")      # Telegram secret_token talabi
+
+
+def get_webhook_settings() -> tuple[str, str] | None:
+    """(base_url, secret) yoki None (polling). Env har chaqiruvda o'qiladi."""
+    base = (os.environ.get("WEBHOOK_BASE_URL") or "").strip().rstrip("/")
+    secret = (os.environ.get("WEBHOOK_SECRET") or "").strip()
+    if not base and not secret:
+        return None
+    if not (base and secret):
+        # Yarim sozlama — jim webhook'ga o'tib ketmaymiz: polling davom etadi, lekin ogohlantiramiz
+        logging.warning("WEBHOOK_BASE_URL va WEBHOOK_SECRET ikkalasi ham kerak — polling rejimi ishlatiladi.")
+        return None
+    if not base.lower().startswith("https://"):
+        raise RuntimeError("WEBHOOK_BASE_URL https:// bilan boshlanishi kerak (Telegram talabi).")
+    if not _WEBHOOK_SECRET_RE.fullmatch(secret):
+        raise RuntimeError("WEBHOOK_SECRET faqat A-Z a-z 0-9 _ - belgilaridan iborat bo'lishi kerak (1-256 belgi).")
+    return base, secret
+
+
+class TelegramWebhookHandler(SimpleRequestHandler):
+    """SimpleRequestHandler + (1) secret'ni bayt sifatida solishtirish — sarlavhada ASCII bo'lmagan belgi bo'lsa
+    ham 500 emas, 401; (2) secret bo'sh bo'lsa hech kimni o'tkazmaydi; (3) to'xtatishda ishlayotgan update'larni kutadi
+    (handle_in_background=True da Telegram'ga 200 darhol qaytadi, restart paytida update yo'qolmasligi uchun)."""
+
+    def verify_secret(self, telegram_secret_token: str, bot: Bot) -> bool:
+        if not self.secret_token:
+            return False
+        got = (telegram_secret_token or "").encode("utf-8", "surrogateescape")
+        return hmac.compare_digest(got, self.secret_token.encode("utf-8"))
+
+    async def close(self) -> None:
+        pending = list(getattr(self, "_background_feed_update_tasks", ()))
+        if pending:
+            logging.info("Webhook: %s ta update tugashi kutilmoqda (<= %ss)", len(pending), WEBHOOK_SHUTDOWN_GRACE)
+            await asyncio.wait(pending, timeout=WEBHOOK_SHUTDOWN_GRACE)
+        await super().close()
+
+
+def create_web_app(webhook_secret: str | None = None) -> web.Application:
+    """webhook_secret berilsa POST /api/tg/webhook route'i qo'shiladi (webhook rejimi)."""
+    app = web.Application(client_max_size=WEB_MAX_BODY)   # /api/* route chegaralari _api_authenticate da (4 KB / 16 KB)
     app.router.add_get("/", health_check)
     app.router.add_get("/health", health_check)
     # Faqat POST: boshqa metodlarga aiohttp o'zi 405 qaytaradi
@@ -5287,11 +5349,14 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/bonus/claim", api_bonus_claim)
     app.router.add_post("/api/invoice", api_invoice)
     app.router.add_post("/api/ai/chat", api_ai_chat)
+    if webhook_secret:
+        TelegramWebhookHandler(dispatcher=dp, bot=bot, secret_token=webhook_secret).register(app, path=WEBHOOK_PATH)
+        setup_application(app, dp, bot=bot)       # dp.startup / dp.shutdown (polling'dagidek) aiohttp hayot tsikliga ulanadi
     return app
 
 
-async def start_web_server():
-    app = create_web_app()
+async def start_web_server(webhook_secret: str | None = None) -> web.AppRunner:
+    app = create_web_app(webhook_secret)
 
     port = int(os.environ.get("PORT", 10000))
     runner = web.AppRunner(app)
@@ -5301,8 +5366,38 @@ async def start_web_server():
     await site.start()
 
     print(f"🌐 Web server started on {WEB_BIND_HOST}:{port}")
+    return runner
+
+
+async def run_webhook(base_url: str, secret: str) -> None:
+    """Webhook rejimi: web server ishga tushadi, so'ng set_webhook; signal kelguncha jarayon tirik turadi.
+    Chiqishda delete_webhook CHAQIRILMAYDI — restart paytida Telegram update'larni navbatda ushlab turadi."""
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except (NotImplementedError, RuntimeError, ValueError):
+            pass            # Windows: SIGINT -> KeyboardInterrupt (asyncio.run), SIGTERM yo'q
+
+    # Web server to'g'ridan-to'g'ri await qilinadi: port band bo'lsa jarayon yiqiladi (jim "o'lik" bot bo'lmaydi)
+    runner = await start_web_server(webhook_secret=secret)
+    try:
+        url = f"{base_url}{WEBHOOK_PATH}"
+        await bot.set_webhook(
+            url=url,
+            secret_token=secret,
+            allowed_updates=dp.resolve_used_update_types(),
+            drop_pending_updates=False,
+        )
+        logging.info("✅ Webhook rejimi: webhook o'rnatildi: %s", url)     # print emas: kodirovka xatosi jarayonni yiqitmasin
+        await stop.wait()
+    finally:
+        await runner.cleanup()      # on_shutdown: ishlayotgan update'lar kutiladi, so'ng bot sessiyasi yopiladi
+
 
 async def main():
+    webhook = get_webhook_settings()      # noto'g'ri sozlama bo'lsa bazaga tegmasdan darrov to'xtaymiz
     await asyncio.to_thread(database.init_db)
     await asyncio.to_thread(medicine_db.init_medicine_db)
     
@@ -5351,13 +5446,17 @@ async def main():
     from services import engagement_scheduler
     engagement_scheduler.start_scheduler(bot, get_gemini_response)
     
-    task3 = asyncio.create_task(start_web_server())           # Render web server
-    background_tasks.add(task3)
-    task3.add_done_callback(background_tasks.discard)
+    if not webhook:
+        task3 = asyncio.create_task(start_web_server())       # Render web server
+        background_tasks.add(task3)
+        task3.add_done_callback(background_tasks.discard)
 
     try:
-        await bot.delete_webhook(drop_pending_updates=False)
-        await dp.start_polling(bot)
+        if webhook:
+            await run_webhook(*webhook)
+        else:
+            await bot.delete_webhook(drop_pending_updates=False)
+            await dp.start_polling(bot)
     except Exception as e:
         if "conflict" in str(e).lower():
             logging.critical(
@@ -5366,7 +5465,7 @@ async def main():
                 exc_info=True
             )
         else:
-            logging.critical(f"Bot polling xatosi: {e}", exc_info=True)
+            logging.critical(f"Bot {'webhook' if webhook else 'polling'} xatosi: {e}", exc_info=True)
         raise
     finally:
         try:

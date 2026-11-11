@@ -59,6 +59,39 @@ Har so'rovda `init_data` (Telegram WebApp imzosi) tekshiriladi; foydalanuvchi uc
 Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/state -H 'Content-Type: application/json' -d '{"init_data":"buzuq"}'` → `403`.
 Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u yerda URL-parametr zaxira yo'lida ishlaydi.
 
+### Telegram webhook (ixtiyoriy — polling o'rniga)
+Standart rejim — **polling** (hech narsa o'zgarmaydi). `.env` da quyidagi **ikkalasi** ham berilsa, bot **webhook** rejimida ishlaydi:
+
+| O'zgaruvchi | Misol | Izoh |
+|---|---|---|
+| `WEBHOOK_BASE_URL` | `https://birinchiyordam.duckdns.org` | `https://` majburiy (Telegram talabi); oxirida `/` shart emas |
+| `WEBHOOK_SECRET` | `Zk3...` | 1–256 belgi, **faqat** `A-Z a-z 0-9 _ -`. Yaratish: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+
+Faqat bittasi berilsa — polling davom etadi (logda ogohlantirish). `https://` bo'lmasa yoki secret'da ruxsat etilmagan belgi bo'lsa — bot ishga tushmaydi (xato matni logda, secret chiqarilmaydi).
+
+**Qanday ishlaydi.** Route — mavjud aiohttp ilovasida (`127.0.0.1:PORT`, yangi port yo'q): `POST /api/tg/webhook`. Nginx `/api/` ni allaqachon shu portga uzatadi, **nginx o'zgarmaydi**.
+Himoya faqat `X-Telegram-Bot-Api-Secret-Token` sarlavhasi (noto'g'ri yoki yo'q bo'lsa `401`); `/api/` rate-limit va `init_data` tekshiruvi bu route'ga qo'llanmaydi.
+Ilovaning umumiy tana chegarasi 1 MB (Telegram update uchun); Mini App `/api/*` route'lari o'z chegarasini (4 KB / `/api/ai/chat` 16 KB) o'zi qo'llaydi — amalda o'zgarmagan.
+Middleware'lar, dori eslatmalari, engagement scheduler va FSM ikkala rejimda bir xil ishlaydi.
+
+**Yoqish (serverda):**
+1. Avval kodni deploy qiling (`.env` hali o'zgarmagan — bot polling'da qayta ishga tushadi).
+2. `.env` ga qo'shing: `WEBHOOK_BASE_URL=...` va `WEBHOOK_SECRET=...`
+3. `sudo systemctl restart birinchi-yordam-bot`
+4. Tekshirish:
+   - `journalctl -u birinchi-yordam-bot -n 50 --no-pager` → `Webhook rejimi: webhook o'rnatildi: https://.../api/tg/webhook`
+   - `curl -s https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo` → `url` to'g'ri, `last_error_message` yo'q, `pending_update_count` kichik (tokenni chatga/skrinshotga qo'ymang)
+   - `curl -i -X POST https://birinchiyordam.duckdns.org/api/tg/webhook -H 'Content-Type: application/json' -d '{}'` → `401` (secret'siz rad etiladi)
+   - botga `/start` yuboring.
+
+**Polling'ga qaytarish:**
+1. `.env` dan `WEBHOOK_BASE_URL` va `WEBHOOK_SECRET` qatorlarini o'chiring (yoki `#` bilan izohlang).
+2. `sudo systemctl restart birinchi-yordam-bot` — polling boshlanishida bot o'zi `delete_webhook(drop_pending_updates=False)` chaqiradi, navbatdagi update'lar yo'qolmaydi.
+
+**Eslatmalar.**
+- Webhook rejimida to'xtatish/restartda `delete_webhook` **chaqirilmaydi**: restart paytida Telegram update'larni navbatda ushlab turadi. To'xtatishda (SIGTERM/SIGINT) ishlayotgan update'lar 30 soniyagacha kutiladi; serverdagi unit faylda `TimeoutStopSec` 30 soniyadan kam bo'lmasligi kerak (default 90 s).
+- Bitta bot tokeni uchun polling va webhook bir vaqtda bo'lmaydi. Boshqa joyda (masalan, kompyuterda `run_dev.py`) **production tokeni bilan** polling ishga tushsa, u webhook'ni o'chirib yuboradi va server update olmay qoladi. Lokalda faqat alohida TEST bot tokeni ishlating; lokal `.env` ga `WEBHOOK_*` ni qo'ymang.
+
 ### Serverdagi tuzilma
 - Bot: `birinchi-yordam-bot.service` (venv/bin/python bot.py)
 - Mini App: `birinchi-yordam-app.service` (app_server.py, nginx orqali `https://birinchiyordam.duckdns.org`)
@@ -102,6 +135,9 @@ PRO_TRIAL_STARS=50              # Pro 7 kun
 PRO_MONTHLY_STARS=150           # Plus 30 kun (SUPER PRIZ chegirmasi = yarmi)
 ULTRA_MONTHLY_STARS=300         # Ultra 30 kun
 PREMIUM_STARS_PRICE=50          # xabarlardagi "... Stars dan boshlab" matni uchun
+# Ixtiyoriy: ikkalasi ham bo'lsa webhook rejimi, bo'lmasa polling (batafsil: yuqoridagi "Telegram webhook")
+# WEBHOOK_BASE_URL=https://birinchiyordam.duckdns.org
+# WEBHOOK_SECRET=...            # faqat A-Z a-z 0-9 _ -
 ```
 
 ### Bir martalik qo'lda bajariladigan buyruqlar (serverda)
