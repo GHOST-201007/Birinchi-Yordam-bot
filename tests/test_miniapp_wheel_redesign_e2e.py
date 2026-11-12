@@ -1,7 +1,7 @@
 """
 test_miniapp_wheel_redesign_e2e.py — redesign 4.4-I: Omad barabani ("klinik" variant).
 Bottom sheet (~85%), LED/neon/"KUNLIK BONUS" yo'q, 8 segment (server bilan bir xil kodlar), 4s aylanish,
-konfetti faqat SUPER va 1 kunlik Pro'da, MainButton "Mukofotni olish", katta tabular taymer.
+konfetti faqat SUPER va 1 kunlik Premium'da, MainButton "Mukofotni olish", katta tabular taymer.
 api()/getAppState/claim*/recover* mantig'i test_miniapp_wheel_e2e.py va late_response testlarida tekshiriladi.
 """
 import os

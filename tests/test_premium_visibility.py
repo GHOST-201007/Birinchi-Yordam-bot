@@ -98,10 +98,11 @@ class PremiumViewTest(unittest.TestCase):
 
     def test_tier_names_and_symbols_are_the_same_everywhere(self):
         titles = bot_mod.PREMIUM_TIER_TITLES
-        self.assertEqual(titles, {"pro": "⭐ Premium Pro", "plus": "💎 Premium Plus", "ultra": "👑 Premium Ultra"})
+        # ICHKI kod pro = ko'rinadigan Plus, plus = Pro (database.TIER_DISPLAY / TIER_ICON)
+        self.assertEqual(titles, {"pro": "⭐ Premium Plus", "plus": "💎 Premium Pro", "ultra": "👑 Premium Ultra"})
         self.assertEqual(set(titles), set(database._ADMIN_TIERS))
         self.assertEqual({entry[0] for entry in bot_mod.get_stars_tariffs().values()}, set(titles))
-        for tier, label in bot_mod.PM_TIER_LABELS.items():                  # admin paneli: ⭐ Pro, 💎 Plus, 👑 Ultra
+        for tier, label in bot_mod.PM_TIER_LABELS.items():                  # admin paneli: ⭐ Plus, 💎 Pro, 👑 Ultra
             self.assertEqual(titles[tier], label.replace(" ", " Premium ", 1))
 
 
@@ -143,7 +144,7 @@ class KeyboardTest(unittest.TestCase):
         self.assertEqual(self.premium_label(bot_mod.get_start_keyboard()), "💎 Premium")
         self.assertEqual(self.premium_label(bot_mod.get_start_keyboard(None)), "💎 Premium")
         self.assertEqual(self.premium_label(bot_mod.get_start_keyboard(view())), "💎 Premium")
-        expected = {"pro": "⭐ Premium Pro", "plus": "💎 Premium Plus", "ultra": "👑 Premium Ultra"}
+        expected = {"pro": "⭐ Premium Plus", "plus": "💎 Premium Pro", "ultra": "👑 Premium Ultra"}
         for tier, text in expected.items():
             self.assertEqual(self.premium_label(bot_mod.get_start_keyboard(view(tier, days=5))), text)
         self.assertEqual(self.premium_label(bot_mod.get_start_keyboard(view("ultra", unlimited=True))), "👑 Premium Ultra")
@@ -173,7 +174,7 @@ class KeyboardTest(unittest.TestCase):
             bot_mod.remember_premium_state(UID, view("ultra", days=5))
             self.assertEqual(self.premium_label(bot_mod.get_start_keyboard_for(UID)), "👑 Premium Ultra")
             bot_mod.remember_premium_state(UID, view("plus", days=5))
-            self.assertEqual(self.premium_label(bot_mod.get_start_keyboard_for(UID)), "💎 Premium Plus")
+            self.assertEqual(self.premium_label(bot_mod.get_start_keyboard_for(UID)), "💎 Premium Pro")
             bot_mod.remember_premium_state(UID, view())                                                     # Premium tugadi
             self.assertEqual(self.premium_label(bot_mod.get_start_keyboard_for(UID)), "💎 Premium")
             bot_mod.remember_premium_state(UID, view("ultra", days=5))
@@ -186,11 +187,17 @@ class KeyboardTest(unittest.TestCase):
             self.assertIsNone(bot_mod.cached_premium_view(UID))
             self.assertEqual(self.premium_label(bot_mod.get_start_keyboard_for(UID)), "💎 Premium")
 
-    def test_payment_flow_is_untouched(self):
+    def test_payment_flow_only_gains_menu_refresh(self):
+        """To'lov mantig'i o'zgarmagan (validate_payment, process_paid_premium, takroriy to'lov himoyasi, reconcile);
+        faqat javob xabariga yangi holatdagi klaviatura qo'shilgan va menyu keshi/shaxsiy tugma yangilanadi."""
         import inspect
         src = inspect.getsource(bot_mod.process_successful_payment)
-        self.assertNotIn("get_start_keyboard_for", src)                              # to'lov oqimi o'zgartirilmagan
-        self.assertNotIn("premium_view", src)
+        for kept in ("validate_payment(payload, payment.currency, payment.total_amount)",
+                     "database.process_paid_premium", "payload == DISCOUNT_PAYLOAD", "record_failed_payment",
+                     "Bu to'lov allaqachon qayta ishlangan"):
+            self.assertIn(kept, src)
+        self.assertIn("refresh_premium_menu", src)
+        self.assertIn("reply_markup=get_start_keyboard(new_view)", src)
 
 
 class MenuTextRoutingTest(unittest.IsolatedAsyncioTestCase):
@@ -251,7 +258,7 @@ class MenuTextRoutingTest(unittest.IsolatedAsyncioTestCase):
         state.clear = mock.AsyncMock()
         with mock.patch.object(database, "get_connection", side_effect=AssertionError("DB yo'q")):
             await bot_mod.cmd_menu(message, state)
-        self.assertIn("💎 Premium Plus", labels(message.answer.await_args.kwargs["reply_markup"]))
+        self.assertIn("💎 Premium Pro", labels(message.answer.await_args.kwargs["reply_markup"]))
         callback = mock.MagicMock()
         callback.from_user = SimpleNamespace(id=UID)
         callback.message.answer = mock.AsyncMock()
@@ -260,7 +267,7 @@ class MenuTextRoutingTest(unittest.IsolatedAsyncioTestCase):
         state2 = mock.MagicMock()
         state2.clear = mock.AsyncMock()
         await bot_mod.back_to_main(callback, state2)                                 # callback: foydalanuvchi callback.from_user dan
-        self.assertIn("💎 Premium Plus", labels(callback.message.answer.await_args.kwargs["reply_markup"]))
+        self.assertIn("💎 Premium Pro", labels(callback.message.answer.await_args.kwargs["reply_markup"]))
 
 
 # ───────────────────────────── B6 + B9: /start ─────────────────────────────
@@ -294,7 +301,7 @@ class StartTest(unittest.IsolatedAsyncioTestCase):
     # ---- B6: salom ----
     async def test_premium_user_gets_one_extra_line(self):
         free_text = self.greeting(await self.start(view()))
-        for tier, title in (("pro", "⭐ Premium Pro"), ("plus", "💎 Premium Plus"), ("ultra", "👑 Premium Ultra")):
+        for tier, title in (("pro", "⭐ Premium Plus"), ("plus", "💎 Premium Pro"), ("ultra", "👑 Premium Ultra")):
             with self.subTest(tier=tier):
                 reset_caches()
                 text = self.greeting(await self.start(view(tier, days=33)))
@@ -311,6 +318,7 @@ class StartTest(unittest.IsolatedAsyncioTestCase):
         text = self.greeting(await self.start(view()))
         self.assertNotIn("faol —", text)
         self.assertNotIn("Premium Pro", text)
+        self.assertNotIn("Premium Plus", text)
         expired = self.greeting(await self.start(database.admin_premium_view(1, "ultra", iso(days=-1), NOW)))
         self.assertEqual(expired, text)
 
@@ -323,7 +331,7 @@ class StartTest(unittest.IsolatedAsyncioTestCase):
     async def test_deep_link_paths_use_the_same_keyboard(self):
         with mock.patch.object(database, "check_and_grant_daily_bonus", return_value=(False, 0, 0)):
             message = await self.start(view("plus", days=5), text="/start claim_daily")
-        self.assertIn("💎 Premium Plus", labels(message.answer.await_args.kwargs["reply_markup"]))
+        self.assertIn("💎 Premium Pro", labels(message.answer.await_args.kwargs["reply_markup"]))
 
     async def test_db_failure_does_not_break_start(self):
         message = mock.MagicMock()
@@ -529,7 +537,8 @@ class MyPremiumPageTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Muddatsiz", text)
                 self.assertNotIn("TARIFLARI", text)
                 self.assertNotIn("gacha", text)
-                self.assertIn("premium_extend", [b[1] for b in self.buttons(markup)])
+                # muddatsiz Premiumga muddat qo'shib bo'lmaydi: "Uzaytirish" tugmasi yo'q
+                self.assertNotIn("premium_extend", [b[1] for b in self.buttons(markup)])
 
     async def test_last_day_says_ends_today(self):
         text, _ = self.sent(await self.page(view("plus", hours=3)))
@@ -551,9 +560,11 @@ class MyPremiumPageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.buttons(markup)[0][1], "buy_plus_30_discount")        # chegirma tugmasi birinchi
         text, _ = self.sent(await self.page(view("pro", days=5), discount=True))
         self.assertIn("SUPER PRIZ chegirmasi bor", text)
-        for tier in ("plus", "ultra"):
-            _, markup = self.sent(await self.page(view(tier, days=5), discount=True))
-            self.assertNotIn("buy_plus_30_discount", [b[1] for b in self.buttons(markup)])
+        # Faol ichki plus (ko'rinadigan Pro): chegirma UZAYTIRISH sifatida ishlaydi; ultra (pastroq tarif) — yo'q
+        text, markup = self.sent(await self.page(view("plus", days=5), discount=True))
+        self.assertEqual(self.buttons(markup)[0][:2], ("🎁 Premium Pro — yana 30 kun (75 ⭐, -50%)", "buy_plus_30_discount"))
+        _, markup = self.sent(await self.page(view("ultra", days=5), discount=True))
+        self.assertNotIn("buy_plus_30_discount", [b[1] for b in self.buttons(markup)])
         _, markup = self.sent(await self.page(view("pro", days=5), discount=False))
         self.assertNotIn("buy_plus_30_discount", [b[1] for b in self.buttons(markup)])
 
@@ -705,8 +716,8 @@ class ExpiryReminderTest(unittest.IsolatedAsyncioTestCase):
         self.add(3, hours=10, tier="ultra")                                           # 12.11 22:00 — bugun
         await self.check()
         texts = {c.args[0]: c.args[1] for c in self.fake_bot.send_message.await_args_list}
-        self.assertEqual(texts[1], "⏳ Premium Plus obunangiz bugun (12.11.2026, 18:00) tugaydi. Uzaytirish uchun 👇")
-        self.assertEqual(texts[2], "⏳ Premium Pro obunangiz ertaga (13.11.2026, 09:00) tugaydi. Uzaytirish uchun 👇")
+        self.assertEqual(texts[1], "⏳ Premium Pro obunangiz bugun (12.11.2026, 18:00) tugaydi. Uzaytirish uchun 👇")
+        self.assertEqual(texts[2], "⏳ Premium Plus obunangiz ertaga (13.11.2026, 09:00) tugaydi. Uzaytirish uchun 👇")
         self.assertIn("Premium Ultra obunangiz bugun (12.11.2026, 22:00)", texts[3])
 
     async def test_atomic_mark_only_one_of_many_parallel_claims_wins(self):

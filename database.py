@@ -637,6 +637,15 @@ def set_premium(user_id, status: int, months: int = 1):
 ADMIN_PAGE_SIZE = 10
 _ADMIN_TIERS = ("pro", "plus", "ultra")
 
+# ── Ko'rinadigan tarif nomlari: BITTA joyda (bot.py ham shundan oladi) ─────────────────────────────────────────
+# ⚠️ ICHKI KOD pro = KO'RINADIGAN "Plus" (eng arzon: 7 kun, 50 ⭐, 15 AI/kun); ichki plus = ko'rinadigan "Pro"
+# (30 kun, 150 ⭐, 30 AI/kun). Ultra o'zgarmagan. Pastdan yuqoriga: Plus → Pro → Ultra.
+# Bazadagi premium_type (pro/plus/ultra), invoice payloadlari (PRO_7_DAYS, PLUS_30_DAYS, PLUS_30_DAYS_DISCOUNT),
+# callback_data (buy_pro_7, buy_plus_30...), env nomlari, tier_rank va CSS klasslari (tier-pro, tier-plus) ICHKI kod
+# bo'yicha QOLADI: o'zgaradigan faqat foydalanuvchi va admin ko'radigan matn. JS dagi PREMIUM_TIERS (app.js) bilan bir xil.
+TIER_DISPLAY = {"pro": "Plus", "plus": "Pro", "ultra": "Ultra"}
+TIER_ICON = {"pro": "⭐", "plus": "💎", "ultra": "👑"}
+
 
 def premium_days_left(expires, now=None) -> int:
     """Qolgan kun: ceil((tugash - hozir) / 1 kun). Vaqt Toshkent (UTC+5) bo'yicha (aware datetime'lar farqi). Tugagan -> 0."""
@@ -673,9 +682,12 @@ def get_premium_view(user_id: int) -> dict:
     """admin_premium_view foydalanuvchi uchun (faqat o'qiydi: register_user ham, muddati o'tgan flagni tozalash ham yo'q).
     Foydalanuvchi bazada bo'lmasa — oddiy."""
     with _managed_cursor() as (conn, c):
-        c.execute("SELECT is_premium, premium_type, premium_expires_at FROM users WHERE user_id = %s", (user_id,))
+        c.execute("SELECT is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
-    return admin_premium_view(*row) if row else admin_premium_view(0, None, None)
+    if not row:
+        return admin_premium_view(0, None, None)
+    is_premium, expires_at, premium_type = row
+    return admin_premium_view(is_premium, premium_type, expires_at)
 
 
 def _admin_user_record(row) -> dict:
@@ -760,7 +772,7 @@ def set_premium_unlimited(user_id: int, tier: str, _cursor=None) -> bool:
 
 def admin_grant_premium(user_id: int, tier: str, days) -> dict:
     """Admin Premium beradi — BITTA tranzaksiyada. days=None — muddatsiz.
-    * Kunlik muddat: grant_premium_days (faol muddatga qo'shadi, yuqori tarifni saqlaydi: Ultra + 3 kun Pro ->
+    * Kunlik muddat: grant_premium_days (faol muddatga qo'shadi, yuqori tarifni saqlaydi: Ultra + 3 kun (ichki pro) ->
       Ultra saqlanadi, muddat +3 kun).
     * Userda muddatsiz Premium bo'lsa kunlik muddat BERILMAYDI (grant_premium_days uni kunlikka almashtirib yuborardi):
       error="unlimited_exists". Muddatsiz -> muddatsiz (tarifni almashtirish) mumkin.
@@ -1727,8 +1739,8 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
 #    1, 2, 3, 5  — shuncha ball
 #   -2           — kun maslahati (ball yo'q)
 #   -1           — +1 bepul AI savol (spin_ai_bonus)
-#   -3           — 1 kunlik Premium Pro
-#    0           — SUPER: Premium Plus (30 kun) uchun 50% chegirma
+#   -3           — 1 kunlik Premium Plus (ichki kod: pro — TIER_DISPLAY)
+#    0           — SUPER: Premium Pro (30 kun; ichki kod: plus) uchun 50% chegirma
 # ═══════════════════════════════════════════════════════════════════
 SPIN_PRIZES = [
     (1, 0.35),
@@ -1805,18 +1817,19 @@ _PREMIUM_RANK = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
 
 
 def _grant_spin_pro_day(c, user_id: int) -> str:
-    """1 kunlik Pro sovrini — claim tranzaksiyasi ICHIDA (commit/rollback chaqiruvchida).
-    grant_premium_days faol muddatga qo'shadi va yuqori tarifni (Plus / Ultra) saqlaydi, shuning uchun tarif
-    pasaymaydi. Muddatsiz premium (is_premium=1, muddat NULL) uchun grant_premium_days "free" deb hisoblab,
-    uni 1 kunlik Pro bilan ALMASHTIRIB yuborardi — bunday foydalanuvchiga tegilmaydi.
+    """1 kunlik Premium (ichki kod pro, ko'rinadigan nom TIER_DISPLAY["pro"]) sovrini — claim tranzaksiyasi
+    ICHIDA (commit/rollback chaqiruvchida). grant_premium_days faol muddatga qo'shadi va yuqori tarifni
+    (ichki plus / ultra) saqlaydi, shuning uchun tarif pasaymaydi. Muddatsiz premium (is_premium=1, muddat NULL)
+    uchun grant_premium_days "free" deb hisoblab, uni 1 kunlik tarif bilan ALMASHTIRIB yuborardi — bunday
+    foydalanuvchiga tegilmaydi.
     Foydalanuvchiga ko'rsatiladigan HTML xabarni qaytaradi."""
     c.execute("SELECT is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
     row = c.fetchone()
     is_premium, expires_at, premium_type = row if row else (0, None, None)
 
     if is_premium and not expires_at:
-        return ("⭐ Sizda muddatsiz Premium bor — 1 kunlik Pro sovg'asi tarifingizni o'zgartirmadi, "
-                "u saqlanib qoldi.")
+        return (f"⭐ Sizda muddatsiz Premium bor — 1 kunlik {TIER_DISPLAY['pro']} sovg'asi tarifingizni "
+                "o'zgartirmadi, u saqlanib qoldi.")
 
     previous = "free"
     if expires_at:
@@ -1829,11 +1842,11 @@ def _grant_spin_pro_day(c, user_id: int) -> str:
     grant_premium_days(user_id, 1, "pro", _cursor=c)
 
     if previous == "free":
-        return ("⭐ Tabriklaymiz! Siz Omad barabanidan <b>1 kunlik Premium Pro</b> yutib oldingiz — "
+        return (f"⭐ Tabriklaymiz! Siz Omad barabanidan <b>1 kunlik Premium {TIER_DISPLAY['pro']}</b> yutib oldingiz — "
                 "u hozir faollashdi! 🎉")
     if previous == "pro":
-        return "⭐ Tabriklaymiz! Premium Pro muddatingiz <b>1 kunga uzaytirildi</b>! 🎉"
-    return (f"⭐ Tabriklaymiz! Premium {previous.capitalize()} muddatingiz <b>1 kunga uzaytirildi</b>. "
+        return f"⭐ Tabriklaymiz! Premium {TIER_DISPLAY['pro']} muddatingiz <b>1 kunga uzaytirildi</b>! 🎉"
+    return (f"⭐ Tabriklaymiz! Premium {TIER_DISPLAY[previous]} muddatingiz <b>1 kunga uzaytirildi</b>. "
             "Tarifingiz o'zgarmadi. 🎉")
 
 
@@ -1842,7 +1855,7 @@ def claim_spin_prize(user_id: int) -> dict:
     Barabandan yutilgan sovrinni hisobga qo'shadi. Sovrin FAQAT serverdagi pending_spin_prize dan olinadi
     (mijoz yuborgan hech narsa hisobga olinmaydi). Hamma tur uchun shartli
     `UPDATE ... WHERE pending_spin_prize IS NOT NULL` + rowcount tekshiruvi: parallel so'rovlarda ham sovrin
-    aynan bir marta beriladi (P1-2). Pro kun sovrini ham xuddi shu tranzaksiyada.
+    aynan bir marta beriladi (P1-2). 1 kunlik Premium sovrini ham xuddi shu tranzaksiyada.
 
     Qaytaradi (dict): ok, message (bot uchun HTML), code (sovrin kodi), prize_type (points / tip / ai / pro_day / super),
     points (berilgan ball, ball bo'lmagan turlarda 0), tip (maslahat matni, faqat tip turida).
@@ -1893,7 +1906,7 @@ def claim_spin_prize(user_id: int) -> dict:
         tip = pick_spin_tip() if prize_type == "tip" else None
 
         if prize_type == "super":
-            # Super Prize: Plus 30 kun uchun 50% chegirma (narx bot.plus_discount_price bilan bir xil hisoblanadi)
+            # Super Prize: ichki plus (ko'rinadigan Pro) 30 kun uchun 50% chegirma (narx bot.plus_discount_price bilan bir xil)
             plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
             discount_price = max(1, (plus_price + 1) // 2)
             sql = ("UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
@@ -1901,7 +1914,7 @@ def claim_spin_prize(user_id: int) -> dict:
             params = (now_str, user_id)
             msg = (
                 "🎉 <b>Tabriklaymiz! Omad barabanidan SUPER PRIZ yutib oldingiz!</b> 🏆\n\n"
-                f"🎁 Siz 30 kunlik <b>Premium Plus</b> obunani {plus_price} Stars o'rniga "
+                f"🎁 Siz 30 kunlik <b>Premium {TIER_DISPLAY['plus']}</b> obunani {plus_price} Stars o'rniga "
                 f"<b>atigi {discount_price} Stars</b> (50% chegirma) evaziga xarid qilish imkoniyatiga ega bo'ldingiz!\n\n"
                 "Chegirma bir martalik. Faollashtirish uchun:\n"
                 "➡️ /premium (yoki quyidagi tugmani bosing)"
@@ -1932,7 +1945,7 @@ def claim_spin_prize(user_id: int) -> dict:
             msg = f"Tabriklaymiz! Siz Omad barabanidan <b>+{points} ball</b> yutib oldingiz! 🎉"
 
         c.execute(sql, params)
-        # Shartli UPDATE: yutuq parallel so'rovlarda faqat bir marta beriladi (P1-2). Pro kun faqat shundan KEYIN.
+        # Shartli UPDATE: yutuq parallel so'rovlarda faqat bir marta beriladi (P1-2). 1 kunlik Premium faqat shundan KEYIN.
         if c.rowcount == 0:
             conn.rollback()
             return _spin_result(False, _SPIN_NO_PRIZE_MSG)
@@ -1987,7 +2000,7 @@ def get_referral_count(user_id: int) -> int:
 def generate_or_get_spin_prize(user_id: int):
     """
     Spins the wheel on the server side.
-    Returns the prize CODE (SPIN_PRIZES: 1, 2, 3, 5 ball; -2 maslahat; -1 AI savol; -3 1 kun Pro; 0 SUPER)
+    Returns the prize CODE (SPIN_PRIZES: 1, 2, 3, 5 ball; -2 maslahat; -1 AI savol; -3 1 kunlik Premium; 0 SUPER)
     if eligible, or None if cooldown is active / user not found.
     """
     from datetime import datetime, timezone, timedelta

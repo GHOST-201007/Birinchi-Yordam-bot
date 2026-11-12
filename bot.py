@@ -19,7 +19,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
     LabeledPrice, ContentType, TelegramObject
 )
-from typing import Callable, Dict, Any, Awaitable
+from typing import Callable, Dict, Any, Awaitable, NamedTuple
 import time
 import uuid
 
@@ -202,7 +202,7 @@ class FsmResetMiddleware(BaseMiddleware):
             skip_texts = [
                 "📋 Holatlar ro'yxati", "🚨 Favqulodda raqamlar",
                 "📚 Kasalliklar", "💬 AI Konsultatsiya", "💬 AI Konsultatsiya (Chat)",
-                "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS,
+                "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS_ROUTED,
                 "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
                 "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
                 "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
@@ -226,6 +226,18 @@ from google.genai import types as genai_types
 from data import FIRST_AID_DATA, DISEASES
 import database
 import medicine_db
+
+# Ko'rinadigan tarif nomi va belgisi — BITTA joyda: database.TIER_DISPLAY / TIER_ICON (shu yerda faqat qisqa nom).
+# ⚠️ ICHKI KOD pro = KO'RINADIGAN "Plus" (eng arzon), ichki plus = ko'rinadigan "Pro"; Ultra o'zgarmagan.
+# premium_type, payloadlar (PRO_7_DAYS, PLUS_30_DAYS...), callback_data (buy_pro_7...), env nomlari va tier_rank
+# ichki kod bo'yicha qoladi. Kodda "Premium Pro" / "Premium Plus" ni QO'LDA yozmang — tier_title() ishlating.
+TIER_DISPLAY = database.TIER_DISPLAY
+TIER_ICON = database.TIER_ICON
+
+
+def tier_title(tier: str, suffix: str = "") -> str:
+    """"⭐ Premium Plus" (suffix bilan: "⭐ Premium Plus (7 kun)"). tier — ICHKI kod (pro / plus / ultra)."""
+    return f"{TIER_ICON[tier]} Premium {TIER_DISPLAY[tier]}{suffix}"
 
 # ═══════════════════════════════════════════════════════════════════
 # MARKDOWN → HTML CONVERTER
@@ -493,11 +505,12 @@ def get_stars_tariffs() -> dict:
     Narxlar avvalgidek env'dan chaqiruv paytida o'qiladi (PRO_TRIAL_STARS, PRO_MONTHLY_STARS, ULTRA_MONTHLY_STARS)."""
     plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
     return {
-        "PRO_7_DAYS": ("pro", 7, "⭐ Premium Pro (7 kun)", int(os.getenv("PRO_TRIAL_STARS", "50"))),
-        "PLUS_30_DAYS": ("plus", 30, "💎 Premium Plus (30 kun)", plus_price),
-        "ULTRA_30_DAYS": ("ultra", 30, "👑 Premium Ultra (30 kun)", int(os.getenv("ULTRA_MONTHLY_STARS", "300"))),
-        # Omad barabani SUPER PRIZ: Plus 30 kun 50% chegirma bilan (bir martalik, has_discount=1 bo'lsa)
-        DISCOUNT_PAYLOAD: ("plus", 30, "🎁 Premium Plus (30 kun, 50% chegirma)", plus_discount_price(plus_price)),
+        "PRO_7_DAYS": ("pro", 7, tier_title("pro", " (7 kun)"), int(os.getenv("PRO_TRIAL_STARS", "50"))),
+        "PLUS_30_DAYS": ("plus", 30, tier_title("plus", " (30 kun)"), plus_price),
+        "ULTRA_30_DAYS": ("ultra", 30, tier_title("ultra", " (30 kun)"), int(os.getenv("ULTRA_MONTHLY_STARS", "300"))),
+        # Omad barabani SUPER PRIZ: ichki plus 30 kun 50% chegirma bilan (bir martalik, has_discount=1 bo'lsa)
+        DISCOUNT_PAYLOAD: ("plus", 30, f"🎁 Premium {TIER_DISPLAY['plus']} (30 kun, 50% chegirma)",
+                           plus_discount_price(plus_price)),
     }
 
 
@@ -505,18 +518,18 @@ DISCOUNT_PAYLOAD = "PLUS_30_DAYS_DISCOUNT"
 
 
 def plus_discount_price(plus_price: int | None = None) -> int:
-    """Plus 30 kun narxining 50% i (yuqoriga yaxlitlanadi, kamida 1 Stars)."""
+    """Ichki plus (ko'rinadigan Pro) 30 kun narxining 50% i (yuqoriga yaxlitlanadi, kamida 1 Stars)."""
     if plus_price is None:
         plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
     return max(1, (plus_price + 1) // 2)
 
 
 def discount_plus_offer() -> tuple:
-    """SUPER PRIZ chegirmali Premium Plus (30 kun) taklifi: (title, desc, payload, stars).
+    """SUPER PRIZ chegirmali taklif (ichki plus, 30 kun): (title, desc, payload, stars).
     Inline tugma (buy_plus_30_discount) ham, ?start=buy_plus_30 deep link ham SHU funksiyadan foydalanadi."""
     return (
-        "🎁 Premium Plus — 30 kun (50% chegirma)",
-        "Omad barabani SUPER PRIZ: 30 kunlik Premium Plus obuna yarim narxda.",
+        f"🎁 Premium {TIER_DISPLAY['plus']} — 30 kun (50% chegirma)",
+        f"Omad barabani SUPER PRIZ: 30 kunlik Premium {TIER_DISPLAY['plus']} obuna yarim narxda.",
         DISCOUNT_PAYLOAD,
         plus_discount_price(),
     )
@@ -537,22 +550,22 @@ API_INVOICE_PLANS = ("buy_pro_7", "buy_plus_30", "buy_ultra_30")
 def _base_premium_offer(action: str) -> tuple:
     if action in ("buy_pro_7", "pay_stars"):
         return (
-            "⭐ Premium Pro — 7 kun",
-            "7 kunlik Premium Pro obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil.",
+            f"{TIER_ICON['pro']} Premium {TIER_DISPLAY['pro']} — 7 kun",
+            f"7 kunlik Premium {TIER_DISPLAY['pro']} obuna: Kuniga 15 AI so'rov, ovozli maslahat va tibbiy profil.",
             "PRO_7_DAYS",
             int(os.getenv("PRO_TRIAL_STARS", "50")),
         )
     if action == "buy_plus_30":
         return (
-            "💎 Premium Plus — 30 kun",
-            "30 kunlik Premium Plus obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar.",
+            f"{TIER_ICON['plus']} Premium {TIER_DISPLAY['plus']} — 30 kun",
+            f"30 kunlik Premium {TIER_DISPLAY['plus']} obuna: Kuniga 30 AI so'rov va barcha Premium imkoniyatlar.",
             "PLUS_30_DAYS",
             int(os.getenv("PRO_MONTHLY_STARS", "150")),
         )
     if action == "buy_ultra_30":
         return (
-            "👑 Premium Ultra — 30 kun",
-            "30 kunlik Premium Ultra obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat.",
+            f"{TIER_ICON['ultra']} Premium {TIER_DISPLAY['ultra']} — 30 kun",
+            f"30 kunlik Premium {TIER_DISPLAY['ultra']} obuna: Kuniga 100 AI so'rov (Cheksiz) va prioritet maslahat.",
             "ULTRA_30_DAYS",
             int(os.getenv("ULTRA_MONTHLY_STARS", "300")),
         )
@@ -583,7 +596,7 @@ async def build_premium_offer(user_id: int, action: str) -> tuple:
 # Git tarixidan (all_git_history_utf8.txt):
 # 1) stars_premium_1month: currency="XTR", narxi dinamik (chegirma bilan 20 XTR yoki PREMIUM_STARS_PRICE env, default 50 XTR)
 #    bo'lgani uchun yagona statik narxni taxmin qilmasdan XTR valyuta va musbat butun summa tekshiriladi.
-LEGACY_STARS_PAYLOADS = {"stars_premium_1month": ("pro", 30, "⭐ Premium Pro (30 kun)")}
+LEGACY_STARS_PAYLOADS = {"stars_premium_1month": ("pro", 30, tier_title("pro", " (30 kun)"))}
 
 def validate_payment(payload: str, currency: str, total_amount: int):
     """To'lov parametrlarini tekshiradi. Returns (ok: bool, reason: str)."""
@@ -603,27 +616,72 @@ def validate_payment(payload: str, currency: str, total_amount: int):
     return False, "payload"
 
 
-def check_premium_purchase_eligibility(user_info: dict, action: str) -> tuple[bool, str | None]:
-    """
-    Foydalanuvchining tarif xarid qilish huquqini tekshiradi (/start va inline tugmalar uchun bir xil).
-    Mavjud mahsulot siyosati bo'yicha: agar foydalanuvchida faol premium bo'lsa va
-    joriy tarifi sotib olinayotgan tarifdan yuqoriroq yoki teng bo'lsa (current_rank >= buying_rank),
-    xarid to'xtatiladi. Faqat yuqoriroq tarifga upgrade qilishga ruxsat etiladi.
-    """
-    current_type = user_info.get("premium_type", "free") if user_info else "free"
-    is_premium = user_info.get("is_premium", 0) if user_info else 0
-    tier_rank = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
-    buying_tier = {
-        "buy_pro_7": "pro", "buy_plus_30": "plus", "buy_plus_30_discount": "plus",
-        "buy_ultra_30": "ultra", "pay_stars": "pro",
-    }.get(action, "pro")
-    current_rank = tier_rank.get(current_type, 0) if is_premium else 0
-    buying_rank = tier_rank.get(buying_tier, 1)
+# ─── Tarif xaridi qoidasi: YAGONA joy ────────────────────────────────────────────────────────────────────
+# Bot tugmalari, /start deep link, Mini App /api/invoice va pre_checkout_query HAMMASI shu funksiyalardan foydalanadi.
+# Holat xom is_premium flagidan emas, database.get_premium_view / admin_premium_view dan olinadi (muddati o'tgan flag
+# bloklamaydi). Qoida: bir xil tarif = UZAYTIRISH (muddat tugash sanasiga qo'shiladi), yuqoriroq = upgrade,
+# pastroq = taqiq, muddatsiz Premium = taqiq (unga muddat qo'shib bo'lmaydi).
+PREMIUM_TIERS_ORDER = ("pro", "plus", "ultra")       # ICHKI kodlar, pastdan yuqoriga (ko'rinadigan: Plus, Pro, Ultra)
+PREMIUM_TIER_RANK = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+PREMIUM_PLAN_TIERS = {                                # tugma / API tarifi -> ichki tarif
+    "buy_pro_7": "pro", "pay_stars": "pro", "buy_plus_30": "plus", "buy_plus_30_discount": "plus",
+    "buy_ultra_30": "ultra",
+}
+PREMIUM_TIER_ACTIONS = {"pro": "buy_pro_7", "plus": "buy_plus_30", "ultra": "buy_ultra_30"}
+PREMIUM_TIER_PAYLOADS = {"pro": "PRO_7_DAYS", "plus": "PLUS_30_DAYS", "ultra": "ULTRA_30_DAYS"}
+PREMIUM_TIER_DAYS = {"pro": 7, "plus": 30, "ultra": 30}
+PREMIUM_UNLIMITED_BLOCK_TEXT = "Sizda muddatsiz Premium bor — unga muddat qo'shib bo'lmaydi."
 
-    if is_premium and current_rank >= buying_rank:
-        tier_names = {"pro": "Premium Pro", "plus": "Premium Plus", "ultra": "Premium Ultra"}
-        return False, tier_names.get(current_type, "Premium")
-    return True, None
+
+class PurchaseDecision(NamedTuple):
+    allowed: bool
+    message: str | None      # rad etilganda sabab (oddiy matn, HTML emas); ruxsat bo'lsa None
+    extension: bool          # True — joriy tarifning o'zi: muddat uzaytiriladi
+
+
+def premium_purchase_decision(view, buying_tier: str) -> PurchaseDecision:
+    """view — database.admin_premium_view / get_premium_view natijasi (None yoki faol emas -> oddiy foydalanuvchi).
+    buying_tier — ICHKI kod (pro / plus / ultra)."""
+    if not view or not view.get("active"):
+        return PurchaseDecision(True, None, False)
+    if view.get("unlimited"):
+        return PurchaseDecision(False, PREMIUM_UNLIMITED_BLOCK_TEXT, False)
+    current = view.get("tier", "free")
+    current_rank = PREMIUM_TIER_RANK.get(current, 0)
+    buying_rank = PREMIUM_TIER_RANK.get(buying_tier, 1)
+    if current_rank > buying_rank:
+        return PurchaseDecision(
+            False,
+            f"Sizda yuqoriroq tarif (Premium {TIER_DISPLAY.get(current, current)}) bor — "
+            "pastroq tarif sotib olinmaydi",
+            False,
+        )
+    return PurchaseDecision(True, None, current_rank == buying_rank)
+
+
+def check_premium_purchase_eligibility(view, action: str) -> tuple[bool, str | None]:
+    """(ruxsat, rad etish sababi). action — tugma / API tarifi (buy_pro_7, buy_plus_30, buy_plus_30_discount,
+    buy_ultra_30, pay_stars). Chegirmali taklif ham ichki plus qoidasi bo'yicha: faol plus — uzaytirish, ultra — taqiq."""
+    decision = premium_purchase_decision(view, PREMIUM_PLAN_TIERS.get(action, "pro"))
+    return decision.allowed, decision.message
+
+
+async def check_premium_purchase(user_id: int, action: str, view=None) -> tuple[bool, str | None]:
+    """check_premium_purchase_eligibility + joriy holatni bazadan o'qish (view berilsa — shu ishlatiladi).
+    DB xatosi yuqoriga uzatiladi: chaqiruvchi o'z xato xabarini beradi."""
+    if view is None:
+        view = await asyncio.to_thread(database.get_premium_view, user_id)
+    return check_premium_purchase_eligibility(view, action)
+
+
+def payment_tier(payload) -> str | None:
+    """Invoice payloadiga mos ICHKI tarif (yangi va eski payloadlar); noma'lum payload -> None."""
+    tariffs = get_stars_tariffs()
+    if payload in tariffs:
+        return tariffs[payload][0]
+    if payload in LEGACY_STARS_PAYLOADS:
+        return LEGACY_STARS_PAYLOADS[payload][0]
+    return None
 
 
 # Parallel/takroriy AI va engagement so'rovlarini to'xtatuvchi in-flight to'plamlar
@@ -1080,11 +1138,16 @@ async def get_web_app_url(user_id: int, page: str = None) -> str:
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── Premium holati: menyu tugmasi matni va xotiradagi kesh ──────────────────────────────────────────────
-PREMIUM_TIER_TITLES = {"pro": "⭐ Premium Pro", "plus": "💎 Premium Plus", "ultra": "👑 Premium Ultra"}
+PREMIUM_TIER_TITLES = {tier: tier_title(tier) for tier in ("pro", "plus", "ultra")}   # ⭐ Premium Plus / 💎 Premium Pro / 👑 Premium Ultra
 PREMIUM_BUTTON_DEFAULT = "💎 Premium"
 # Reply menyudagi Premium tugmasining BARCHA matnlari (BITTA joyda): handler ham, "menyu matni" ro'yxatlari ham
 # (FSM tozalash, AI chat) shu konstantadan oladi — aks holda AI bu matnni savol deb qabul qilardi.
 PREMIUM_BUTTON_TEXTS = (PREMIUM_BUTTON_DEFAULT, *PREMIUM_TIER_TITLES.values())
+# Tarif nomlari almashishidan OLDIN yuborilgan klaviaturadagi ESKI tugma matnlari: reply klaviatura foydalanuvchi
+# qurilmasida bot yangisini yuborguncha saqlanib qoladi. Bosilsa ham Premium sahifasi ochilsin (aks holda matn AI savol deb
+# qabul qilinardi). Yangi klaviaturada chiqmaydi (get_start_keyboard faqat PREMIUM_BUTTON_TEXTS dan foydalanadi).
+LEGACY_PREMIUM_BUTTON_TEXTS = ("⭐ Premium Pro", "💎 Premium Plus")
+PREMIUM_BUTTON_TEXTS_ROUTED = (*PREMIUM_BUTTON_TEXTS, *LEGACY_PREMIUM_BUTTON_TEXTS)
 
 # DB'ga murojaat qila olmaydigan joylar (oddiy javoblardagi menyu) uchun: user_id -> (tarif | None, vaqt).
 # /start, Premium sahifasi, admin paneli va tugash vazifasi to'ldiradi. Holat noma'lum bo'lsa — eski "💎 Premium".
@@ -1221,7 +1284,7 @@ def get_premium_keyboard():
 # PREMIUM UPSELL
 # ═══════════════════════════════════════════════════════════════════
 
-AI_TIER_NAMES = {"pro": "Pro", "plus": "Plus", "ultra": "Ultra"}
+AI_TIER_NAMES = dict(TIER_DISPLAY)      # ko'rinadigan nomlar (ichki pro = "Plus", ichki plus = "Pro")
 
 
 def ai_tier_limits() -> dict:
@@ -1252,9 +1315,9 @@ def premium_upsell_text(is_premium: bool, premium_type: str | None) -> tuple[str
     text = (
         "🛑 <b>Bepul AI so'rovlar limiti tugadi!</b>\n\n"
         "AI bilan ishlashni davom ettirish uchun <b>Premium</b> xarid qiling:\n"
-        f"• Pro — kuniga {limits['pro']} ta AI so'rov\n"
-        f"• Plus — kuniga {limits['plus']} ta AI so'rov\n"
-        f"• Ultra — kuniga {limits['ultra']} ta AI so'rov\n\n"
+        f"• {AI_TIER_NAMES['pro']} — kuniga {limits['pro']} ta AI so'rov\n"
+        f"• {AI_TIER_NAMES['plus']} — kuniga {limits['plus']} ta AI so'rov\n"
+        f"• {AI_TIER_NAMES['ultra']} — kuniga {limits['ultra']} ta AI so'rov\n\n"
         "🎁 <b>Bepul Premium olish yo'li:</b>\n"
         "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
         "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
@@ -1340,14 +1403,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
         logging.info(f"Premium check start: {premium_start - start_ts:.3f}s")
         action = args[1]
         try:
-            user_info = await asyncio.to_thread(database.get_user_info, user.id)
-            eligible, current_tier_name = check_premium_purchase_eligibility(user_info, action)
+            # Qoida YAGONA (check_premium_purchase_eligibility): bir xil tarif = uzaytirish, yuqoriroq = upgrade,
+            # pastroq yoki muddatsiz = taqiq. Holat /start boshida o'qilgan premium_view (None bo'lsa — qayta o'qiladi).
+            eligible, refusal = await check_premium_purchase(user.id, action, premium_view)
 
             if not eligible:
                 await message.answer(
-                    f"ℹ️ <b>Siz allaqachon {current_tier_name} foydalanuvchisiz!</b>\n\n"
-                    f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng. "
-                    f"Pastroq tarifga o'tish mumkin emas.",
+                    f"ℹ️ <b>{html.escape(refusal or '')}</b>",
                     parse_mode="HTML",
                     reply_markup=get_start_keyboard(premium_view)
                 )
@@ -1385,7 +1447,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer(
             "🎡 <b>Omad Barabani!</b>\n\n"
             "Har kuni 1 marta barabanni bepul aylantiring: ball, bepul AI savol, kun maslahati, "
-            "1 kunlik Premium Pro yoki SUPER sovrin (Premium Plus uchun 50% chegirma) yutishingiz mumkin!\n"
+            f"1 kunlik Premium {TIER_DISPLAY['pro']} yoki SUPER sovrin (Premium {TIER_DISPLAY['plus']} uchun 50% chegirma) "
+            "yutishingiz mumkin!\n"
             "Aylantirish uchun quyidagi tugmani bosing:",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
@@ -1400,6 +1463,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
             result = await asyncio.to_thread(database.claim_spin_prize, user.id)
             msg = result["message"]
 
+            if result["ok"] and result["prize_type"] == "pro_day":
+                # 1 kunlik Premium berildi: reply menyu, menyu keshi va shaxsiy "👑 Ilova" tugmasi yangilansin
+                premium_view = await refresh_premium_menu(message.bot, user.id, premium_view)
             reply_markup = get_start_keyboard(premium_view)
             if result["ok"] and result["prize_type"] == "super":
                 builder = InlineKeyboardBuilder()
@@ -1641,6 +1707,33 @@ async def _load_premium_view(user_id: int):
         return None
 
 
+def _fallback_premium_view(tier: str, expires):
+    """To'lovdan keyin DB'dan o'qib bo'lmasa menyu uchun hisoblangan holat (xato bo'lsa None)."""
+    try:
+        return database.admin_premium_view(1, tier, expires)
+    except Exception:
+        return None
+
+
+async def refresh_premium_menu(bot_instance, user_id: int, fallback_view=None):
+    """Premium holati O'ZGARGANDAN KEYIN (Stars to'lovi, 100 ball -> Premium, baraban 1 kunlik sovrini): yangi holatni
+    DB'dan o'qiydi (o'qib bo'lmasa fallback_view), menyu keshini yangilaydi va shaxsiy "👑 Ilova" tugmasini FONDA
+    sinxronlaydi. Yangi holatni (yoki None) qaytaradi — chaqiruvchi xabariga get_start_keyboard(view) qo'yadi.
+    HECH QACHON xato ko'tarmaydi: to'lov / sovrin mantig'i bu yangilanishga bog'liq emas."""
+    view = await _load_premium_view(user_id)
+    if view is None:
+        view = fallback_view
+    try:
+        if view is None:
+            _premium_menu_cache.pop(user_id, None)            # holat noma'lum: eskirgan tarifni ko'rsatmaslik uchun
+        else:
+            remember_premium_state(user_id, view)
+            schedule_personal_menu_sync(bot_instance, user_id, bool(view.get("active")))
+    except Exception:
+        logging.warning("Premium menyusini yangilab bo'lmadi (user=%s)", user_id, exc_info=True)
+    return view
+
+
 def _premium_greeting_block(view) -> str:
     """/start salomiga qo'shiladigan BITTA qator (faqat Premiumi borga): "👑 Premium Ultra faol — 15.12.2026 gacha"."""
     if not view or not view.get("active"):
@@ -1832,7 +1925,7 @@ async def send_free_premium_info(user_id: int, user: types.User, chat_id: int, b
         "💰 <b>Ball to'plash yo'llari:</b>\n"
         "1. 🔥 <b>Kunlik bonus:</b> Har kuni botga kirib, ballarni to'plang (1, 2, 3... ball va 7-kuni 🎁 +20 ball!).\n"
         "2. 👥 <b>Do'stlarni taklif qilish:</b> Har bir taklif qilgan do'stingiz uchun <b>+10 ball</b>, har 5 ta do'st uchun esa qo'shimcha <b>🎁 +50 ball</b> beriladi!\n"
-        "3. 🎡 <b>Omad barabani:</b> Har kuni 1 marta barabanni bepul aylantiring — ball, bepul AI savol, kun maslahati yoki 1 kunlik Premium Pro yutishingiz mumkin!\n\n"
+        f"3. 🎡 <b>Omad barabani:</b> Har kuni 1 marta barabanni bepul aylantiring — ball, bepul AI savol, kun maslahati yoki 1 kunlik Premium {TIER_DISPLAY['pro']} yutishingiz mumkin!\n\n"
         f"🏆 <b>Sizning joriy ballaringiz:</b> <b>{score}</b> ball\n\n"
         "Omad barabanini aylantirish yoki do'stlarni taklif qilish uchun quyidagi tugmalardan foydalaning 👇"
     )
@@ -1936,7 +2029,7 @@ async def reply_hospital(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(F.text.in_(PREMIUM_BUTTON_TEXTS))
+@dp.message(F.text.in_(PREMIUM_BUTTON_TEXTS_ROUTED))
 async def reply_premium_info(message: types.Message):
     await _show_premium_page(message)
 
@@ -2109,7 +2202,7 @@ async def process_disease_detail_callback(callback: types.CallbackQuery):
             "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
             "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
             "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
-            f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik Pro) dan boshlab.\n\n"
+            f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik {TIER_DISPLAY['pro']}) dan boshlab.\n\n"
             "Quyidagi tugmani bosing:"
         )
         builder = InlineKeyboardBuilder()
@@ -2924,17 +3017,97 @@ async def _answer_or_edit(message_or_cb, text: str, markup) -> None:
         await message_or_cb.answer(text, parse_mode="HTML", reply_markup=markup)
 
 
+def _plan_stars(tier: str) -> int:
+    """Tarifning joriy Stars narxi (env'dan, get_stars_tariffs bilan bir xil)."""
+    return get_stars_tariffs()[PREMIUM_TIER_PAYLOADS[tier]][3]
+
+
+def premium_buy_button_text(tier: str, extension: bool) -> str:
+    """Tarif tugmasi. Yangi xarid: "💎 150 Stars → 30 kun Premium Pro"; joriy tarifni uzaytirish:
+    "🔄 Premium Pro — yana 30 kun (150 ⭐)". tier — ICHKI kod."""
+    days = PREMIUM_TIER_DAYS[tier]
+    stars = _plan_stars(tier)
+    if extension:
+        return f"🔄 Premium {TIER_DISPLAY[tier]} — yana {days} kun ({stars} ⭐)"
+    return f"{TIER_ICON[tier]} {stars} Stars → {days} kun Premium {TIER_DISPLAY[tier]}"
+
+
+def premium_discount_button_text(extension: bool) -> str:
+    """SUPER PRIZ chegirmali tugma (ichki plus, 30 kun, -50%)."""
+    stars = plus_discount_price()
+    if extension:
+        return f"🎁 Premium {TIER_DISPLAY['plus']} — yana 30 kun ({stars} ⭐, -50%)"
+    return f"🎁 {stars} Stars → 30 kun Premium {TIER_DISPLAY['plus']} (-50%)"
+
+
+def purchasable_premium_plans(view) -> list:
+    """[(ichki tarif, uzaytirishmi)] — HOZIR sotib olish MUMKIN bo'lgan tariflar, pastdan yuqoriga. Joriy tarif
+    (uzaytirish) va undan yuqorilari; pastroq tariflar yo'q; muddatsiz Premiumda ro'yxat bo'sh."""
+    plans = []
+    for tier in PREMIUM_TIERS_ORDER:
+        decision = premium_purchase_decision(view, tier)
+        if decision.allowed:
+            plans.append((tier, decision.extension))
+    return plans
+
+
+_SALES_TIER_FEATURES = {
+    "pro": ("Kuniga 15 ta AI konsultatsiya", "Ovozli xabar bilan muloqot", "Shaxsiy tibbiy profil tahlili"),
+    "plus": ("Kuniga 30 ta AI konsultatsiya", f"Barcha Premium {TIER_DISPLAY['pro']} imkoniyatlari"),
+    "ultra": ("100 AI so‘rov/kun + kengaytirilgan AI imkoniyatlari", "Prioritet AI javobi va barcha Ultra imkoniyatlar"),
+}
+
+
+def _sales_tier_block(tier: str) -> str:
+    name = TIER_DISPLAY[tier]
+    lines = [f"{TIER_ICON[tier]} <b>PREMIUM {name.upper()}</b>",
+             f"• <b>{_plan_stars(tier)} ⭐ → {PREMIUM_TIER_DAYS[tier]} kun Premium {name}</b>"]
+    lines += [f"  • {feature}" for feature in _SALES_TIER_FEATURES[tier]]
+    return "\n".join(lines) + "\n\n"
+
+
+def _premium_sales_text(view, plans: list, score: int) -> str:
+    """Sotuv / uzaytirish sahifasi matni. Faqat SOTIB OLISH MUMKIN bo'lgan tariflar tasvirlanadi."""
+    active = bool(view and view.get("active"))
+    if active and not plans:                              # muddatsiz Premium
+        return f"ℹ️ <b>{PREMIUM_UNLIMITED_BLOCK_TEXT}</b>"
+    if active:
+        title = PREMIUM_TIER_TITLES.get(view["tier"], PREMIUM_BUTTON_DEFAULT)
+        head = (
+            "🔄 <b>PREMIUMNI UZAYTIRISH</b>\n\n"
+            f"Joriy tarifingiz: <b>{title}</b> — {view['expires']:%d.%m.%Y} gacha.\n"
+            "Xuddi shu tarifni qayta sotib olsangiz, muddat <b>tugash sanasiga qo'shiladi</b>. "
+            "Yuqoriroq tarifga o'tish ham mumkin; pastroq tarif sotib olinmaydi.\n\n"
+        )
+    else:
+        head = (
+            "💎 <b>PREMIUM OBS TARIFLARI</b>\n\n"
+            "O'zingizga mos tarifni tanlang va barcha tibbiy imkoniyatlarga ega bo'ling:\n\n"
+        )
+    return (
+        head
+        + "🎁 <b>BEPUL REWARD</b>\n"
+        + f"• <b>100 Ball → 3 kun Premium {TIER_DISPLAY['pro']}</b>\n"
+        + "  <i>Botda to'plagan ballaringiz evaziga!</i>\n\n"
+        + "".join(_sales_tier_block(tier) for tier, _ in plans)
+        + f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n\n"
+        + "👇 Sotib olish yoki almashtirish uchun tugmani bosing:"
+    )
+
+
 async def _show_my_premium_page(message_or_cb, user_id: int, view: dict) -> None:
     """Premiumi bor userga sotuv sahifasi o'rniga: tarif, muddat, qolgan kun, bugungi AI limit."""
     ai_remaining, ai_limit, ai_bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
     text = _my_premium_text(view, ai_remaining, ai_limit, ai_bonus)
     builder = InlineKeyboardBuilder()
-    # SUPER PRIZ chegirmasi bor va Plus ga o'tish mumkin bo'lsa — tugmani ko'rsatamiz (mavjud mantiq)
-    if view["tier"] not in ("plus", "ultra") and await asyncio.to_thread(database.has_discount, user_id):
-        text += f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium Plus — {plus_discount_price()} Stars"
-        builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
-                       callback_data="buy_plus_30_discount")
-    builder.button(text="🔄 Uzaytirish", callback_data="premium_extend")
+    # SUPER PRIZ chegirmasi bor va ichki plus (ko'rinadigan Pro) sotib olish mumkin bo'lsa (uzaytirish ham) — tugma
+    plus_decision = premium_purchase_decision(view, "plus")
+    if plus_decision.allowed and await asyncio.to_thread(database.has_discount, user_id):
+        text += (f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium {TIER_DISPLAY['plus']} — "
+                 f"{plus_discount_price()} Stars")
+        builder.button(text=premium_discount_button_text(plus_decision.extension), callback_data="buy_plus_30_discount")
+    if purchasable_premium_plans(view):                   # muddatsiz Premiumda "Uzaytirish" yo'q
+        builder.button(text="🔄 Uzaytirish", callback_data="premium_extend")
     app_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
     if app_url:
         builder.button(text="🚑 Mini ilovada ochish", web_app=types.WebAppInfo(url=app_url))
@@ -2951,58 +3124,42 @@ async def _show_premium_page(message_or_cb):
     if view["active"]:
         await _show_my_premium_page(message_or_cb, user_id, view)
         return
-    await _show_premium_sales(message_or_cb)
+    await _show_premium_sales(message_or_cb, view)
 
 
-async def _show_premium_sales(message_or_cb):
-    """Sotuv sahifasi — to'liq FINAL pricing matrix bo'yicha (tariflar va xarid tugmalari)"""
+async def _show_premium_sales(message_or_cb, view=None):
+    """Sotuv / uzaytirish sahifasi. FAQAT sotib olish mumkin bo'lgan tariflar ko'rsatiladi (purchasable_premium_plans):
+    oddiy userga uchala tarif, faol userga — joriy tarif (🔄 uzaytirish) va undan yuqorilari. view berilmasa — o'qiladi."""
     is_callback = isinstance(message_or_cb, types.CallbackQuery)
     user_id = message_or_cb.from_user.id
 
+    if view is None:
+        view = await _load_premium_view(user_id)          # DB xatosi -> None -> oddiy foydalanuvchi ko'rinishi
+    plans = purchasable_premium_plans(view)
+    active = bool(view and view.get("active"))
     score = await asyncio.to_thread(database.get_score, user_id)
 
-    text = (
-        "💎 <b>PREMIUM OBS TARIFLARI</b>\n\n"
-        "O'zingizga mos tarifni tanlang va barcha tibbiy imkoniyatlarga ega bo'ling:\n\n"
-        "🎁 <b>BEPUL REWARD</b>\n"
-        "• <b>100 Ball → 3 kun Premium Pro</b>\n"
-        "  <i>Botda to'plagan ballaringiz evaziga!</i>\n\n"
-        "⭐ <b>PREMIUM PRO</b>\n"
-        "• <b>50 ⭐ → 7 kun Premium Pro</b>\n"
-        "  • Kuniga 15 ta AI konsultatsiya\n"
-        "  • Ovozli xabar bilan muloqot\n"
-        "  • Shaxsiy tibbiy profil tahlili\n\n"
-        "💎 <b>PREMIUM PLUS</b>\n"
-        "• <b>150 ⭐ → 30 kun Premium Plus</b>\n"
-        "  • Kuniga 30 ta AI konsultatsiya\n"
-        "  • Barcha Premium Pro imkoniyatlari\n\n"
-        "👑 <b>PREMIUM ULTRA</b>\n"
-        "• <b>300 ⭐ → 30 kun Premium Ultra</b>\n"
-        "  • 100 AI so‘rov/kun + kengaytirilgan AI imkoniyatlari\n"
-        "  • Prioritet AI javobi va barcha Ultra imkoniyatlar\n\n"
-        f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n\n"
-        "👇 Sotib olish yoki almashtirish uchun tugmani bosing:"
-    )
-
+    text = _premium_sales_text(view, plans, score)
     web_app_url = await get_web_app_url(user_id, page="wheel")
     builder = InlineKeyboardBuilder()
 
-    if await asyncio.to_thread(database.has_discount, user_id):
+    plan_map = dict(plans)
+    if "plus" in plan_map and await asyncio.to_thread(database.has_discount, user_id):
         text = (
-            f"🎁 <b>Sizda SUPER PRIZ chegirmasi bor!</b> 30 kun Premium Plus — "
-            f"<s>{get_stars_tariffs()['PLUS_30_DAYS'][3]}</s> <b>{plus_discount_price()} Stars</b> (bir martalik)\n\n" + text
+            f"🎁 <b>Sizda SUPER PRIZ chegirmasi bor!</b> 30 kun Premium {TIER_DISPLAY['plus']} — "
+            f"<s>{_plan_stars('plus')}</s> <b>{plus_discount_price()} Stars</b> (bir martalik)\n\n" + text
         )
-        builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
-                       callback_data="buy_plus_30_discount")
+        builder.button(text=premium_discount_button_text(plan_map["plus"]), callback_data="buy_plus_30_discount")
 
-    if score >= 100:
-        builder.button(text="🎁 100 ball → 3 kun Premium Pro", callback_data="redeem_points_premium")
-    else:
-        builder.button(text=f"🎁 100 ball → 3 kun Pro (Yana {100 - score} ball kerak)", callback_data="redeem_points_info")
+    if not (active and not plans):                         # muddatsiz Premiumga ball almashtirish ham kerak emas
+        if score >= 100:
+            builder.button(text=f"🎁 100 ball → 3 kun Premium {TIER_DISPLAY['pro']}", callback_data="redeem_points_premium")
+        else:
+            builder.button(text=f"🎁 100 ball → 3 kun {TIER_DISPLAY['pro']} (Yana {100 - score} ball kerak)",
+                           callback_data="redeem_points_info")
 
-    builder.button(text="⭐ 50 Stars → 7 kun Premium Pro", callback_data="buy_pro_7")
-    builder.button(text="💎 150 Stars → 30 kun Premium Plus", callback_data="buy_plus_30")
-    builder.button(text="👑 300 Stars → 30 kun Premium Ultra", callback_data="buy_ultra_30")
+    for tier, extension in plans:
+        builder.button(text=premium_buy_button_text(tier, extension), callback_data=PREMIUM_TIER_ACTIONS[tier])
 
     if web_app_url:
         builder.button(text="🎡 Omad barabani", web_app=types.WebAppInfo(url=web_app_url))
@@ -3025,24 +3182,41 @@ async def process_buy_premium(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "premium_extend")
 async def process_premium_extend(callback: types.CallbackQuery):
-    """"🔄 Uzaytirish": mavjud tariflar ro'yxati va xarid tugmalari ("Mening obunam" sahifasidan ham, eslatmadan ham)."""
-    await _show_premium_sales(callback)
+    """"🔄 Uzaytirish": FAQAT sotib olish mumkin bo'lgan tariflar ("Mening obunam" sahifasidan ham, eslatmadan ham)."""
+    view = await _load_premium_view(callback.from_user.id)
+    if view and view.get("active") and view.get("unlimited"):
+        await callback.answer(f"ℹ️ {PREMIUM_UNLIMITED_BLOCK_TEXT}", show_alert=True)
+        return
+    await _show_premium_sales(callback, view)
 
 @dp.callback_query(F.data == "redeem_points_info")
 async def process_redeem_points_info(callback: types.CallbackQuery):
     score = await asyncio.to_thread(database.get_score, callback.from_user.id)
     needed = max(0, 100 - score)
     logging.info(f"User {callback.from_user.id} requested redeem points info: score={score}, needed={needed}")
-    await callback.answer(f"⚠️ Sizda {score} ball bor. 3 kunlik Premium Pro uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
+    await callback.answer(f"⚠️ Sizda {score} ball bor. 3 kunlik Premium {TIER_DISPLAY['pro']} uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
 
 @dp.callback_query(F.data == "redeem_points_premium")
 async def process_redeem_points_premium(callback: types.CallbackQuery):
     user_id = callback.from_user.id
+    prev_view = await _load_premium_view(user_id)
+    if prev_view and prev_view.get("active") and prev_view.get("unlimited"):
+        # grant muddatsiz Premiumni 3 kunlik bilan ALMASHTIRIB yuborardi — ballar ham yechilmaydi
+        await callback.answer("ℹ️ Sizda muddatsiz Premium bor — ball almashtirish shart emas.", show_alert=True)
+        return
     success = await asyncio.to_thread(database.check_and_grant_premium, user_id)
     if success:
-        logging.info(f"User {user_id} successfully redeemed 100 points for Premium Pro.")
-        await callback.answer("🎉 100 ball yechildi! 3 kunlik Premium Pro aktivlashtirildi!", show_alert=True)
+        logging.info(f"User {user_id} successfully redeemed 100 points for Premium {TIER_DISPLAY['pro']} (internal pro).")
+        await callback.answer(f"🎉 100 ball yechildi! 3 kunlik Premium {TIER_DISPLAY['pro']} aktivlashtirildi!", show_alert=True)
+        # Menyu keshi va shaxsiy "👑 Ilova" tugmasi yangilanadi; sahifa tahrirlanadi (tahrirda reply menyu o'zgarmaydi)
+        new_view = await refresh_premium_menu(callback.bot, user_id)
         await _show_premium_page(callback)
+        if new_view and new_view.get("active") and callback.message is not None:
+            # Reply menyu faqat YANGI xabar bilan yangilanadi: pastdagi tugma darhol tarifga mos bo'lsin
+            await callback.message.answer(
+                f"✅ {PREMIUM_TIER_TITLES.get(new_view['tier'], PREMIUM_BUTTON_DEFAULT)} faol — pastdagi menyu yangilandi.",
+                reply_markup=get_start_keyboard(new_view),
+            )
     else:
         score = await asyncio.to_thread(database.get_score, user_id)
         logging.info(f"User {user_id} failed redeem: score={score}")
@@ -3055,13 +3229,9 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         action = callback.data
 
-        user_info = await asyncio.to_thread(database.get_user_info, user_id)
-        eligible, current_tier_name = check_premium_purchase_eligibility(user_info, action)
+        eligible, refusal = await check_premium_purchase(user_id, action)
         if not eligible:
-            await callback.answer(
-                f"ℹ️ Siz allaqachon {current_tier_name} foydalanuvchisiz! Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng.",
-                show_alert=True
-            )
+            await callback.answer(f"ℹ️ {refusal}", show_alert=True)
             return
 
         try:
@@ -3126,6 +3296,17 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
                     error_message="Chegirma allaqachon ishlatilgan. /premium orqali oddiy tarifni tanlang."
                 )
                 return
+
+        # Xuddi shu xarid qoidasi (tugma va /api/invoice bilan YAGONA funksiya): to'lov qilingandan KEYIN emas, OLDIN rad etiladi
+        view = await asyncio.to_thread(database.get_premium_view, user_id)
+        decision = premium_purchase_decision(view, payment_tier(pre_checkout_query.invoice_payload))
+        if not decision.allowed:
+            logging.warning(
+                f"Pre-checkout rad etildi (tarif qoidasi): user={user_id}, "
+                f"payload={pre_checkout_query.invoice_payload}, sabab={decision.message}"
+            )
+            await pre_checkout_query.answer(ok=False, error_message=decision.message)
+            return
 
         await pre_checkout_query.answer(ok=True)
     except Exception as e:
@@ -3236,6 +3417,9 @@ async def process_successful_payment(message: types.Message):
                 f"stars={payment.total_amount}, charge_id={charge_id}"
             )
         prem_type, days, product_title = product_map[payload]
+        # To'lovdan OLDINGI holat — faqat xabar uchun ("uzaytirildi" yoki yangi) va menyu zaxira holati uchun.
+        # Xato bo'lsa None; to'lov mantig'iga ta'sir qilmaydi.
+        prev_view = await _load_premium_view(user_id)
         try:
             granted, until = await asyncio.to_thread(
                 database.process_paid_premium,
@@ -3255,13 +3439,13 @@ async def process_successful_payment(message: types.Message):
                 await message.answer(
                     "⚠️ To'lov qabul qilindi, ammo tizimda vaqtinchalik xatolik yuz berdi.\n"
                     "To'lovingiz saqlab qolindi. Iltimos, administrator bilan bog'laning yoki birozdan so'ng /start bosing.",
-                    reply_markup=get_start_keyboard()
+                    reply_markup=get_start_keyboard_for(user_id)
                 )
             else:
                 await message.answer(
                     f"⚠️ To'lov qabul qilindi, ammo tizimda vaqtinchalik xatolik yuz berdi.\n"
                     f"Iltimos, to'lov identifikatoringizni administratorga yuboring: {charge_id}",
-                    reply_markup=get_start_keyboard()
+                    reply_markup=get_start_keyboard_for(user_id)
                 )
             try:
                 safe_charge_id = html.escape(str(charge_id)[:100])
@@ -3290,20 +3474,35 @@ async def process_successful_payment(message: types.Message):
             return
 
         if not granted:
-            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard())
+            await message.answer("⚠️ Bu to'lov allaqachon qayta ishlangan!", reply_markup=get_start_keyboard_for(user_id))
             return
 
         exp_str = until.strftime("%d.%m.%Y")
 
-        await message.answer(
-            f"🎉 <b>To'lov muvaffaqiyatli qabul qilindi!</b>\n\n"
-            f"📦 Mahsulot: <b>{product_title}</b>\n"
-            f"⭐ Sarflandi: <b>{payment.total_amount} Stars</b>\n"
-            f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
-            f"Barcha imkoniyatlar faollashtirildi! 🚀",
-            parse_mode="HTML",
-            reply_markup=get_start_keyboard()
-        )
+        # Yangi holat: reply menyu, menyu keshi va shaxsiy "👑 Ilova" tugmasi DARHOL yangilansin.
+        was_active = bool(prev_view and prev_view.get("active"))
+        prev_tier = prev_view["tier"] if was_active else "free"
+        if was_active and prev_view.get("unlimited"):
+            logging.warning(f"Muddatsiz Premiumli user to'lov qildi (muddat bilan almashdi): user={user_id}, payload={payload}")
+        final_tier = prem_type if PREMIUM_TIER_RANK.get(prem_type, 1) >= PREMIUM_TIER_RANK.get(prev_tier, 0) else prev_tier
+        new_view = await refresh_premium_menu(message.bot, user_id, _fallback_premium_view(final_tier, until))
+        extended = was_active and not prev_view.get("unlimited") and prev_tier == prem_type    # bir xil tarif = uzaytirish
+
+        if extended:
+            text = (
+                f"✅ Premium {TIER_DISPLAY[prem_type]} {days} kunga uzaytirildi — yangi tugash sanasi: {exp_str}\n\n"
+                f"⭐ Sarflandi: <b>{payment.total_amount} Stars</b>\n\n"
+                f"Barcha imkoniyatlar faol! 🚀"
+            )
+        else:
+            text = (
+                f"🎉 <b>To'lov muvaffaqiyatli qabul qilindi!</b>\n\n"
+                f"📦 Mahsulot: <b>{product_title}</b>\n"
+                f"⭐ Sarflandi: <b>{payment.total_amount} Stars</b>\n"
+                f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
+                f"Barcha imkoniyatlar faollashtirildi! 🚀"
+            )
+        await message.answer(text, parse_mode="HTML", reply_markup=get_start_keyboard(new_view))
 
         # Adminga bildirishnoma
         try:
@@ -3948,7 +4147,7 @@ def _premium_expiry_text(user: dict, now) -> str:
     """"⏳ Premium Ultra obunangiz ertaga (15.12.2026, 18:00) tugaydi..." — tugash bugun bo'lsa "bugun"."""
     expires = user["expires"]
     when = "bugun" if expires.date() == now.astimezone(expires.tzinfo).date() else "ertaga"
-    return (f"⏳ Premium {PM_TIER_NAMES.get(user['tier'], 'Pro')} obunangiz {when} "
+    return (f"⏳ Premium {PM_TIER_NAMES.get(user['tier'], TIER_DISPLAY['ultra'])} obunangiz {when} "
             f"({expires:%d.%m.%Y, %H:%M}) tugaydi. Uzaytirish uchun 👇")
 
 
@@ -4175,8 +4374,8 @@ class AdminPremiumStates(StatesGroup):
 
 
 PM_TIER_CODES = {"pro": "p", "plus": "l", "ultra": "u"}
-PM_TIER_LABELS = {"pro": "⭐ Pro", "plus": "💎 Plus", "ultra": "👑 Ultra"}
-PM_TIER_NAMES = {"free": "Oddiy", "pro": "Pro", "plus": "Plus", "ultra": "Ultra"}
+PM_TIER_LABELS = {tier: f"{TIER_ICON[tier]} {TIER_DISPLAY[tier]}" for tier in ("pro", "plus", "ultra")}   # ⭐ Plus 💎 Pro 👑 Ultra
+PM_TIER_NAMES = {"free": "Oddiy", **TIER_DISPLAY}
 PM_TIER_RANK = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
 PM_DURATIONS = {"1": 1, "3": 3, "7": 7, "30": 30, "90": 90, "u": None}        # "u" — muddatsiz
 PM_MODES = {"n": "📣 Xabar bilan", "s": "🤫 Sirli"}
@@ -4215,7 +4414,8 @@ def _pm_markup(rows) -> types.InlineKeyboardMarkup:
 
 
 def _pm_tiers() -> list:
-    """[(kod, tarif, yorliq)] — get_stars_tariffs() dagi tarif turlari bilan bir xil, Pro -> Ultra tartibida."""
+    """[(kod, tarif, yorliq)] — get_stars_tariffs() dagi tarif turlari bilan bir xil; ichki pro -> plus -> ultra,
+    ya'ni ko'rinadigan Plus -> Pro -> Ultra tartibida."""
     in_tariffs = {entry[0] for entry in get_stars_tariffs().values()}
     return [(PM_TIER_CODES[t], t, PM_TIER_LABELS[t]) for t in ("pro", "plus", "ultra") if t in in_tariffs]
 
@@ -5022,7 +5222,7 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     skip_texts = [
         "📋 Holatlar ro'yxati", "🚨 Favqulodda raqamlar",
         "📚 Kasalliklar", "💬 AI Konsultatsiya (Chat)",
-        "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS,
+        "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS_ROUTED,
         "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
         "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
         "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
@@ -5089,7 +5289,7 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
                 "• 🔥 Har kuni botga kirib, kunlik bonus to'plang (1, 2, 3... ball)!\n"
                 "• 👥 Do'stingizni taklif qiling: <b>+10 ball</b> (5 ta do'st uchun: <b>🎁 +50 ball</b>!)\n"
                 "• 🎓 <b>100 ball</b> to'planganda bepul <b>Premium</b> faollashadi!\n\n"
-                f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik Pro) dan boshlab.",
+                f"⭐ <b>{PREMIUM_STARS_PRICE} Telegram Stars</b> (7 kunlik {TIER_DISPLAY['pro']}) dan boshlab.",
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -5642,6 +5842,7 @@ async def _premium_quota_fields(user_id: int) -> dict:
     """Header'dagi Premium ko'rsatkichi, "Mening Premiumim" kartasi va AI tabi hisoblagichi uchun (faqat o'qish).
     ai_remaining barabandan yutilgan bonusni ham o'z ichiga oladi, ai_bonus esa alohida; ai_limit — faqat tarif limiti."""
     view = await asyncio.to_thread(database.get_premium_view, user_id)
+    remember_premium_state(user_id, view)                       # keyingi bot xabaridagi menyu tugmasi to'g'ri tarifni ko'rsatsin
     ai_remaining, ai_limit, ai_bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
     active = view["active"]
     return {
@@ -5670,7 +5871,7 @@ async def _api_state_action(user_id: int) -> dict:
         "score": score,
         "streak": bonus["streak"],
         "daily_claimed": bool(bonus["is_claimed_today"]),
-        # Sovrin KODI (database.SPIN_PRIZES): 1/2/3/5 ball, -2 maslahat, -1 AI savol, -3 1 kun Pro, 0 SUPER.
+        # Sovrin KODI (database.SPIN_PRIZES): 1/2/3/5 ball, -2 maslahat, -1 AI savol, -3 1 kunlik Premium, 0 SUPER.
         # None -> null (kutish yoki foydalanuvchi yo'q)
         "prize": prize,
         "prize_type": database.spin_prize_type(prize),     # points / tip / ai / pro_day / super / None
@@ -5698,6 +5899,12 @@ async def _api_spin_claim_action(user_id: int) -> dict:
     if ok and prize_type in ("ai", "pro_day"):
         # Yangi AI hisoblagich / Premium holati — qo'shimcha /api/state so'rovisiz yangilanishi uchun
         response.update(await _premium_quota_fields(user_id))
+        if prize_type == "pro_day":
+            # 1 kunlik Premium: shaxsiy "👑 Ilova" tugmasi fonda (bu yo'lda bot xabar yubormaydi; menyu keshi yuqorida yangilandi)
+            try:
+                schedule_personal_menu_sync(bot, user_id, bool(response.get("is_premium")))
+            except Exception:
+                logging.warning("Baraban sovrinidan keyin menyu tugmasini yangilab bo'lmadi (user=%s)", user_id, exc_info=True)
     return response
 
 
@@ -5713,21 +5920,16 @@ async def _api_bonus_claim_action(user_id: int) -> dict:
     return {"ok": bool(granted), "message": message, "points": points, "streak": streak, "score": score}
 
 
-def not_eligible_text(current_tier_name) -> str:
-    return (f"Siz allaqachon {current_tier_name} foydalanuvchisiz! "
-            f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng.")
-
-
 async def _api_invoice_action(user_id: int, body: dict):
     # plan FAQAT whitelist'dan. Tanadagi boshqa maydonlar (price, stars, payload...) e'tiborga olinmaydi:
     # narx va payload faqat build_premium_offer dan keladi.
     plan = body.get("plan")
     if not isinstance(plan, str) or plan not in API_INVOICE_PLANS:
         return _api_error(400, "bad_plan")
-    user_info = await asyncio.to_thread(database.get_user_info, user_id)
-    eligible, current_tier_name = check_premium_purchase_eligibility(user_info, plan)
+    # Bot tugmalari va pre_checkout bilan BIR XIL qoida (check_premium_purchase): bir xil tarif = uzaytirish
+    eligible, refusal = await check_premium_purchase(user_id, plan)
     if not eligible:
-        return {"ok": False, "error": "not_eligible", "message": not_eligible_text(current_tier_name)}
+        return {"ok": False, "error": "not_eligible", "message": refusal}
     title, desc, payload, stars = await build_premium_offer(user_id, plan)
     url = await bot.create_invoice_link(
         title=title,

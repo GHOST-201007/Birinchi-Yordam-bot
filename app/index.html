@@ -713,7 +713,7 @@
                                 <input type="radio" name="ai-offer-plan" value="buy_pro_7">
                                 <span class="plan-radio" aria-hidden="true"></span>
                                 <span class="plan-info">
-                                    <span class="plan-name">Premium Pro</span>
+                                    <span class="plan-name" data-tier="pro">Premium Plus</span>
                                     <span class="plan-days">7 kun · kuniga 15 AI so'rov</span>
                                 </span>
                                 <span class="plan-price tabular">★ 50</span>
@@ -722,7 +722,7 @@
                                 <input type="radio" name="ai-offer-plan" value="buy_plus_30" checked>
                                 <span class="plan-radio" aria-hidden="true"></span>
                                 <span class="plan-info">
-                                    <span class="plan-name">Premium Plus<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
+                                    <span class="plan-name" data-tier="plus">Premium Pro<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
                                     <span class="plan-days">30 kun · kuniga 30 AI so'rov</span>
                                 </span>
                                 <span class="plan-price tabular">★ 150</span>
@@ -731,7 +731,7 @@
                                 <input type="radio" name="ai-offer-plan" value="buy_ultra_30">
                                 <span class="plan-radio" aria-hidden="true"></span>
                                 <span class="plan-info">
-                                    <span class="plan-name">Premium Ultra</span>
+                                    <span class="plan-name" data-tier="ultra">Premium Ultra</span>
                                     <span class="plan-days">30 kun · kuniga 100 AI so'rov</span>
                                 </span>
                                 <span class="plan-price tabular">★ 300</span>
@@ -839,7 +839,7 @@
                 <div class="wheel-stage">
                     <div class="wheel-pointer" aria-hidden="true"></div>
                     <div class="wheel-canvas-wrap">
-                        <canvas id="wheel-canvas" width="600" height="600" role="img" aria-label="Baraban: 1, 2, 3, 5 ball, kun maslahati, bepul AI savol, 1 kunlik Premium Pro va SUPER priz"></canvas>
+                        <canvas id="wheel-canvas" width="600" height="600" role="img" aria-label="Baraban: 1, 2, 3, 5 ball, kun maslahati, bepul AI savol, 1 kunlik Premium Plus va SUPER priz"></canvas>
                     </div>
                     <button type="button" class="wheel-center-btn" id="btn-spin-wheel" aria-label="Barabanni aylantirish">
                         <span class="wheel-center-text">AYLANTIR</span>
@@ -899,7 +899,7 @@
                     <input type="radio" name="premium-plan" value="buy_pro_7" data-price="50">
                     <span class="plan-radio" aria-hidden="true"></span>
                     <span class="plan-info">
-                        <span class="plan-name">Premium Pro</span>
+                        <span class="plan-name" data-tier="pro">Premium Plus</span>
                         <span class="plan-days">7 kun</span>
                     </span>
                     <span class="plan-price tabular">★ 50</span>
@@ -908,7 +908,7 @@
                     <input type="radio" name="premium-plan" value="buy_plus_30" data-price="150" checked>
                     <span class="plan-radio" aria-hidden="true"></span>
                     <span class="plan-info">
-                        <span class="plan-name">Premium Plus<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
+                        <span class="plan-name" data-tier="plus">Premium Pro<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
                         <span class="plan-days">30 kun</span>
                     </span>
                     <span class="plan-price tabular">★ 150</span>
@@ -917,7 +917,7 @@
                     <input type="radio" name="premium-plan" value="buy_ultra_30" data-price="300">
                     <span class="plan-radio" aria-hidden="true"></span>
                     <span class="plan-info">
-                        <span class="plan-name">Premium Ultra</span>
+                        <span class="plan-name" data-tier="ultra">Premium Ultra</span>
                         <span class="plan-days">30 kun</span>
                     </span>
                     <span class="plan-price tabular">★ 300</span>

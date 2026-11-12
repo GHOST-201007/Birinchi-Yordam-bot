@@ -63,7 +63,7 @@ class NavE2ETest(MiniAppE2EBase):
     def test_header_premium_badge_from_state(self):
         # Muddat maydonlari yo'q (eski server): faqat tarif nomi. Muddatli/muddatsiz ko'rinish —
         # tests/test_miniapp_premium_visibility_e2e.py
-        for tier, name in (("pro", "Pro"), ("plus", "Plus"), ("ultra", "Ultra")):
+        for tier, name in (("pro", "Plus"), ("plus", "Pro"), ("ultra", "Ultra")):         # ichki kod -> ko'rinadigan nom
             with self.subTest(tier=tier):
                 page, _ = self.open_app({"state": (200, {**STATE_OK, "is_premium": True, "premium_type": tier})})
                 page.wait_for_selector("#hdr-premium:not([hidden])")

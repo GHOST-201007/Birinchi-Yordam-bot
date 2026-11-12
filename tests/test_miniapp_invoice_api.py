@@ -19,11 +19,10 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 
 import bot  # noqa: E402
-from tests.test_miniapp_api import ApiTestBase, USER_ID, OTHER_ID, fresh_init_data  # noqa: E402
+from tests.test_miniapp_api import ApiTestBase, USER_ID, OTHER_ID, fresh_init_data, premium_view  # noqa: E402
 
 LINK = "https://t.me/$AAH-test-invoice-link"
 PRICES = {"buy_pro_7": ("PRO_7_DAYS", 50), "buy_plus_30": ("PLUS_30_DAYS", 150), "buy_ultra_30": ("ULTRA_30_DAYS", 300)}
-FREE = {"is_premium": 0, "premium_type": "free"}
 
 
 class InvoiceBase(ApiTestBase):
@@ -31,12 +30,9 @@ class InvoiceBase(ApiTestBase):
         await super().asyncSetUp()
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
-        self.user_info = dict(FREE)
         self.discount = False
-        self.get_user_info = mock.MagicMock(side_effect=lambda uid: self.user_info)
         self.has_discount = mock.MagicMock(side_effect=lambda uid: self.discount)
         self.create_link = mock.AsyncMock(return_value=LINK)
-        stack.enter_context(mock.patch.object(bot.database, "get_user_info", self.get_user_info))
         stack.enter_context(mock.patch.object(bot.database, "has_discount", self.has_discount))
         stack.enter_context(mock.patch.object(bot, "bot", SimpleNamespace(create_invoice_link=self.create_link)))
         stack.enter_context(mock.patch.dict(os.environ, {
@@ -60,7 +56,7 @@ class InvoiceEndpointTest(InvoiceBase):
         self.assertEqual(resp.status, 403)
         self.assertEqual(data, {"ok": False, "error": "forbidden"})
         self.create_link.assert_not_awaited()
-        self.get_user_info.assert_not_called()
+        self.m["view"].assert_not_called()
         self.has_discount.assert_not_called()
         self.assert_no_db_calls()
 
@@ -125,36 +121,69 @@ class InvoiceEndpointTest(InvoiceBase):
         self.assertEqual((kw["payload"], kw["prices"][0].amount, kw["currency"], kw["provider_token"]),
                          ("PLUS_30_DAYS", 150, "XTR", ""))
         self.assertNotIn("free", kw["title"])
-        self.get_user_info.assert_called_once_with(USER_ID)           # faqat initData'dagi foydalanuvchi
+        self.m["view"].assert_called_once_with(USER_ID)               # faqat initData'dagi foydalanuvchi
         self.has_discount.assert_called_once_with(USER_ID)
 
-    async def test_not_eligible_returns_ok_false_with_plain_message(self):
+    async def test_lower_tier_returns_ok_false_with_plain_message(self):
+        """Pastroq tarif taqiq. Xabarda joriy tarifning KO'RINADIGAN nomi (ichki plus = Pro, pro = Plus)."""
         cases = [
-            ({"is_premium": 1, "premium_type": "plus"}, "buy_pro_7", "Premium Plus"),
-            ({"is_premium": 1, "premium_type": "plus"}, "buy_plus_30", "Premium Plus"),
-            ({"is_premium": 1, "premium_type": "ultra"}, "buy_ultra_30", "Premium Ultra"),
-            ({"is_premium": 1, "premium_type": "pro"}, "buy_pro_7", "Premium Pro"),
+            ("plus", "buy_pro_7", "Premium Pro"),
+            ("ultra", "buy_pro_7", "Premium Ultra"),
+            ("ultra", "buy_plus_30", "Premium Ultra"),
         ]
-        for info, plan, tier in cases:
-            with self.subTest(info=info["premium_type"], plan=plan):
-                self.user_info = info
+        for tier, plan, shown in cases:
+            with self.subTest(tier=tier, plan=plan):
+                self.m["view"].return_value = premium_view(tier, days=10)
                 resp, data = await self.invoice(plan)
                 self.assertEqual(resp.status, 200)
                 self.assertEqual(data["ok"], False)
                 self.assertEqual(data["error"], "not_eligible")
-                self.assertIn(tier, data["message"])
+                self.assertEqual(data["message"],
+                                 f"Sizda yuqoriroq tarif ({shown}) bor — pastroq tarif sotib olinmaydi")
                 self.assertNotIn("<", data["message"])                   # oddiy matn
         self.create_link.assert_not_awaited()
 
-    async def test_discount_does_not_bypass_eligibility(self):
-        self.user_info = {"is_premium": 1, "premium_type": "plus"}
+    async def test_unlimited_premium_not_eligible(self):
+        for plan in PRICES:
+            with self.subTest(plan=plan):
+                self.m["view"].return_value = premium_view("pro", unlimited=True)
+                resp, data = await self.invoice(plan)
+                self.assertEqual((data["ok"], data["error"]), (False, "not_eligible"))
+                self.assertIn("Sizda muddatsiz Premium bor", data["message"])
+        self.create_link.assert_not_awaited()
+
+    async def test_same_tier_is_extension_with_normal_price(self):
+        """Bir xil tarif = uzaytirish: invoice beriladi (narx va payload o'zgarmaydi)."""
+        for tier, plan in (("pro", "buy_pro_7"), ("plus", "buy_plus_30"), ("ultra", "buy_ultra_30")):
+            with self.subTest(tier=tier):
+                self.create_link.reset_mock()
+                self.m["view"].return_value = premium_view(tier, days=10)
+                resp, data = await self.invoice(plan)
+                self.assertEqual(data, {"ok": True, "url": LINK})
+                kw = self.link_kwargs()
+                self.assertEqual((kw["payload"], kw["prices"][0].amount), PRICES[plan])
+
+    async def test_expired_flag_is_treated_as_free(self):
+        self.m["view"].return_value = bot.database.admin_premium_view(1, "ultra", "2026-01-01T10:00:00+05:00")
+        resp, data = await self.invoice("buy_pro_7")
+        self.assertEqual(data, {"ok": True, "url": LINK})
+
+    async def test_discount_extends_active_plus_but_not_ultra(self):
+        """SUPER PRIZ chegirmasi: faol ichki plus (Pro) userga uzaytirish sifatida, ultra userga taqiq."""
         self.discount = True
+        self.m["view"].return_value = premium_view("plus", days=10)
+        resp, data = await self.invoice("buy_plus_30")
+        self.assertEqual(data, {"ok": True, "url": LINK})
+        kw = self.link_kwargs()
+        self.assertEqual((kw["payload"], kw["prices"][0].amount), (bot.DISCOUNT_PAYLOAD, 75))
+        self.create_link.reset_mock()
+        self.m["view"].return_value = premium_view("ultra", days=10)
         resp, data = await self.invoice("buy_plus_30")
         self.assertEqual(data["error"], "not_eligible")
         self.create_link.assert_not_awaited()
 
     async def test_pro_user_can_upgrade_to_plus(self):
-        self.user_info = {"is_premium": 1, "premium_type": "pro"}
+        self.m["view"].return_value = premium_view("pro", days=3)
         resp, data = await self.invoice("buy_plus_30")
         self.assertEqual(data, {"ok": True, "url": LINK})
 
@@ -297,7 +326,8 @@ class BuildOfferUnitTest(unittest.IsolatedAsyncioTestCase):
     async def test_offers_match_previous_inline_values(self):
         pro = await bot.build_premium_offer(1, "buy_pro_7")
         self.assertEqual(pro[2:], ("PRO_7_DAYS", 50))
-        self.assertEqual(pro[0], "⭐ Premium Pro — 7 kun")
+        self.assertEqual(pro[0], "⭐ Premium Plus — 7 kun")              # ichki pro = ko'rinadigan Plus
+        self.assertEqual((await bot.build_premium_offer(1, "buy_plus_30"))[0], "💎 Premium Pro — 30 kun")
         self.assertEqual((await bot.build_premium_offer(1, "pay_stars"))[2:], ("PRO_7_DAYS", 50))     # callback taxallusi
         self.assertEqual((await bot.build_premium_offer(1, "buy_plus_30"))[2:], ("PLUS_30_DAYS", 150))
         self.assertEqual((await bot.build_premium_offer(1, "buy_ultra_30"))[2:], ("ULTRA_30_DAYS", 300))

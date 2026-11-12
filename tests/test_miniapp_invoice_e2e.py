@@ -90,7 +90,7 @@ class InvoiceE2ETest(MiniAppE2EBase):
 
     # ---- huquq yo'q ----------------------------------------------------------------------
     def test_not_eligible_shows_server_message_no_invoice_no_deep_link(self):
-        msg = "Siz allaqachon Premium Plus foydalanuvchisiz! Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng."
+        msg = "Sizda yuqoriroq tarif (Premium Pro) bor — pastroq tarif sotib olinmaydi"
         page, calls = self.open_app({"invoice": (200, {"ok": False, "error": "not_eligible", "message": msg})})
         self.buy(page, "buy_pro_7")
         page.wait_for_function("window.__tg.alerts.length === 1")

@@ -384,40 +384,39 @@ class TestPaymentFixes(unittest.TestCase):
         self.assertEqual(app_server.PORT, 8000)
 
     def test_premium_purchase_eligibility_rules(self):
-        # 12. /start va inline tugma orqali Premium xaridi qoidalarini birxillashtirish
+        # 12. /start, inline tugma, /api/invoice va pre_checkout uchun YAGONA qoida (holat admin_premium_view dan):
+        # bir xil tarif = uzaytirish (ruxsat), yuqoriroq = upgrade (ruxsat), pastroq = taqiq, muddatsiz = taqiq
         import bot
+        import database
+
+        future = database.get_uz_now() + datetime.timedelta(days=10)
+
+        def view(tier):
+            return database.admin_premium_view(1, tier, future)
 
         # Bepul foydalanuvchi istalgan tarifni sotib olishi mumkin
-        free_user = {"is_premium": 0, "premium_type": "free"}
-        ok, tier = bot.check_premium_purchase_eligibility(free_user, "buy_pro_7")
-        self.assertTrue(ok)
-        self.assertIsNone(tier)
+        free_view = database.admin_premium_view(0, "free", None)
+        for action in ("buy_pro_7", "buy_plus_30", "buy_ultra_30"):
+            ok, reason = bot.check_premium_purchase_eligibility(free_view, action)
+            self.assertTrue(ok)
+            self.assertIsNone(reason)
 
-        ok, tier = bot.check_premium_purchase_eligibility(free_user, "buy_plus_30")
-        self.assertTrue(ok)
+        # Ichki pro (ko'rinadigan Plus): teng tarif = uzaytirish, yuqoriroq = upgrade
+        self.assertTrue(bot.check_premium_purchase_eligibility(view("pro"), "buy_pro_7")[0])
+        self.assertTrue(bot.check_premium_purchase_eligibility(view("pro"), "buy_plus_30")[0])
 
-        # Pro foydalanuvchi Pro sotib olmoqchi bo'lsa (teng tarif) -> cheklanadi
-        pro_user = {"is_premium": 1, "premium_type": "pro"}
-        ok, tier = bot.check_premium_purchase_eligibility(pro_user, "buy_pro_7")
+        # Ichki plus (ko'rinadigan Pro): pastroq tarif taqiq, o'zi = uzaytirish
+        ok, reason = bot.check_premium_purchase_eligibility(view("plus"), "buy_pro_7")
         self.assertFalse(ok)
-        self.assertEqual(tier, "Premium Pro")
+        self.assertEqual(reason, "Sizda yuqoriroq tarif (Premium Pro) bor — pastroq tarif sotib olinmaydi")
+        self.assertTrue(bot.check_premium_purchase_eligibility(view("plus"), "buy_plus_30")[0])
 
-        # Pro foydalanuvchi Plus sotib olmoqchi bo'lsa (yuqoriroq tarif / upgrade) -> ruxsat
-        ok, tier = bot.check_premium_purchase_eligibility(pro_user, "buy_plus_30")
-        self.assertTrue(ok)
-
-        # Plus foydalanuvchi Pro sotib olmoqchi bo'lsa (downgrade) -> cheklanadi
-        plus_user = {"is_premium": 1, "premium_type": "plus"}
-        ok, tier = bot.check_premium_purchase_eligibility(plus_user, "buy_pro_7")
+        # Ultra: o'zi = uzaytirish, pastroqlar taqiq
+        self.assertTrue(bot.check_premium_purchase_eligibility(view("ultra"), "buy_ultra_30")[0])
+        ok, reason = bot.check_premium_purchase_eligibility(view("ultra"), "buy_pro_7")
         self.assertFalse(ok)
-        self.assertEqual(tier, "Premium Plus")
-
-        # Ultra foydalanuvchi istalgan pastroq yoki teng tarif xarid qilmoqchi bo'lsa -> cheklanadi
-        ultra_user = {"is_premium": 1, "premium_type": "ultra"}
-        ok, tier = bot.check_premium_purchase_eligibility(ultra_user, "buy_ultra_30")
-        self.assertFalse(ok)
-        ok, tier = bot.check_premium_purchase_eligibility(ultra_user, "buy_pro_7")
-        self.assertFalse(ok)
+        self.assertIn("Premium Ultra", reason)
+        self.assertFalse(bot.check_premium_purchase_eligibility(view("ultra"), "buy_plus_30")[0])
 
     def test_reconciliation_flow(self):
         # 13. Reconcile DB tiklash oqimi
@@ -671,10 +670,12 @@ class TestPaymentFixes(unittest.TestCase):
         self.assertEqual(info["is_premium"], 1)
         self.assertEqual(info["premium_type"], "pro")
 
-        # Eligibility bilan sinab ko'rish: Pro user Pro ololmaydi, Plus ololadi
-        ok_same, _ = bot.check_premium_purchase_eligibility(info, "buy_pro_7")
-        self.assertFalse(ok_same)
-        ok_up, _ = bot.check_premium_purchase_eligibility(info, "buy_plus_30")
+        # Eligibility holat get_premium_view dan: ichki pro user xuddi shu tarifni uzaytira oladi va yuqoriroqqa o'ta oladi
+        view = database.get_premium_view(uid)
+        self.assertEqual((view["active"], view["tier"]), (True, "pro"))
+        ok_same, _ = bot.check_premium_purchase_eligibility(view, "buy_pro_7")
+        self.assertTrue(ok_same)
+        ok_up, _ = bot.check_premium_purchase_eligibility(view, "buy_plus_30")
         self.assertTrue(ok_up)
 
     def test_check_and_grant_premium_atomic_flow(self):

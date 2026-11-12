@@ -33,7 +33,8 @@
     --shadow-card: 0 1px 2px rgba(15, 42, 46, .04), 0 4px 16px rgba(15, 42, 46, .05);
     --ease: cubic-bezier(.2, .8, .2, 1);
 
-    /* Premium tarif ranglari (A1/A4): Pro — teal, Plus — binafsha, Ultra — oltin. Har juftlik kontrasti >= 4.5:1 */
+    /* Premium tarif ranglari (A1/A4), ICHKI kod bo'yicha: pro (ko'rinadigan Plus) — teal, plus (ko'rinadigan Pro) — binafsha,
+       ultra — oltin. Rang va ikonka DARAJAGA bog'liq, nomga emas. Har juftlik kontrasti >= 4.5:1 */
     --tier-pro: #00717F; --tier-pro-on: #FFFFFF; --tier-pro-soft: #D3EEF2;
     --tier-plus: #6A3DB8; --tier-plus-on: #FFFFFF; --tier-plus-soft: #E7DDF7;
     --tier-ultra: #8A5A00; --tier-ultra-on: #FFFFFF; --tier-ultra-soft: #FBECC9;
@@ -1988,6 +1989,7 @@ body.dark-mode .pm-crown { color: var(--warning); }
     cursor: pointer;
     transition: border-color .15s ease, background-color .15s ease;
 }
+.plan-card[hidden] { display: none; }        /* sotib olib bo'lmaydigan (pastroq) tarif — yashirin */
 .plan-card input { position: absolute; opacity: 0; pointer-events: none; }
 .plan-radio {
     flex-shrink: 0;

@@ -19,13 +19,19 @@ os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 import bot  # noqa: E402
 
 USER_ID = 900000601
-FREE_USER = {"is_premium": 0, "premium_type": "free"}
-PRO_USER = {"is_premium": 1, "premium_type": "pro"}
 FREE_VIEW = bot.database.admin_premium_view(0, None, None)      # /start Premium holatini o'qiydi
 
 
+def active_view(tier, days=10):
+    """Faol Premium holati (ichki tarif kodi bilan)."""
+    return bot.database.admin_premium_view(1, tier, bot.database.get_uz_now() + __import__("datetime").timedelta(days=days))
+
+
+PRO_VIEW = active_view("pro")
+
+
 class DeepLinkBase(unittest.TestCase):
-    def run_start(self, param, has_discount, user_info=FREE_USER, env=None):
+    def run_start(self, param, has_discount, view=FREE_VIEW, env=None):
         message = mock.MagicMock()
         message.text = f"/start {param}"
         message.from_user = SimpleNamespace(id=USER_ID, first_name="Ali", last_name=None, username="ali")
@@ -36,8 +42,7 @@ class DeepLinkBase(unittest.TestCase):
         has_discount_mock = mock.MagicMock(return_value=has_discount)
         with mock.patch.dict(os.environ, env or {"PRO_MONTHLY_STARS": "150"}), \
              mock.patch.object(bot.database, "register_user"), \
-             mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW), \
-             mock.patch.object(bot.database, "get_user_info", return_value=user_info), \
+             mock.patch.object(bot.database, "get_premium_view", return_value=view), \
              mock.patch.object(bot.database, "has_discount", has_discount_mock):
             asyncio.run(bot.cmd_start(message, state))
         return message, has_discount_mock
@@ -79,14 +84,20 @@ class DeepLinkDiscountTest(DeepLinkBase):
                 has_discount.assert_not_called()          # chegirma tekshiruvi faqat Plus uchun
 
     def test_discount_still_respects_tier_eligibility(self):
-        # Allaqachon Plus yoki undan yuqori bo'lsa, chegirma bilan ham xarid qilib bo'lmaydi
-        message, _ = self.run_start("buy_plus_30", has_discount=True,
-                                    user_info={"is_premium": 1, "premium_type": "plus"})
+        # Ultra (pastroq tarif sotib olinmaydi) chegirma bilan ham xarid qila olmaydi
+        message, _ = self.run_start("buy_plus_30", has_discount=True, view=active_view("ultra"))
         message.answer_invoice.assert_not_awaited()
-        self.assertIn("allaqachon", message.answer.await_args.args[0])
+        self.assertIn("pastroq tarif sotib olinmaydi", message.answer.await_args.args[0])
+        self.assertIn("Premium Ultra", message.answer.await_args.args[0])
+
+    def test_active_plus_user_extends_with_discount(self):
+        # Faol ichki plus (ko'rinadigan Pro) chegirmani uzaytirish sifatida ishlatadi
+        message, _ = self.run_start("buy_plus_30", has_discount=True, view=active_view("plus"))
+        kw = self.invoice(message)
+        self.assertEqual((kw["payload"], kw["prices"][0].amount), (bot.DISCOUNT_PAYLOAD, 75))
 
     def test_pro_user_can_upgrade_to_plus_with_discount(self):
-        message, _ = self.run_start("buy_plus_30", has_discount=True, user_info=PRO_USER)
+        message, _ = self.run_start("buy_plus_30", has_discount=True, view=PRO_VIEW)
         self.assertEqual(self.invoice(message)["payload"], bot.DISCOUNT_PAYLOAD)
 
 
@@ -105,7 +116,7 @@ class SharedOfferTest(unittest.TestCase):
         cb.answer = mock.AsyncMock()
         cb.message.answer_invoice = mock.AsyncMock()
         with mock.patch.dict(os.environ, {"PRO_MONTHLY_STARS": "150"}), \
-             mock.patch.object(bot.database, "get_user_info", return_value=FREE_USER), \
+             mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW), \
              mock.patch.object(bot.database, "has_discount", return_value=True):
             asyncio.run(bot.process_pay_stars_tariff(cb))
             expected = bot.discount_plus_offer()

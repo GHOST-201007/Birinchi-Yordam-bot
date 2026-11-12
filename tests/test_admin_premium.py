@@ -279,9 +279,9 @@ class ListTest(PanelCase):
         self.assertIn("Jami foydalanuvchilar: <b>6</b>", text)
         self.assertIn("Premium foydalanuvchilar: <b>3</b>", text)
         labels = {b.callback_data.split(":")[2]: b.text for b in buttons(markup) if b.callback_data.startswith("pm:u:")}
-        self.assertEqual(labels["1"], "🌟 User1 — Pro")
+        self.assertEqual(labels["1"], "🌟 User1 — Plus")           # ichki pro = ko'rinadigan Plus
         self.assertEqual(labels["2"], "🌟 User2 — Ultra ♾")
-        self.assertEqual(labels["3"], "🌟 User3 — Plus")
+        self.assertEqual(labels["3"], "🌟 User3 — Pro")            # ichki plus = ko'rinadigan Pro
         self.assertEqual(labels["4"], "👤 User4 — Oddiy")                                          # eskirgan flag
         self.assertEqual(labels["6"], "👤 User6 — Oddiy")
 
@@ -331,7 +331,7 @@ class CardTest(PanelCase):
         with mock.patch.object(database, "get_uz_now",
                                return_value=dt.datetime(2026, 11, 12, 12, 0, tzinfo=dt.timezone(dt.timedelta(hours=5)))):
             text, markup = self.edited(await self.press("pm:u:5:2"))
-        self.assertIn("Plus", text)
+        self.assertIn("Tarif: <b>Pro</b>", text)                    # ichki plus = ko'rinadigan Pro
         self.assertIn("25.12.2026 14:30", text)
         self.assertIn("Toshkent", text)
         self.assertEqual(texts(markup), ["🎁 Premium berish", "❌ Premiumni olib tashlash", "⬅️ Ro'yxatga"])
@@ -420,11 +420,11 @@ class GrantFlowTest(PanelCase):
         _, markup = self.edited(await self.press("pm:u:5:3"))
         _, markup = self.edited(await self.press(find(markup, "🎁 Premium berish")))
         # 1) tarif: get_stars_tariffs() dagi turlar bilan bir xil
-        self.assertEqual(texts(markup)[:-1], ["⭐ Pro", "💎 Plus", "👑 Ultra"])
+        self.assertEqual(texts(markup)[:-1], ["⭐ Plus", "💎 Pro", "👑 Ultra"])        # pastdan yuqoriga: Plus -> Pro -> Ultra
         tiers = {entry[0] for entry in bot_mod.get_stars_tariffs().values()}
         self.assertEqual({t for _, t, _ in bot_mod._pm_tiers()}, tiers)
         self.assertEqual(find(markup, "⬅️ Orqaga"), "pm:u:5:3")
-        _, markup = self.edited(await self.press(find(markup, "💎 Plus")))
+        _, markup = self.edited(await self.press(find(markup, "💎 Pro")))              # ichki plus
         # 2) muddat
         self.assertEqual(texts(markup)[:-1], ["1 kun", "3 kun", "7 kun", "30 kun", "90 kun", "♾ Muddatsiz"])
         self.assertEqual(find(markup, "⬅️ Orqaga"), "pm:g:5:3")
@@ -439,7 +439,7 @@ class GrantFlowTest(PanelCase):
         self.assertEqual(find(markup, "⬅️ Orqaga"), "pm:d:5:3:l:30")
         text, markup = self.edited(await self.press(find(markup, "🏆 Konkurs g'olibi")))
         # 5) tasdiqlash: qisqa xulosa
-        for part in ("Vali", "<code>5</code>", "Plus", "30 kun", "Xabar bilan", "Konkurs g'olibi"):
+        for part in ("Vali", "<code>5</code>", "Pro", "30 kun", "Xabar bilan", "Konkurs g'olibi"):
             self.assertIn(part, text)
         self.assertEqual(texts(markup), ["✅ Tasdiqlash", "✖️ Bekor qilish", "⬅️ Orqaga"])
         self.assertEqual(find(markup, "✖️ Bekor qilish"), "pm:u:5:3")
@@ -626,7 +626,7 @@ class NotificationTest(PanelCase):
         args, kwargs = self.fake_bot.send_message.await_args
         self.assertEqual(args[0], 70)
         text = args[1]
-        self.assertIn("🎁 Tabriklaymiz! Siz admin tomonidan <b>30 kunlik Premium Plus</b> oldingiz!", text)
+        self.assertIn("🎁 Tabriklaymiz! Siz admin tomonidan <b>30 kunlik Premium Pro</b> oldingiz!", text)
         self.assertIn("Sabab: 🏆 Konkurs g'olibi", text)
         self.assertIn("⏳ Tugash sanasi:", text)
         self.assertEqual(kwargs["parse_mode"], "HTML")
@@ -683,7 +683,7 @@ class NotificationTest(PanelCase):
         self.add_user(95, is_premium=1, premium_type="ultra", premium_expires_at=future(days=10))
         await self.grant(95, "pro", "3", "n", "2")
         text = self.fake_bot.send_message.await_args.args[1]
-        self.assertIn("<b>3 kunlik Premium Pro</b>", text)
+        self.assertIn("<b>3 kunlik Premium Plus</b>", text)               # ichki pro = ko'rinadigan Plus
         self.assertIn("Joriy tarifingiz: <b>Premium Ultra</b>", text)
 
     async def test_delivery_failure_still_grants_and_warns_admin(self):
