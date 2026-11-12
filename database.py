@@ -1,8 +1,11 @@
 import psycopg2
 import psycopg2.extras
 import datetime
+import html
+import json
 import os
 import logging
+import random
 import threading
 import time as _time
 from collections import OrderedDict
@@ -139,7 +142,8 @@ def init_db():
                 referred_by BIGINT,
                 last_spin_date TEXT,
                 has_discount INTEGER DEFAULT 0,
-                pending_spin_prize INTEGER
+                pending_spin_prize INTEGER,
+                spin_ai_bonus INTEGER DEFAULT 0
             )
         ''')
 
@@ -217,6 +221,9 @@ def init_db():
         # Migratsiya: engagement xabarining Telegram message_id si (P0-2 —
         # javob faqat shu xabarga reply bo'lsa qabul qilinadi)
         c.execute("ALTER TABLE engagement_logs ADD COLUMN IF NOT EXISTS message_id BIGINT")
+
+        # Migratsiya: Omad barabanidan yutilgan bonus AI savollar (muddatsiz, ishlatilguncha saqlanadi)
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS spin_ai_bonus INTEGER DEFAULT 0")
 
         conn.commit()
 
@@ -463,11 +470,12 @@ def refund_daily_request(user_id):
         # Always close safely
         _safe_close(c, conn)
 
-def get_ai_quota(user_id) -> tuple:
-    """AI kvotasi: (qolgan, limit). FAQAT o'qiydi — hech narsa yozmaydi.
-    Qoida try_consume_free_ai + try_consume_daily_request bilan bir xil (bot va mini app bitta kvotani ulashadi):
+def _ai_quota_parts(user_id) -> tuple:
+    """(oddiy_qolgan, limit, bonus). FAQAT o'qiydi — hech narsa yozmaydi.
+    Oddiy kvota qoidasi try_consume_free_ai + try_consume_daily_request bilan bir xil:
       * premium: kunlik tarif limiti PRO / PLUS / ULTRA_AI_DAILY_LIMIT, daily_requests faqat bugungi kun uchun;
-      * bepul (yoki muddati o'tgan premium): jami 1 ta bir martalik savol — 1/1, ishlatilgach 0/1."""
+      * bepul (yoki muddati o'tgan premium): jami 1 ta bir martalik savol — 1/1, ishlatilgach 0/1.
+    bonus — Omad barabanidan yutilgan savollar (spin_ai_bonus), tarif limitiga KIRMAYDI."""
     tier_limits = {
         "pro": int(os.environ.get("PRO_AI_DAILY_LIMIT", "15")),
         "plus": int(os.environ.get("PLUS_AI_DAILY_LIMIT", "30")),
@@ -475,24 +483,40 @@ def get_ai_quota(user_id) -> tuple:
     }
     with _managed_cursor() as (conn, c):
         c.execute(
-            "SELECT is_premium, premium_expires_at, premium_type, daily_requests, last_request_date, free_ai_used "
-            "FROM users WHERE user_id = %s", (user_id,))
+            "SELECT is_premium, premium_expires_at, premium_type, daily_requests, last_request_date, free_ai_used, "
+            "spin_ai_bonus FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
     if not row:
-        return 1, 1                                      # yangi foydalanuvchi: bitta bepul savol
+        return 1, 1, 0                                   # yangi foydalanuvchi: bitta bepul savol
 
-    is_premium, expires_at, premium_type, daily_requests, last_request_date, free_ai_used = row
+    is_premium, expires_at, premium_type, daily_requests, last_request_date, free_ai_used, bonus = row
+    bonus = max(0, int(bonus or 0))
     active = bool(is_premium)
     if active and expires_at:
         active = get_uz_now() <= _to_uz_datetime(expires_at)
     if not active:
-        return (0 if free_ai_used else 1), 1             # bepul: jami 1 ta (bir martalik)
+        return (0 if free_ai_used else 1), 1, bonus      # bepul: jami 1 ta (bir martalik)
 
     tier = premium_type if premium_type in tier_limits else "ultra"   # muddatsiz premium — ultra (try_consume_daily_request kabi)
     tier_limit = tier_limits[tier]
     today = get_uz_now().date().isoformat()
     used = int(daily_requests or 0) if last_request_date == today else 0
-    return max(0, tier_limit - used), tier_limit
+    return max(0, tier_limit - used), tier_limit, bonus
+
+
+def get_ai_quota(user_id) -> tuple:
+    """AI kvotasi: (qolgan, limit). Bot va mini app bitta kvotani ulashadi.
+    `qolgan` oddiy kvota qoldig'iga barabandan yutilgan bonusni ham QO'SHADI; `limit` esa faqat tarif limiti
+    (bonus unga kirmaydi — mini app limit<=1 ni "bepul" deb biladi)."""
+    base, limit, bonus = _ai_quota_parts(user_id)
+    return base + bonus, limit
+
+
+def get_ai_quota_detail(user_id) -> tuple:
+    """(qolgan, limit, bonus) — get_ai_quota + bonus alohida (mini app yorlig'i "... + N bonus" uchun).
+    `qolgan` bonusni o'z ichiga oladi: oddiy qoldiq = qolgan - bonus."""
+    base, limit, bonus = _ai_quota_parts(user_id)
+    return base + bonus, limit, bonus
 
 
 def try_consume_free_ai(user_id) -> bool:
@@ -553,6 +577,24 @@ def refund_free_ai(user_id):
         raise
     finally:
         _safe_close(c, conn)
+
+
+def try_consume_spin_ai_bonus(user_id) -> bool:
+    """Barabandan yutilgan bonus AI savolni atomar sarflaydi (spin_ai_bonus - 1, nolga yetganda False).
+    Chaqirish tartibi: avval oddiy kvota (try_consume_free_ai / try_consume_daily_request), u tugagach shu."""
+    with _managed_cursor() as (conn, c):
+        c.execute("UPDATE users SET spin_ai_bonus = spin_ai_bonus - 1 WHERE user_id = %s AND spin_ai_bonus > 0",
+                  (user_id,))
+        success = c.rowcount > 0
+        conn.commit()
+    return success
+
+
+def refund_spin_ai_bonus(user_id):
+    """AI xato qilganda bonus savolni qaytarish (faqat u bonusdan olingan bo'lsa chaqiriladi)."""
+    with _managed_cursor() as (conn, c):
+        c.execute("UPDATE users SET spin_ai_bonus = COALESCE(spin_ai_bonus, 0) + 1 WHERE user_id = %s", (user_id,))
+        conn.commit()
 
 def set_premium(user_id, status: int, months: int = 1):
     """Adminga foydalanuvchini Premium qilish uchun. months - necha oylik."""
@@ -1433,12 +1475,132 @@ def handle_referral(new_user_id: int, referrer_id: int) -> tuple:
     return True, points_given, bonus_given
 
 
-def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
+# ═══════════════════════════════════════════════════════════════════
+# OMAD BARABANI — sovrinlar jadvali (BITTA joyda)
+# Kod = users.pending_spin_prize (INTEGER). app/app.js dagi `segments` AYNAN shu kodlar bilan mos bo'lishi shart
+# (tests/test_spin_prizes.py ikkalasini solishtiradi). Ehtimollar yig'indisi 1.0.
+#    1, 2, 3, 5  — shuncha ball
+#   -2           — kun maslahati (ball yo'q)
+#   -1           — +1 bepul AI savol (spin_ai_bonus)
+#   -3           — 1 kunlik Premium Pro
+#    0           — SUPER: Premium Plus (30 kun) uchun 50% chegirma
+# ═══════════════════════════════════════════════════════════════════
+SPIN_PRIZES = [
+    (1, 0.35),
+    (2, 0.20),
+    (3, 0.12),
+    (5, 0.05),
+    (-2, 0.15),
+    (-1, 0.10),
+    (-3, 0.02),
+    (0, 0.01),
+]
+SPIN_PRIZE_CODES = tuple(code for code, _ in SPIN_PRIZES)
+SPIN_LEGACY_POINTS = 10          # eski baraban (1, 3, 5, 10, SUPER): bazada qolgan pending=10 o'zgartirilmasdan +10 ball beriladi
+SPIN_TIPS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "spin_tips.json")
+_SPIN_TIP_FALLBACK = "Muhim raqamlar: 101 — yong'in, 102 — militsiya, 103 — tez yordam, 104 — gaz xizmati."
+_spin_tips_cache = None
+
+
+def normalize_spin_prize(code):
+    """Bazadagi pending kodini haqiqiy sovrin kodiga keltiradi: jadvaldagi kodlar va eski 10 o'zgarmaydi,
+    boshqa noma'lum qiymat -> 1 (+1 ball). None -> None."""
+    if code is None:
+        return None
+    if code in SPIN_PRIZE_CODES or code == SPIN_LEGACY_POINTS:
+        return code
+    return 1
+
+
+def spin_prize_type(code):
+    """Frontend uchun sovrin turi: points / tip / ai / pro_day / super (None -> None)."""
+    code = normalize_spin_prize(code)
+    if code is None:
+        return None
+    return {0: "super", -1: "ai", -2: "tip", -3: "pro_day"}.get(code, "points")
+
+
+def pick_spin_prize(rnd=None) -> int:
+    """SPIN_PRIZES bo'yicha tasodifiy kod. rnd (0 <= rnd < 1) testlar uchun; berilmasa random.random()."""
+    r = random.random() if rnd is None else rnd
+    acc = 0.0
+    for code, probability in SPIN_PRIZES:
+        acc += probability
+        if r < acc:
+            return code
+    return SPIN_PRIZES[-1][0]             # suzuvchi nuqta xatosi: oxirgi bo'lak
+
+
+def load_spin_tips() -> list:
+    """data/spin_tips.json dagi maslahatlar (bir marta o'qiladi). Fayl yo'q / buzuq bo'lsa — bitta zaxira maslahat."""
+    global _spin_tips_cache
+    if _spin_tips_cache is None:
+        tips = []
+        try:
+            with open(SPIN_TIPS_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                tips = [t.strip() for t in data if isinstance(t, str) and t.strip()]
+        except (OSError, ValueError):
+            logging.exception("spin_tips.json o'qilmadi: %s", SPIN_TIPS_PATH)
+        _spin_tips_cache = tips or [_SPIN_TIP_FALLBACK]
+    return _spin_tips_cache
+
+
+def pick_spin_tip() -> str:
+    return random.choice(load_spin_tips())
+
+
+def _spin_result(ok, message, code=None, prize_type=None, points=0, tip=None) -> dict:
+    return {"ok": ok, "message": message, "code": code, "prize_type": prize_type, "points": points, "tip": tip}
+
+
+_SPIN_NO_PRIZE_MSG = "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan! 🕒"
+_PREMIUM_RANK = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+
+
+def _grant_spin_pro_day(c, user_id: int) -> str:
+    """1 kunlik Pro sovrini — claim tranzaksiyasi ICHIDA (commit/rollback chaqiruvchida).
+    grant_premium_days faol muddatga qo'shadi va yuqori tarifni (Plus / Ultra) saqlaydi, shuning uchun tarif
+    pasaymaydi. Muddatsiz premium (is_premium=1, muddat NULL) uchun grant_premium_days "free" deb hisoblab,
+    uni 1 kunlik Pro bilan ALMASHTIRIB yuborardi — bunday foydalanuvchiga tegilmaydi.
+    Foydalanuvchiga ko'rsatiladigan HTML xabarni qaytaradi."""
+    c.execute("SELECT is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s", (user_id,))
+    row = c.fetchone()
+    is_premium, expires_at, premium_type = row if row else (0, None, None)
+
+    if is_premium and not expires_at:
+        return ("⭐ Sizda muddatsiz Premium bor — 1 kunlik Pro sovg'asi tarifingizni o'zgartirmadi, "
+                "u saqlanib qoldi.")
+
+    previous = "free"
+    if expires_at:
+        try:
+            if _to_uz_datetime(expires_at) > get_uz_now():
+                previous = premium_type if premium_type in _PREMIUM_RANK else "pro"
+        except (ValueError, TypeError):
+            previous = "free"
+
+    grant_premium_days(user_id, 1, "pro", _cursor=c)
+
+    if previous == "free":
+        return ("⭐ Tabriklaymiz! Siz Omad barabanidan <b>1 kunlik Premium Pro</b> yutib oldingiz — "
+                "u hozir faollashdi! 🎉")
+    if previous == "pro":
+        return "⭐ Tabriklaymiz! Premium Pro muddatingiz <b>1 kunga uzaytirildi</b>! 🎉"
+    return (f"⭐ Tabriklaymiz! Premium {previous.capitalize()} muddatingiz <b>1 kunga uzaytirildi</b>. "
+            "Tarifingiz o'zgarmadi. 🎉")
+
+
+def claim_spin_prize(user_id: int) -> dict:
     """
-    Checks if user is eligible for spin bonus.
-    Reward is strictly taken from server-side pending_spin_prize (ignoring client_points).
-    If yes, awards points and updates last_spin_date.
-    Returns (success, message)
+    Barabandan yutilgan sovrinni hisobga qo'shadi. Sovrin FAQAT serverdagi pending_spin_prize dan olinadi
+    (mijoz yuborgan hech narsa hisobga olinmaydi). Hamma tur uchun shartli
+    `UPDATE ... WHERE pending_spin_prize IS NOT NULL` + rowcount tekshiruvi: parallel so'rovlarda ham sovrin
+    aynan bir marta beriladi (P1-2). Pro kun sovrini ham xuddi shu tranzaksiyada.
+
+    Qaytaradi (dict): ok, message (bot uchun HTML), code (sovrin kodi), prize_type (points / tip / ai / pro_day / super),
+    points (berilgan ball, ball bo'lmagan turlarda 0), tip (maslahat matni, faqat tip turida).
     """
     # Uzbekistan timezone (UTC+5)
     from datetime import datetime, timezone, timedelta
@@ -1451,7 +1613,7 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
         row = c.fetchone()
 
         if not row:
-            return False, "Foydalanuvchi topilmadi!"
+            return _spin_result(False, "Foydalanuvchi topilmadi!")
 
         last_spin = row[0]
         pending_prize = row[1]
@@ -1470,30 +1632,28 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
                     hours = remaining_seconds // 3600
                     minutes = (remaining_seconds % 3600) // 60
                     seconds = remaining_seconds % 60
-                    return False, f"Keyingi urinishgacha {hours:02d}:{minutes:02d}:{seconds:02d} vaqt qoldi. 🕒"
+                    return _spin_result(False, f"Keyingi urinishgacha {hours:02d}:{minutes:02d}:{seconds:02d} vaqt qoldi. 🕒")
             except ValueError:
                 # Fallback to old YYYY-MM-DD format
                 if last_spin == now.date().isoformat():
-                    return False, "Siz bugun barabanni aylantirib bo'ldingiz! Keyingi urinish ertaga. 🕒"
+                    return _spin_result(False, "Siz bugun barabanni aylantirib bo'ldingiz! Keyingi urinish ertaga. 🕒")
 
         if pending_prize is None:
-            return False, "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan! 🕒"
+            return _spin_result(False, _SPIN_NO_PRIZE_MSG)
 
-        # Safe legacy handling: if old DB state has pending_prize > 10 (e.g., 20 or 50), cap to max valid reward (10)
-        if pending_prize not in (0, 1, 3, 5, 10):
-            pending_prize = 10
+        # Eski holat: pending=10 o'zgarmaydi (+10 ball); noma'lum qiymat -> +1 ball
+        code = normalize_spin_prize(pending_prize)
+        prize_type = spin_prize_type(code)
+        points = code if prize_type == "points" else 0
+        tip = pick_spin_tip() if prize_type == "tip" else None
 
-        points = pending_prize
-
-        if points == 0:
+        if prize_type == "super":
             # Super Prize: Plus 30 kun uchun 50% chegirma (narx bot.plus_discount_price bilan bir xil hisoblanadi)
             plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
             discount_price = max(1, (plus_price + 1) // 2)
-            c.execute(
-                "UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
-                "WHERE user_id = %s AND pending_spin_prize IS NOT NULL",
-                (now_str, user_id)
-            )
+            sql = ("UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
+                   "WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, user_id)
             msg = (
                 "🎉 <b>Tabriklaymiz! Omad barabanidan SUPER PRIZ yutib oldingiz!</b> 🏆\n\n"
                 f"🎁 Siz 30 kunlik <b>Premium Plus</b> obunani {plus_price} Stars o'rniga "
@@ -1501,26 +1661,55 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
                 "Chegirma bir martalik. Faollashtirish uchun:\n"
                 "➡️ /premium (yoki quyidagi tugmani bosing)"
             )
+        elif prize_type == "ai":
+            sql = ("UPDATE users SET last_spin_date = %s, spin_ai_bonus = COALESCE(spin_ai_bonus, 0) + 1, "
+                   "pending_spin_prize = NULL WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, user_id)
+            msg = (
+                "🤖 Tabriklaymiz! Omad barabanidan <b>+1 bepul AI savol</b> yutib oldingiz!\n\n"
+                "Uni AI tabida yoki botdagi AI suhbatda ishlatishingiz mumkin. Bonus savol muddatsiz saqlanadi."
+            )
+        elif prize_type == "tip":
+            sql = ("UPDATE users SET last_spin_date = %s, pending_spin_prize = NULL "
+                   "WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, user_id)
+            msg = f"💡 <b>Kun maslahati</b>\n\n{html.escape(tip, quote=False)}"
+        elif prize_type == "pro_day":
+            sql = ("UPDATE users SET last_spin_date = %s, pending_spin_prize = NULL "
+                   "WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, user_id)
+            msg = None                          # premium holatiga qarab _grant_spin_pro_day beradi
         else:
             # Standard points
-            c.execute(
-                "UPDATE users SET last_spin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s, pending_spin_prize = NULL "
-                "WHERE user_id = %s AND pending_spin_prize IS NOT NULL",
-                (now_str, points, user_id)
-            )
+            sql = ("UPDATE users SET last_spin_date = %s, medicine_score = COALESCE(medicine_score, 0) + %s, "
+                   "pending_spin_prize = NULL WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, points, user_id)
             msg = f"Tabriklaymiz! Siz Omad barabanidan <b>+{points} ball</b> yutib oldingiz! 🎉"
 
-        # Shartli UPDATE: yutuq parallel so'rovlarda faqat bir marta beriladi (P1-2)
+        c.execute(sql, params)
+        # Shartli UPDATE: yutuq parallel so'rovlarda faqat bir marta beriladi (P1-2). Pro kun faqat shundan KEYIN.
         if c.rowcount == 0:
             conn.rollback()
-            return False, "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan! 🕒"
+            return _spin_result(False, _SPIN_NO_PRIZE_MSG)
+
+        if prize_type == "pro_day":
+            msg = _grant_spin_pro_day(c, user_id)
         conn.commit()
 
     # Automatically check if user qualifies for Premium upgrade
     if points > 0:
         check_and_grant_premium(user_id)
 
-    return True, msg
+    return _spin_result(True, msg, code, prize_type, points, tip)
+
+
+def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
+    """
+    Eski interfeys: (success, message). Hamma ish claim_spin_prize() da; mijoz bergan client_points e'tiborga olinmaydi.
+    Mini App uchun to'liq natija (sovrin turi, ball, maslahat) — claim_spin_prize().
+    """
+    result = claim_spin_prize(user_id)
+    return result["ok"], result["message"]
 
 
 def has_discount(user_id: int) -> bool:
@@ -1553,9 +1742,9 @@ def get_referral_count(user_id: int) -> int:
 def generate_or_get_spin_prize(user_id: int):
     """
     Spins the wheel on the server side.
-    Returns the prize points (0 for super prize) if eligible, or None if cooldown is active.
+    Returns the prize CODE (SPIN_PRIZES: 1, 2, 3, 5 ball; -2 maslahat; -1 AI savol; -3 1 kun Pro; 0 SUPER)
+    if eligible, or None if cooldown is active / user not found.
     """
-    import random
     from datetime import datetime, timezone, timedelta
     uz_tz = timezone(timedelta(hours=5))
     now = datetime.now(uz_tz)
@@ -1586,19 +1775,10 @@ def generate_or_get_spin_prize(user_id: int):
 
         # If we already generated a prize but they haven't claimed it yet
         if pending_prize is not None:
-            return pending_prize
+            return normalize_spin_prize(pending_prize)
 
-        # Generate new prize
-        # MUHIM: Qiymatlar aynan app.js segments bilan mos bo'lishi kerak!
-        # Frontend segments: 1, 3, 5, 10, 0 (SUPER)
-        # 20 va 50 frontend'da yo'q — ularni generatsiya qilish MUMKIN EMAS
-        r = random.random()
-        if r < 0.40:    prize = 1    # 40% ehtimol
-        elif r < 0.65:  prize = 3    # 25% ehtimol
-        elif r < 0.83:  prize = 5    # 18% ehtimol
-        elif r < 0.97:  prize = 10   # 14% ehtimol
-        else:           prize = 0    #  3% ehtimol (SUPER PRIZ)
-        # Jami: 1,3,5,10,SUPER — barcha qiymatlar frontend segments da mavjud
+        # Generate new prize: SPIN_PRIZES jadvali bo'yicha (app.js segments bilan bir xil kodlar)
+        prize = pick_spin_prize()
 
         c.execute("UPDATE users SET pending_spin_prize = %s WHERE user_id = %s", (prize, user_id))
         conn.commit()

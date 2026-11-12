@@ -122,6 +122,25 @@ class WheelApiE2ETest(MiniAppE2EBase):
         self.assertEqual(page.locator("#wheel-result-msg b").count(), 0)
         self.assertIsNone(page.evaluate("window.__xss2"))
 
+    def test_old_server_response_without_prize_fields_still_works(self):
+        # eski server: prize_type / points yo'q — ball score farqidan, SUPER esa is_super bo'yicha
+        legacy = {"ok": True, "message": "Tabriklaymiz!", "score": 10, "is_super": False}
+        page, _ = self.open_app({"state": (200, STATE_OK), "spin/claim": (200, legacy)})
+        self.open_wheel(page)
+        page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
+        self.spin_and_confirm(page)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+3 ball yutdingiz!')")        # 10 - 7
+
+    def test_points_come_from_server_points_field_when_present(self):
+        page, _ = self.open_app({
+            "state": (200, STATE_OK),
+            "spin/claim": (200, {**CLAIM_OK, "score": 8, "points": 2, "prize": 2, "prize_type": "points"}),
+        })
+        self.open_wheel(page)
+        page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")
+        self.spin_and_confirm(page)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('+2 ball yutdingiz!')")        # points maydoni
+
     def test_success_without_server_message_falls_back_to_score_difference(self):
         page, _ = self.open_app({
             "state": (200, STATE_OK),

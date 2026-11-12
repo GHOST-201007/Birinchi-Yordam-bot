@@ -197,11 +197,14 @@ class InvoiceEndpointTest(InvoiceBase):
 
     async def test_existing_endpoints_response_format_unchanged(self):
         resp, data = await self.post("/api/state")
-        # Avvalgi maydonlar o'zgarmagan; faqat QO'SHILGAN: is_premium, premium_type (header), ai_remaining, ai_limit (AI tab)
-        self.assertEqual(sorted(data), ["ai_limit", "ai_remaining", "cooldown_seconds", "daily_claimed", "is_premium", "ok",
-                                        "premium_type", "prize", "score", "streak"])
+        # Avvalgi maydonlar o'zgarmagan; faqat QO'SHILGAN: is_premium, premium_type (header), ai_remaining, ai_limit,
+        # ai_bonus (AI tab), prize_type (baraban sovrin turi: points / tip / ai / pro_day / super)
+        old_state = {"cooldown_seconds", "daily_claimed", "ok", "prize", "score", "streak"}
+        self.assertEqual(set(data), old_state | {"ai_limit", "ai_remaining", "ai_bonus", "is_premium", "premium_type",
+                                                 "prize_type"})
         resp, data = await self.post("/api/spin/claim")
-        self.assertEqual(sorted(data), ["is_super", "message", "ok", "score"])
+        # Eski maydonlar (is_super, message, ok, score) saqlangan; yangi: prize, prize_type, points, tip
+        self.assertEqual(sorted(data), ["is_super", "message", "ok", "points", "prize", "prize_type", "score", "tip"])
         resp, data = await self.post("/api/bonus/claim")
         self.assertEqual(sorted(data), ["message", "ok", "points", "score", "streak"])
 
