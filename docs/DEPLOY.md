@@ -59,6 +59,13 @@ Har so'rovda `init_data` (Telegram WebApp imzosi) tekshiriladi; foydalanuvchi uc
 Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/state -H 'Content-Type: application/json' -d '{"init_data":"buzuq"}'` → `403`.
 Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u yerda URL-parametr zaxira yo'lida ishlaydi.
 
+### Admin Premium paneli (`/premium`, faqat `ADMIN_ID`)
+`/premium` (admin) → userlar ro'yxati (10 tadan, ◀️ ▶️, 🔍 ID yoki @username bilan qidirish) → user kartasi → **tarif** (Pro/Plus/Ultra) → **muddat** (1/3/7/30/90 kun yoki ♾ muddatsiz) → **rejim** (📣 Xabar bilan / 🤫 Sirli) → sabab (faqat "Xabar bilan") → tasdiqlash. Olib tashlash ham shu rejimlar bilan. Oddiy userlar uchun `/premium` o'zgarmagan.
+- Kunlik muddat `grant_premium_days` orqali: faol muddatga qo'shadi, yuqori tarifni saqlaydi (Ultra + 3 kun Pro → Ultra, muddat +3 kun).
+- Muddatsiz: `database.set_premium_unlimited` (`premium_expires_at = NULL`); tarif limiti `premium_type` bo'yicha. **Muddatsiz Premiumli userga kunlik muddat berilmaydi** — avval olib tashlash kerak.
+- Har bir o'zgarish logda: `journalctl -u birinchi-yordam-bot | grep "ADMIN PREMIUM"` (admin, user, tarif, muddat, rejim). Bazaga tarix yozilmaydi. Yangi env o'zgaruvchi va migratsiya yo'q.
+- "Xabar bilan" rejimida user botni bloklagan bo'lsa Premium baribir beriladi/olinadi, adminga ogohlantirish chiqadi.
+
 ### Omad baraboni (8 sovrin)
 Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.
 

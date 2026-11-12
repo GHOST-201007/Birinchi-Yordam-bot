@@ -44,9 +44,19 @@ class HtmlEscapeTest(unittest.TestCase):
             self.assertIn(tag, TELEGRAM_TAGS)
             self.assertNotEqual(attrs.get("href"), "http://e", "foydalanuvchi havolasi HTML ga tushib qoldi")
 
-    def test_admin_premium_list(self):
-        rows = [(1, 0, None, EVIL, "user")]
-        self.assert_safe(bot._build_premium_list_text(rows, 1, 0))
+    def test_admin_premium_panel(self):
+        # Yangi panel (eski _build_premium_list_text o'rniga): user kartasi, tasdiqlash va natija matnlari
+        user = {"user_id": 1, "full_name": EVIL, "username": "user", "active": False, "tier": "free",
+                "unlimited": False, "expires": None, "score": 0}
+        self.assert_safe(bot._pm_card_view(user, 0)[0])
+        self.assert_safe(bot._pm_tier_view(user, 0)[0])
+        self.assert_safe(bot._pm_confirm_view(user, 0, "pro", "7", "n", 0)[0])
+        self.assert_safe(bot._pm_remove_confirm_view(user, 0, "n")[0])
+        result = {"tier": "pro", "kept_higher": False, "unlimited": True, "expires": None}
+        self.assert_safe(bot._pm_grant_result_text(user, result, None, "s", None))
+        self.assert_safe(bot._pm_remove_result_text(user, "s", None))
+        evil_username = dict(user, full_name="Ali", username=EVIL)
+        self.assert_safe(bot._pm_card_view(evil_username, 0)[0])
 
     def test_admin_ban_list(self):
         rows = [(1, 0, None, EVIL, "user")]
