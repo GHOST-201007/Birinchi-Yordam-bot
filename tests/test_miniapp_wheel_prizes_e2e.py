@@ -5,6 +5,7 @@ test_miniapp_wheel_prizes_e2e.py — Omad baraboni: 8 bo'lak va yangi sovrin tur
 Har tur uchun: bo'lak (kod bo'yicha), tasdiqlash kartasi, natija kartasi, konfetti, yopilganda claim, qayta tiklash,
 zaxira deep link; AI tabidagi "+ N bonus" hisoblagichi. Asos: tests/e2e_base.py
 """
+import datetime as dt
 import os
 import re
 
@@ -30,8 +31,10 @@ def claim(prize, **kw):
 CLAIM_TIP = claim(-2, message="💡 Kun maslahati\n\n" + TIP, tip=TIP)
 CLAIM_AI = claim(-1, message="🤖 +1 bepul AI savol yutdingiz!", is_premium=False, premium_type="free",
                  ai_remaining=2, ai_limit=1, ai_bonus=2)
+PRO_EXPIRES = (dt.datetime.now(dt.timezone(dt.timedelta(hours=5))) + dt.timedelta(hours=23)).isoformat()
 CLAIM_PRO = claim(-3, message="⭐ Tabriklaymiz! Siz Omad barabanidan 1 kunlik Premium Pro yutib oldingiz — u hozir faollashdi! 🎉",
-                  is_premium=True, premium_type="pro", ai_remaining=15, ai_limit=15, ai_bonus=0)
+                  is_premium=True, premium_type="pro", premium_expires_at=PRO_EXPIRES, premium_unlimited=False,
+                  premium_days_left=1, ai_remaining=15, ai_limit=15, ai_bonus=0)
 CLAIM_SUPER = claim(0, message="SUPER PRIZ")
 CLAIMS = {-2: CLAIM_TIP, -1: CLAIM_AI, -3: CLAIM_PRO, 0: CLAIM_SUPER}
 
@@ -192,7 +195,7 @@ class WheelPrizesE2ETest(MiniAppE2EBase):
         page.wait_for_selector("#wheel-result-msg .result-title:has-text('1 kunlik Premium Pro faollashdi!')")
         self.assertIn("1 kunlik Premium Pro", self.desc(page))                  # server xabari (oddiy matn)
         self.assertEqual(self.icon_href(page), "#i-star")
-        page.wait_for_function("document.getElementById('hdr-premium-name').textContent === 'Premium Pro'")
+        page.wait_for_function("document.getElementById('hdr-premium-name').textContent === 'Pro · bugun'")
         self.assertTrue(page.is_visible("#hdr-premium"))
         self.assertEqual([c[0] for c in calls], ["state", "spin/claim"])
 

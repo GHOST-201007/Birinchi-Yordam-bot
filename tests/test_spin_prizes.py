@@ -682,7 +682,8 @@ class DeepLinkTest(unittest.IsolatedAsyncioTestCase):
         db = bot.database
         with mock.patch.object(db, "claim_spin_prize", return_value=result) as claim, \
                 mock.patch.object(db, "register_user"), \
-                mock.patch.object(bot, "schedule_personal_menu_reset"):
+                mock.patch.object(db, "get_premium_view", return_value=db.admin_premium_view(0, None, None)), \
+                mock.patch.object(bot, "schedule_personal_menu_sync"):
             await bot.cmd_start(message, state)
         return claim, message
 

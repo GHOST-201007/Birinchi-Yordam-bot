@@ -5,6 +5,7 @@ aiohttp serveri xotirada (TestServer) ishga tushiriladi; DB funksiyalari mock qi
 Haqiqiy Telegram, Gemini yoki bazaga murojaat qilinmaydi.
 """
 import contextlib
+import datetime as dt
 import json
 import os
 import sys
@@ -27,6 +28,18 @@ USER_ID = 424242            # test_init_data.USER["id"]
 OTHER_ID = 999999
 SPIN_OK_MSG = "Tabriklaymiz! Siz Omad barabanidan <b>+5 ball</b> yutib oldingiz! \U0001F389"
 SPIN_USED_MSG = "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan!"
+
+
+def premium_view(tier=None, days=None, hours=None, unlimited=False):
+    """database.admin_premium_view natijasi (API fixture uchun). Argumentsiz — oddiy (bepul) foydalanuvchi."""
+    db = bot.database
+    if tier is None:
+        return db.admin_premium_view(0, None, None)
+    now = db.get_uz_now()
+    if unlimited:
+        return db.admin_premium_view(1, tier, None, now)
+    delta = dt.timedelta(days=days) if days is not None else dt.timedelta(hours=hours)
+    return db.admin_premium_view(1, tier, (now + delta).isoformat(), now)
 
 
 def spin_result(ok=True, message=SPIN_OK_MSG, code=5, prize_type="points", points=5, tip=None):
@@ -55,6 +68,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
             "daily": mock.MagicMock(return_value=(True, 3, 3)),
             "spin_state": mock.MagicMock(return_value=(None, 5)),
             "premium": mock.MagicMock(return_value=(0, None, "free")),
+            "view": mock.MagicMock(return_value=premium_view()),
             "ai_quota": mock.MagicMock(return_value=(1, 2, 0)),
         }
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
@@ -67,6 +81,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(db, "check_and_grant_daily_bonus", self.m["daily"]))
         stack.enter_context(mock.patch.object(bot, "_read_spin_state", self.m["spin_state"]))
         stack.enter_context(mock.patch.object(db, "get_premium_info", self.m["premium"]))
+        stack.enter_context(mock.patch.object(db, "get_premium_view", self.m["view"]))
         stack.enter_context(mock.patch.object(db, "get_ai_quota_detail", self.m["ai_quota"]))
 
         self.client = TestClient(TestServer(bot.create_web_app()))
@@ -124,7 +139,7 @@ class AuthTest(ApiTestBase):
             resp, data = await self.post(path, extra=extra)
             self.assertEqual(resp.status, 200, path)
         # Hamma DB chaqiruvlari faqat initData ichidagi id bilan
-        for name in ("banned", "score", "bonus_info", "prize", "daily", "premium"):
+        for name in ("banned", "score", "bonus_info", "prize", "daily", "premium", "view"):
             for call in self.m[name].call_args_list:
                 self.assertEqual(call.args[0], USER_ID, name)
         # Klient yuborgan ball / sovrin e'tiborga olinmaydi: sovrin faqat serverdagi pending_spin_prize dan
@@ -224,18 +239,50 @@ class StateTest(ApiTestBase):
         self.assertEqual(data, {"ok": True, "score": 17, "streak": 3, "daily_claimed": False,
                                 "prize": 5, "prize_type": "points", "cooldown_seconds": 0,
                                 "is_premium": False, "premium_type": "free",
+                                "premium_expires_at": None, "premium_unlimited": False, "premium_days_left": None,
                                 "ai_remaining": 1, "ai_limit": 2, "ai_bonus": 0})
 
     async def test_state_reports_active_premium_tier(self):
-        self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "plus")
+        self.m["view"].return_value = premium_view("plus", days=5)
         _, data = await self.post("/api/state")
         self.assertEqual((data["is_premium"], data["premium_type"]), (True, "plus"))
-        self.m["premium"].assert_called_once_with(USER_ID)
+        self.m["view"].assert_called_once_with(USER_ID)
+        self.m["premium"].assert_not_called()               # xom get_premium_info ga tayanilmaydi
 
     async def test_state_premium_type_is_free_when_not_premium(self):
-        self.m["premium"].return_value = (0, "2026-01-01 10:00:00", "plus")      # muddati o'tgan
+        # muddati o'tgan flag admin_premium_view da oddiy bo'ladi
+        self.m["view"].return_value = bot.database.admin_premium_view(1, "plus", "2026-01-01T10:00:00+05:00")
         _, data = await self.post("/api/state")
         self.assertEqual((data["is_premium"], data["premium_type"]), (False, "free"))
+        self.assertEqual((data["premium_expires_at"], data["premium_unlimited"], data["premium_days_left"]),
+                         (None, False, None))
+
+    async def test_state_dated_premium_has_expiry_iso_and_ceil_days_left(self):
+        for kwargs, days_left in (({"days": 5}, 5), ({"days": 1}, 1), ({"hours": 3}, 1), ({"hours": 25}, 2),
+                                  ({"days": 90, "hours": None}, 90)):
+            with self.subTest(kwargs=kwargs):
+                view = premium_view("ultra", **{k: v for k, v in kwargs.items() if v is not None})
+                self.m["view"].return_value = view
+                _, data = await self.post("/api/state")
+                self.assertEqual((data["is_premium"], data["premium_type"], data["premium_unlimited"]),
+                                 (True, "ultra", False))
+                self.assertEqual(data["premium_days_left"], days_left)
+                self.assertEqual(data["premium_expires_at"], view["expires"].isoformat())
+                self.assertTrue(data["premium_expires_at"].endswith("+05:00"))            # Toshkent vaqti
+
+    async def test_state_unlimited_premium_has_null_expiry_and_days(self):
+        self.m["view"].return_value = premium_view("plus", unlimited=True)
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["is_premium"], data["premium_type"], data["premium_unlimited"]),
+                         (True, "plus", True))
+        self.assertIsNone(data["premium_expires_at"])
+        self.assertIsNone(data["premium_days_left"])
+
+    async def test_state_free_user_has_no_premium_details(self):
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["is_premium"], data["premium_type"]), (False, "free"))
+        self.assertEqual((data["premium_expires_at"], data["premium_unlimited"], data["premium_days_left"]),
+                         (None, False, None))
 
     async def test_super_prize_is_zero_not_null(self):
         self.m["prize"].return_value = 0
@@ -349,10 +396,13 @@ class SpinClaimTest(ApiTestBase):
 
     async def test_pro_day_prize_returns_premium_state(self):
         self.m["spin"].return_value = spin_result(message="Pro 1 kun", code=-3, prize_type="pro_day", points=0)
-        self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "pro")
+        self.m["view"].return_value = premium_view("pro", days=1)
         _, data = await self.post("/api/spin/claim")
         self.assertEqual((data["prize"], data["prize_type"]), (-3, "pro_day"))
         self.assertEqual((data["is_premium"], data["premium_type"]), (True, "pro"))
+        self.assertEqual(data["premium_days_left"], 1)                  # mini app kartasini qo'shimcha so'rovsiz yangilaydi
+        self.assertTrue(data["premium_expires_at"])
+        self.assertFalse(data["premium_unlimited"])
 
     async def test_failed_claim_has_no_prize_fields(self):
         self.m["spin"].return_value = spin_result(ok=False, message=SPIN_USED_MSG)

@@ -202,7 +202,7 @@ class FsmResetMiddleware(BaseMiddleware):
             skip_texts = [
                 "📋 Holatlar ro'yxati", "🚨 Favqulodda raqamlar",
                 "📚 Kasalliklar", "💬 AI Konsultatsiya", "💬 AI Konsultatsiya (Chat)",
-                "🏥 Yaqin kasalxona", "💎 Premium",
+                "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS,
                 "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
                 "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
                 "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
@@ -1079,8 +1079,54 @@ async def get_web_app_url(user_id: int, page: str = None) -> str:
 # KLAVIATURALAR (KEYBOARDS)
 # ═══════════════════════════════════════════════════════════════════
 
-def get_start_keyboard():
-    """Asosiy reply menyu tugmalari"""
+# ─── Premium holati: menyu tugmasi matni va xotiradagi kesh ──────────────────────────────────────────────
+PREMIUM_TIER_TITLES = {"pro": "⭐ Premium Pro", "plus": "💎 Premium Plus", "ultra": "👑 Premium Ultra"}
+PREMIUM_BUTTON_DEFAULT = "💎 Premium"
+# Reply menyudagi Premium tugmasining BARCHA matnlari (BITTA joyda): handler ham, "menyu matni" ro'yxatlari ham
+# (FSM tozalash, AI chat) shu konstantadan oladi — aks holda AI bu matnni savol deb qabul qilardi.
+PREMIUM_BUTTON_TEXTS = (PREMIUM_BUTTON_DEFAULT, *PREMIUM_TIER_TITLES.values())
+
+# DB'ga murojaat qila olmaydigan joylar (oddiy javoblardagi menyu) uchun: user_id -> (tarif | None, vaqt).
+# /start, Premium sahifasi, admin paneli va tugash vazifasi to'ldiradi. Holat noma'lum bo'lsa — eski "💎 Premium".
+_premium_menu_cache: dict = {}
+PREMIUM_MENU_CACHE_TTL = 3600.0
+_PREMIUM_MENU_CACHE_MAX = 50000
+
+
+def remember_premium_state(user_id: int, view) -> None:
+    """Menyu tugmasi uchun foydalanuvchining Premium tarifini eslab qoladi. view — database.admin_premium_view natijasi;
+    None (holat noma'lum) bo'lsa hech narsa o'zgarmaydi."""
+    if not view:
+        return
+    if len(_premium_menu_cache) >= _PREMIUM_MENU_CACHE_MAX:
+        _premium_menu_cache.clear()
+    _premium_menu_cache[user_id] = (view["tier"] if view.get("active") else None, time.monotonic())
+
+
+def cached_premium_view(user_id):
+    """Keshdagi {"active", "tier"} yoki None (noma'lum / eskirgan)."""
+    entry = _premium_menu_cache.get(user_id)
+    if not entry:
+        return None
+    tier, stamp = entry
+    if time.monotonic() - stamp > PREMIUM_MENU_CACHE_TTL:
+        _premium_menu_cache.pop(user_id, None)
+        return None
+    return {"active": tier is not None, "tier": tier or "free"}
+
+
+def get_start_keyboard_for(user_id):
+    """Reply menyu: Premium tugmasi keshdagi tarifga mos (DB'ga murojaat YO'Q). Holat noma'lum bo'lsa — "💎 Premium"."""
+    return get_start_keyboard(cached_premium_view(user_id))
+
+
+def get_start_keyboard(premium_view=None):
+    """Asosiy reply menyu tugmalari. premium_view (database.admin_premium_view natijasi) faol Premium bo'lsa, "💎 Premium"
+    o'rniga tarifga mos matn chiqadi. Kun soni YOZILMAYDI: keyboard faqat bot yangi xabar yuborganda yangilanadi va
+    kun soni eskirib qolardi. Holat noma'lum (None) bo'lsa — eski "💎 Premium"."""
+    premium_text = PREMIUM_BUTTON_DEFAULT
+    if premium_view and premium_view.get("active") and premium_view.get("tier") in PREMIUM_TIER_TITLES:
+        premium_text = PREMIUM_TIER_TITLES[premium_view["tier"]]
     kb_rows = [
         [
             KeyboardButton(text="📋 Holatlar ro'yxati"),
@@ -1099,7 +1145,7 @@ def get_start_keyboard():
             KeyboardButton(text="🔔 Kunlik Maslahatlar")
         ],
         [
-            KeyboardButton(text="💎 Premium"),
+            KeyboardButton(text=premium_text),
             KeyboardButton(text="👥 Do'stlarni taklif qilish")
         ],
         [
@@ -1251,8 +1297,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     # Always register user first to ensure they exist in database
     await asyncio.to_thread(database.register_user, user.id, full_name=full_name, username=username)
-    # Eski shaxsiy (trycloudflare) menyu tugmasini fonda tozalaymiz: javobni kechiktirmaydi va to'xtatmaydi
-    schedule_personal_menu_reset(message.bot, user.id)
+    # Premium holati BITTA joydan (admin_premium_view): reply menyu, salom qatori va shaxsiy menyu tugmasi uchun.
+    # DB xatosi /start ni to'xtatmaydi: holat noma'lum (None) bo'lsa — hozirgidek oddiy ko'rinish.
+    premium_view = await _load_premium_view(user.id)
+    remember_premium_state(user.id, premium_view)
+    # Shaxsiy menyu tugmasi fonda (javobni kechiktirmaydi va to'xtatmaydi): Premium faol bo'lsa "👑 Ilova", aks holda
+    # eski shaxsiy (trycloudflare) tugma tozalanadi — mavjud mexanizm saqlangan. Holat noma'lum bo'lsa ham tozalanadi.
+    if premium_view is not None:
+        schedule_personal_menu_sync(message.bot, user.id, premium_view["active"])
+    else:
+        schedule_personal_menu_reset(message.bot, user.id)
     db_reg_ts = time.time()
     logging.info(f"DB register_user: {(db_reg_ts - start_ts) * 1000:.1f} ms")
     
@@ -1274,7 +1328,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             )
         else:
             bonus_msg = "✅ Siz bugungi bonusni olib bo'lgansiz!\n⏰ Ertaga yana kiring."
-        await message.answer(bonus_msg, parse_mode="HTML", reply_markup=get_start_keyboard())
+        await message.answer(bonus_msg, parse_mode="HTML", reply_markup=get_start_keyboard(premium_view))
         # await update_user_menu_button(user.id, message.bot)  # removed to set menu button only at startup
         total_ts = time.time()
         logging.info(f"TOTAL /start (daily bonus path): {(total_ts - start_ts) * 1000:.1f} ms")
@@ -1295,7 +1349,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     f"Joriy tarifingiz sotib olmoqchi bo'lgan tarifdan yuqoriroq yoki teng. "
                     f"Pastroq tarifga o'tish mumkin emas.",
                     parse_mode="HTML",
-                    reply_markup=get_start_keyboard()
+                    reply_markup=get_start_keyboard(premium_view)
                 )
                 return
             # SUPER PRIZ chegirmasi (buy_plus_30) ham shu yagona funksiyada hisobga olinadi
@@ -1306,7 +1360,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 f"💰 Narxi: <b>{stars} Telegram Stars</b>\n\n"
                 f"To'lov uchun quyidagi invoice ga bosing:",
                 parse_mode="HTML",
-                reply_markup=get_start_keyboard()
+                reply_markup=get_start_keyboard(premium_view)
             )
             await message.answer_invoice(
                 title=title,
@@ -1346,7 +1400,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             result = await asyncio.to_thread(database.claim_spin_prize, user.id)
             msg = result["message"]
 
-            reply_markup = get_start_keyboard()
+            reply_markup = get_start_keyboard(premium_view)
             if result["ok"] and result["prize_type"] == "super":
                 builder = InlineKeyboardBuilder()
                 builder.button(text="💎 Premium xarid qilish", callback_data="buy_premium")
@@ -1358,7 +1412,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             return
         except Exception as e:
             logging.error(f"Error handling spin parameter: {e}")
-            await message.answer("⚠️ Omad barabani bonusini tasdiqlashda xatolik yuz berdi.", reply_markup=get_start_keyboard())
+            await message.answer("⚠️ Omad barabani bonusini tasdiqlashda xatolik yuz berdi.", reply_markup=get_start_keyboard(premium_view))
             return
 
     # Check if referral argument exists
@@ -1432,7 +1486,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             f"Siz <b>{body_part_title}</b> sohasidagi muammoni tanladingiz.\n"
             f"Tahlil qilinmoqda, iltimos kuting... ⏳",
             parse_mode="HTML",
-            reply_markup=get_start_keyboard()
+            reply_markup=get_start_keyboard(premium_view)
         )
         
         prompt = (
@@ -1460,6 +1514,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     start_text = (
         "🚑 <b>Assalomu alaykum!</b>\n\n"
         "Sog'lig'ingiz uchun foydali yordamchi botga xush kelibsiz! ❤️\n\n"
+        f"{_premium_greeting_block(premium_view)}"
         "<b>Bot orqali:</b>\n"
         "📋 Holatlar ro'yxati\n"
         "📚 Kasalliklar haqida ma'lumot\n"
@@ -1489,7 +1544,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Bitta xabar: start matni + ReplyKeyboardMarkup (menyu avtomatik ochiladi)
     await message.answer(
         start_text,
-        reply_markup=get_start_keyboard(),
+        reply_markup=get_start_keyboard(premium_view),
         parse_mode="HTML"
     )
     
@@ -1506,12 +1561,15 @@ MENU_RESET_TIMEOUT = 5.0
 _MENU_RESET_DONE_MAX = 50000
 _menu_reset_done: set = set()      # shu jarayonda tozalangan foydalanuvchilar (takroriy so'rov yubormaslik uchun)
 _menu_reset_tasks: set = set()     # fon vazifalariga havola (axlat yig'uvchi o'chirib yubormasligi uchun)
+_menu_premium_done: set = set()    # shu jarayonda shaxsiy "👑 Ilova" tugmasi qo'yilgan foydalanuvchilar
+MENU_PREMIUM_BUTTON_TEXT = "👑 Ilova"
 
 
-async def reset_personal_menu_button(bot_instance, user_id: int) -> None:
+async def reset_personal_menu_button(bot_instance, user_id: int, force: bool = False) -> None:
     """MenuButtonDefault yuboradi: shaxsiy tugma o'chadi, botning umumiy (to'g'ri) tugmasi ishlaydi.
+    force=True — "bu jarayonda allaqachon tozalangan" belgisiga qaramay yuboradi (Premium tugagan/olib tashlangan).
     Xato yoki timeout bo'lsa faqat ogohlantirish loglanadi (xato matni emas, turi)."""
-    if user_id in _menu_reset_done:
+    if user_id in _menu_reset_done and not force:
         return
     try:
         await asyncio.wait_for(
@@ -1521,6 +1579,7 @@ async def reset_personal_menu_button(bot_instance, user_id: int) -> None:
         if len(_menu_reset_done) >= _MENU_RESET_DONE_MAX:
             _menu_reset_done.clear()
         _menu_reset_done.add(user_id)
+        _menu_premium_done.discard(user_id)
     except Exception as exc:
         logging.warning("Shaxsiy menyu tugmasini tozalab bo'lmadi (user=%s): %s", user_id, type(exc).__name__)
 
@@ -1530,6 +1589,66 @@ def schedule_personal_menu_reset(bot_instance, user_id: int) -> None:
     task = asyncio.create_task(reset_personal_menu_button(bot_instance, user_id))
     _menu_reset_tasks.add(task)
     task.add_done_callback(_menu_reset_tasks.discard)
+
+
+async def set_personal_premium_menu_button(bot_instance, user_id: int) -> None:
+    """Premium foydalanuvchiga shaxsiy "👑 Ilova" tugmasi (MenuButtonWebApp). URL — faqat joriy MINI_APP_URL, query
+    parametrsiz (Telegram talabi; eski shaxsiy tugmalardagi noto'g'ri URL muammosi qaytmasligi uchun).
+    MINI_APP_URL yo'q bo'lsa tugma qo'yilmaydi (eski tugma tozalanadi). Xato/timeout faqat loglanadi."""
+    if user_id in _menu_premium_done:
+        return
+    url = os.getenv("MINI_APP_URL", MINI_APP_URL)
+    if not url:
+        await reset_personal_menu_button(bot_instance, user_id)
+        return
+    try:
+        await asyncio.wait_for(
+            bot_instance.set_chat_menu_button(
+                chat_id=user_id,
+                menu_button=types.MenuButtonWebApp(text=MENU_PREMIUM_BUTTON_TEXT, web_app=types.WebAppInfo(url=url)),
+            ),
+            timeout=MENU_RESET_TIMEOUT,
+        )
+        if len(_menu_premium_done) >= _MENU_RESET_DONE_MAX:
+            _menu_premium_done.clear()
+        _menu_premium_done.add(user_id)
+        _menu_reset_done.discard(user_id)
+    except Exception as exc:
+        logging.warning("Premium menyu tugmasini qo'yib bo'lmadi (user=%s): %s", user_id, type(exc).__name__)
+
+
+async def apply_personal_menu_button(bot_instance, user_id: int, premium_active: bool, force: bool = False) -> None:
+    """Premium faol -> "👑 Ilova"; aks holda MenuButtonDefault (Premium tugagan/olib tashlangan bo'lsa majburan)."""
+    if premium_active:
+        await set_personal_premium_menu_button(bot_instance, user_id)
+    else:
+        await reset_personal_menu_button(bot_instance, user_id, force=force or user_id in _menu_premium_done)
+
+
+def schedule_personal_menu_sync(bot_instance, user_id: int, premium_active: bool, force: bool = False) -> None:
+    """Shaxsiy menyu tugmasini fonda yangilaydi (await qilinmaydi): /start va admin javobi kechikmaydi."""
+    task = asyncio.create_task(apply_personal_menu_button(bot_instance, user_id, premium_active, force))
+    _menu_reset_tasks.add(task)
+    task.add_done_callback(_menu_reset_tasks.discard)
+
+
+async def _load_premium_view(user_id: int):
+    """Premium holati (admin_premium_view) yoki None (DB xatosi: chaqiruvchi eski ko'rinishga qaytadi)."""
+    try:
+        return await asyncio.to_thread(database.get_premium_view, user_id)
+    except Exception as exc:
+        logging.warning("Premium holatini o'qib bo'lmadi (user=%s): %s", user_id, type(exc).__name__)
+        return None
+
+
+def _premium_greeting_block(view) -> str:
+    """/start salomiga qo'shiladigan BITTA qator (faqat Premiumi borga): "👑 Premium Ultra faol — 15.12.2026 gacha"."""
+    if not view or not view.get("active"):
+        return ""
+    title = PREMIUM_TIER_TITLES.get(view["tier"], PREMIUM_BUTTON_DEFAULT)
+    if view["unlimited"]:
+        return f"{title} faol — muddatsiz\n\n"
+    return f"{title} faol — {view['expires']:%d.%m.%Y} gacha\n\n"
 
 
 async def update_user_menu_button(user_id: int, current_bot: Bot):
@@ -1558,7 +1677,7 @@ async def update_user_menu_button(user_id: int, current_bot: Bot):
 @dp.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("Bosh menyu:", reply_markup=get_start_keyboard())
+    await message.answer("Bosh menyu:", reply_markup=get_start_keyboard_for(message.from_user.id))
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
@@ -1576,7 +1695,7 @@ async def cmd_help(message: types.Message):
         "/reklama — 📣 Reklama bo'yicha murojaat qilish\n\n"
         "📞 <b>Favqulodda:</b> 103 (Tez yordam) | 101 (Yong'in) | 102 (Militsiya)"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=get_start_keyboard())
+    await message.answer(text, parse_mode="HTML", reply_markup=get_start_keyboard_for(message.from_user.id))
 
 @dp.message(Command("contacts"))
 async def cmd_contacts(message: types.Message):
@@ -1792,7 +1911,7 @@ async def reply_diseases_ai(message: types.Message, state: FSMContext):
         "• *Bel og'rig'iga qanday mashqlar foydali?*\n\n"
         "⚠️ Chatdan chiqish uchun boshqa biror menyu tugmasini bosing yoki /cancel deb yozing."
     )
-    await message.answer(markdown_to_html(text), reply_markup=get_start_keyboard(), parse_mode="HTML")
+    await message.answer(markdown_to_html(text), reply_markup=get_start_keyboard_for(message.from_user.id), parse_mode="HTML")
 
 @dp.message(F.text == "❌ Bekor qilish")
 @dp.message(Command("cancel"))
@@ -1804,7 +1923,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     if current_state in [BroadcastStates.waiting_for_content.state, BroadcastStates.waiting_for_confirmation.state]:
         await message.answer("✅ Xabar yuborish bekor qilindi.")
     else:
-        await message.answer("Amal bekor qilindi. Bosh menyudasiz.", reply_markup=get_start_keyboard())
+        await message.answer("Amal bekor qilindi. Bosh menyudasiz.", reply_markup=get_start_keyboard_for(message.from_user.id))
 
 @dp.message(F.text == "🏥 Yaqin kasalxona")
 async def reply_hospital(message: types.Message):
@@ -1817,7 +1936,7 @@ async def reply_hospital(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(F.text == "💎 Premium")
+@dp.message(F.text.in_(PREMIUM_BUTTON_TEXTS))
 async def reply_premium_info(message: types.Message):
     await _show_premium_page(message)
 
@@ -1829,7 +1948,7 @@ async def reply_contacts(message: types.Message):
         "👮 **Militsiya:** 102\n👨‍🚒 **Favqulodda vaziyatlar (FVV):** 1050\n\n"
         "Tezkor raqamlarga qo'ng'iroq qilish bepul va 24/7 ishlaydi."
     )
-    await message.answer(markdown_to_html(text), reply_markup=get_start_keyboard(), parse_mode="HTML")
+    await message.answer(markdown_to_html(text), reply_markup=get_start_keyboard_for(message.from_user.id), parse_mode="HTML")
 
 # ─── Yaqin kasalxona + dorixona (Feature 4) ───────────────────────
 
@@ -1861,7 +1980,7 @@ async def handle_location(message: types.Message):
         disable_web_page_preview=True
     )
     # Asosiy menyuni qaytarish
-    await message.answer("Bosh menyu:", reply_markup=get_start_keyboard())
+    await message.answer("Bosh menyu:", reply_markup=get_start_keyboard_for(message.from_user.id))
 
 # ═══════════════════════════════════════════════════════════════════
 # INLINE CALLBACK HANDLERLARI (asosiy)
@@ -1874,7 +1993,7 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
         markdown_to_html(FIRST_AID_DATA["start"] + "\n\nKerakli bo'limni tanlang yoki savolingizni to'g'ridan-to'g'ri yozing:"),
         parse_mode="HTML"
     )
-    await callback.message.answer("Bosh menyu:", reply_markup=get_start_keyboard())
+    await callback.message.answer("Bosh menyu:", reply_markup=get_start_keyboard_for(callback.from_user.id))
     await callback.answer()
 
 @dp.callback_query(F.data == "main_conditions")
@@ -2235,7 +2354,7 @@ async def profile_allergies(message: types.Message, state: FSMContext):
         "✅ <b>Tibbiy profilingiz saqlandi!</b>\n\n"
         "Endi AI konsultatsiyada sizning ma'lumotlaringiz hisobga olinadi va aniqroq maslahat beriladi. 🎯",
         parse_mode="HTML",
-        reply_markup=get_start_keyboard()
+        reply_markup=get_start_keyboard_for(message.from_user.id)
     )
 
 @dp.callback_query(F.data == "clear_profile")
@@ -2480,7 +2599,7 @@ async def handle_voice(message: types.Message):
         await message.answer(
             "⚠️ Ovozli xabarlarni qayta ishlash uchun AI sozlanmagan.\n"
             "Iltimos, matnli savol yuboring.",
-            reply_markup=get_start_keyboard()
+            reply_markup=get_start_keyboard_for(message.from_user.id)
         )
         return
 
@@ -2684,7 +2803,7 @@ async def bmi_height(message: types.Message, state: FSMContext):
         data = await state.get_data()
         await state.clear()
         result = _calculate_bmi(data["weight"], height)
-        await message.answer(result, parse_mode="HTML", reply_markup=get_start_keyboard())
+        await message.answer(result, parse_mode="HTML", reply_markup=get_start_keyboard_for(message.from_user.id))
     except ValueError:
         await message.answer("⚠️ 50 dan 250 gacha bo'lgan raqam kiriting (sm):")
 
@@ -2743,7 +2862,7 @@ async def water_weight(message: types.Message, state: FSMContext):
             raise ValueError
         await state.clear()
         result = _calculate_water(weight)
-        await message.answer(result, parse_mode="HTML", reply_markup=get_start_keyboard())
+        await message.answer(result, parse_mode="HTML", reply_markup=get_start_keyboard_for(message.from_user.id))
     except ValueError:
         await message.answer("⚠️ To'g'ri raqam kiriting (masalan: 70):")
 
@@ -2768,48 +2887,77 @@ def _calculate_water(weight: float) -> str:
 # FEATURE 6: ⭐ TELEGRAM STARS TO'LOV TIZIMI
 # ═══════════════════════════════════════════════════════════════════
 
+def _premium_left_text(view) -> str:
+    """Qolgan muddat matni: "♾ Muddatsiz" / "bugun tugaydi" / "5 kun qoldi"."""
+    if view["unlimited"]:
+        return "♾ Muddatsiz"
+    if view["ends_today"]:
+        return "bugun tugaydi"
+    return f"{view['days_left']} kun qoldi"
+
+
+def _my_premium_text(view, ai_remaining: int, ai_limit: int, ai_bonus: int) -> str:
+    """"Mening obunam" sahifasi matni. ai_remaining barabandan yutilgan bonusni ham o'z ichiga oladi (oddiy qoldiq = ayirma)."""
+    title = PREMIUM_TIER_TITLES.get(view["tier"], PREMIUM_BUTTON_DEFAULT)
+    if view["unlimited"]:
+        until = "<b>♾ Muddatsiz</b>"
+    else:
+        until = f"<b>{view['expires']:%d.%m.%Y}</b> gacha — <i>{_premium_left_text(view)}</i>"
+    ai = f"<b>{max(0, ai_remaining - ai_bonus)}/{ai_limit}</b>" + (f" (+ {ai_bonus} bonus)" if ai_bonus > 0 else "")
+    return (
+        "🧾 <b>Mening obunam</b>\n\n"
+        f"🏷️ Tarif: <b>{title}</b>\n"
+        f"📅 Amal qilish muddati: {until}\n"
+        f"🤖 Bugungi AI limit: {ai}\n\n"
+        "✅ Barcha imkoniyatlardan unumli foydalaning!"
+    )
+
+
+async def _answer_or_edit(message_or_cb, text: str, markup) -> None:
+    if isinstance(message_or_cb, types.CallbackQuery):
+        try:
+            await message_or_cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+        except Exception:
+            await message_or_cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
+        await message_or_cb.answer()
+    else:
+        await message_or_cb.answer(text, parse_mode="HTML", reply_markup=markup)
+
+
+async def _show_my_premium_page(message_or_cb, user_id: int, view: dict) -> None:
+    """Premiumi bor userga sotuv sahifasi o'rniga: tarif, muddat, qolgan kun, bugungi AI limit."""
+    ai_remaining, ai_limit, ai_bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
+    text = _my_premium_text(view, ai_remaining, ai_limit, ai_bonus)
+    builder = InlineKeyboardBuilder()
+    # SUPER PRIZ chegirmasi bor va Plus ga o'tish mumkin bo'lsa — tugmani ko'rsatamiz (mavjud mantiq)
+    if view["tier"] not in ("plus", "ultra") and await asyncio.to_thread(database.has_discount, user_id):
+        text += f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium Plus — {plus_discount_price()} Stars"
+        builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
+                       callback_data="buy_plus_30_discount")
+    builder.button(text="🔄 Uzaytirish", callback_data="premium_extend")
+    app_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
+    if app_url:
+        builder.button(text="🚑 Mini ilovada ochish", web_app=types.WebAppInfo(url=app_url))
+    builder.adjust(1)
+    await _answer_or_edit(message_or_cb, text, builder.as_markup())
+
+
 async def _show_premium_page(message_or_cb):
-    """Premium sahifasini ko'rsatish — to'liq FINAL pricing matrix bo'yicha"""
+    """Premium sahifasi: Premiumi bor userga "Mening obunam", bo'lmasa sotuv sahifasi. Holat admin_premium_view
+    orqali: muddatsiz Premium ham to'g'ri ko'rsatiladi (ilgari sotuv sahifasiga tushib qolardi), muddati o'tgan flag — oddiy."""
+    user_id = message_or_cb.from_user.id
+    view = await asyncio.to_thread(database.get_premium_view, user_id)
+    remember_premium_state(user_id, view)
+    if view["active"]:
+        await _show_my_premium_page(message_or_cb, user_id, view)
+        return
+    await _show_premium_sales(message_or_cb)
+
+
+async def _show_premium_sales(message_or_cb):
+    """Sotuv sahifasi — to'liq FINAL pricing matrix bo'yicha (tariflar va xarid tugmalari)"""
     is_callback = isinstance(message_or_cb, types.CallbackQuery)
     user_id = message_or_cb.from_user.id
-
-    is_prem, expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
-    if is_prem and expires:
-        try:
-            exp_dt = datetime.fromisoformat(expires)
-            exp_str = exp_dt.strftime("%d.%m.%Y")
-        except Exception:
-            exp_str = str(expires)
-
-        tier_title = "⭐ Premium Pro"
-        if prem_type == "plus":
-            tier_title = "💎 Premium Plus"
-        elif prem_type == "ultra":
-            tier_title = "👑 Premium Ultra"
-
-        text = (
-            f"💎 <b>Sizda faol obuna mavjud!</b>\n\n"
-            f"🏷️ Tarif: <b>{tier_title}</b>\n"
-            f"📅 Amal qilish muddati: <b>{exp_str}</b> gacha\n\n"
-            f"✅ Barcha imkoniyatlardan unumli foydalaning!"
-        )
-        # SUPER PRIZ chegirmasi bor va Plus ga o'tish mumkin bo'lsa — tugmani ko'rsatamiz
-        markup = None
-        if prem_type not in ("plus", "ultra") and await asyncio.to_thread(database.has_discount, user_id):
-            text += f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium Plus — {plus_discount_price()} Stars"
-            builder = InlineKeyboardBuilder()
-            builder.button(text=f"🎁 {plus_discount_price()} Stars → 30 kun Premium Plus (-50%)",
-                           callback_data="buy_plus_30_discount")
-            markup = builder.as_markup()
-        if is_callback:
-            try:
-                await message_or_cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
-            except Exception:
-                await message_or_cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
-            await message_or_cb.answer()
-        else:
-            await message_or_cb.answer(text, parse_mode="HTML", reply_markup=markup)
-        return
 
     score = await asyncio.to_thread(database.get_score, user_id)
 
@@ -2873,6 +3021,12 @@ async def _show_premium_page(message_or_cb):
 @dp.callback_query(F.data.in_(["buy_premium", "show_premium"]))
 async def process_buy_premium(callback: types.CallbackQuery):
     await _show_premium_page(callback)
+
+
+@dp.callback_query(F.data == "premium_extend")
+async def process_premium_extend(callback: types.CallbackQuery):
+    """"🔄 Uzaytirish": mavjud tariflar ro'yxati va xarid tugmalari ("Mening obunam" sahifasidan ham, eslatmadan ham)."""
+    await _show_premium_sales(callback)
 
 @dp.callback_query(F.data == "redeem_points_info")
 async def process_redeem_points_info(callback: types.CallbackQuery):
@@ -3411,7 +3565,7 @@ async def handle_image(message: types.Message, state: FSMContext):
         await message.answer(
             "⚠️ Rasmlarni tahlil qilish uchun AI sozlanmagan.\n"
             "Iltimos, matnli savol yuboring.",
-            reply_markup=get_start_keyboard()
+            reply_markup=get_start_keyboard_for(message.from_user.id)
         )
         return
 
@@ -3783,6 +3937,74 @@ async def check_and_send_reminders():
             logging.exception(f"[SCHEDULER] ERROR in check_and_send_reminders (outer loop): {e}")
             await asyncio.sleep(60)
     logging.info("[SCHEDULER] check_and_send_reminders stopped")
+
+
+# ─── Premium tugashidan 1 kun oldin eslatma (B8) va muddati o'tganida shaxsiy tugmani qaytarish (B9) ───
+PREMIUM_EXPIRY_CHECK_INTERVAL = 3600.0      # soatiga bir marta
+PREMIUM_EXPIRY_SEND_PAUSE = 0.1             # yuborishlar orasida (Telegram limiti: ~30 xabar/soniya)
+
+
+def _premium_expiry_text(user: dict, now) -> str:
+    """"⏳ Premium Ultra obunangiz ertaga (15.12.2026, 18:00) tugaydi..." — tugash bugun bo'lsa "bugun"."""
+    expires = user["expires"]
+    when = "bugun" if expires.date() == now.astimezone(expires.tzinfo).date() else "ertaga"
+    return (f"⏳ Premium {PM_TIER_NAMES.get(user['tier'], 'Pro')} obunangiz {when} "
+            f"({expires:%d.%m.%Y, %H:%M}) tugaydi. Uzaytirish uchun 👇")
+
+
+async def run_premium_expiry_check(now=None) -> dict:
+    """BITTA tekshiruv. (1) Faol, muddatli Premium va qolgan vaqt <= 24 soat bo'lsa — bitta eslatma (har premium_expires_at
+    uchun bir marta, atomar belgi bilan; muddatsiz, bepul va ban qilinganlarga yuborilmaydi). (2) Muddati o'tganlar —
+    flag yopiladi va shaxsiy menyu tugmasi Default ga qaytadi (xabarsiz). Bitta tekshiruvda ko'pi bilan 200 tadan.
+    Bloklagan user xatosi faqat loglanadi. Qaytaradi: {"notified", "failed", "closed"}."""
+    now = now or database.get_uz_now()
+    stats = {"notified": 0, "failed": 0, "closed": 0}
+    found = await asyncio.to_thread(database.premium_expiry_candidates, now)
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[[types.InlineKeyboardButton(text="🔄 Uzaytirish", callback_data="premium_extend")]])
+    for user in found["notify"]:
+        uid = user["user_id"]
+        try:
+            banned, *_ = await asyncio.to_thread(database.is_user_banned, uid)
+            if banned:
+                continue
+            if not await asyncio.to_thread(database.claim_premium_expiry_notice, uid, user["expires"].isoformat()):
+                continue                                    # boshqa jarayon allaqachon belgilagan
+        except Exception as exc:
+            logging.warning("[PREMIUM EXPIRY] tayyorlashda xato (user=%s): %s", uid, type(exc).__name__)
+            continue
+        try:
+            await bot.send_message(uid, _premium_expiry_text(user, now), parse_mode="HTML", reply_markup=markup)
+            stats["notified"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logging.warning("[PREMIUM EXPIRY] eslatma yetmadi (user=%s): %s", uid, type(exc).__name__)
+        await asyncio.sleep(PREMIUM_EXPIRY_SEND_PAUSE)
+    for user in found["expired"]:
+        uid = user["user_id"]
+        try:
+            closed = await asyncio.to_thread(database.close_expired_premium, uid, user["expires_raw"])
+        except Exception as exc:
+            logging.warning("[PREMIUM EXPIRY] yopishda xato (user=%s): %s", uid, type(exc).__name__)
+            continue
+        if closed:
+            stats["closed"] += 1
+            remember_premium_state(uid, {"active": False, "tier": "free"})
+            schedule_personal_menu_sync(bot, uid, False, force=True)       # B9: faqat tugma qaytadi, xabar yo'q
+    if stats["notified"] or stats["failed"] or stats["closed"]:
+        logging.info("[PREMIUM EXPIRY] eslatma=%s xato=%s yopildi=%s", stats["notified"], stats["failed"], stats["closed"])
+    return stats
+
+
+async def premium_expiry_loop():
+    """Fon vazifasi (main() dagi boshqa vazifalar kabi, polling va webhook rejimida ham): soatiga bir marta."""
+    logging.info("[PREMIUM EXPIRY] vazifa ishga tushdi")
+    while True:
+        try:
+            await run_premium_expiry_check()
+        except Exception:
+            logging.exception("[PREMIUM EXPIRY] tekshiruvda xato")
+        await asyncio.sleep(PREMIUM_EXPIRY_CHECK_INTERVAL)
 
 
 @dp.callback_query(F.data.startswith("med_taken_"))
@@ -4272,6 +4494,8 @@ async def _pm_do_grant(callback, uid, pg, tier, dur, mode, reason):
     logging.info("[ADMIN PREMIUM] admin=%s user=%s amal=berish tarif=%s (yakuniy=%s) muddat=%s rejim=%s sabab=%s",
                  admin_id, uid, tier, result["tier"], "muddatsiz" if days is None else f"{days} kun", mode,
                  PM_REASONS[reason] if mode == "n" else "-")
+    remember_premium_state(uid, {"active": True, "tier": result["tier"]})
+    schedule_personal_menu_sync(bot, uid, True)                 # B9: shaxsiy "👑 Ilova" tugmasi (fonda)
     notified = None
     if mode == "n":
         notified = await _pm_notify(uid, _pm_user_grant_text(tier, days, result, reason), _pm_open_app_markup())
@@ -4293,6 +4517,8 @@ async def _pm_do_remove(callback, uid, pg, mode):
         await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
         return
     logging.info("[ADMIN PREMIUM] admin=%s user=%s amal=olib tashlash rejim=%s", admin_id, uid, mode)
+    remember_premium_state(uid, {"active": False, "tier": "free"})
+    schedule_personal_menu_sync(bot, uid, False, force=True)    # B9: shaxsiy tugma Default ga qaytadi (fonda)
     notified = await _pm_notify(uid, PM_USER_REMOVED_TEXT) if mode == "n" else None
     user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
     await _pm_edit(callback, _pm_remove_result_text(user, mode, notified), _pm_result_markup(uid, pg))
@@ -4796,7 +5022,7 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     skip_texts = [
         "📋 Holatlar ro'yxati", "🚨 Favqulodda raqamlar",
         "📚 Kasalliklar", "💬 AI Konsultatsiya (Chat)",
-        "🏥 Yaqin kasalxona", "💎 Premium",
+        "🏥 Yaqin kasalxona", *PREMIUM_BUTTON_TEXTS,
         "👤 Tibbiy Profilim", "💊 Dori Eslatmalari",
         "⚖️ Sog'liq Kalkulyatori", "🔔 Kunlik Maslahatlar",
         "👥 Do'stlarni taklif qilish", "🌐 Mening ballarim",
@@ -4999,7 +5225,7 @@ async def cmd_ballarim(message: types.Message):
     else:
         msg += f"\n💡 Yana {max(0, 100 - score)} ball yig'sangiz, Premium avtomatik faollashadi!"
         
-    await message.answer(msg, parse_mode="HTML", reply_markup=get_start_keyboard())
+    await message.answer(msg, parse_mode="HTML", reply_markup=get_start_keyboard_for(message.from_user.id))
 
 # ==============================================================================
 # BARCHA QOLGAN XABARLAR UCHUN FALLBACK HANDLERLAR
@@ -5413,13 +5639,17 @@ async def _api_handle(request: web.Request, name: str, action, *, with_body: boo
 
 
 async def _premium_quota_fields(user_id: int) -> dict:
-    """Header'dagi Premium ko'rsatkichi va AI tabi hisoblagichi uchun (faqat o'qish).
+    """Header'dagi Premium ko'rsatkichi, "Mening Premiumim" kartasi va AI tabi hisoblagichi uchun (faqat o'qish).
     ai_remaining barabandan yutilgan bonusni ham o'z ichiga oladi, ai_bonus esa alohida; ai_limit — faqat tarif limiti."""
-    is_prem, _expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
+    view = await asyncio.to_thread(database.get_premium_view, user_id)
     ai_remaining, ai_limit, ai_bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
+    active = view["active"]
     return {
-        "is_premium": bool(is_prem),
-        "premium_type": (prem_type or "free") if is_prem else "free",
+        "is_premium": active,                                   # haqiqiy holat: muddati o'tgan flag — False
+        "premium_type": view["tier"] if active else "free",
+        "premium_expires_at": view["expires"].isoformat() if active and view["expires"] else None,   # muddatsizda null
+        "premium_unlimited": bool(active and view["unlimited"]),
+        "premium_days_left": view["days_left"] if active else None,    # ceil((tugash - hozir) / 1 kun); muddatsizda null
         "ai_remaining": ai_remaining,
         "ai_limit": ai_limit,
         "ai_bonus": ai_bonus,
@@ -5895,6 +6125,10 @@ async def main():
     task1 = asyncio.create_task(check_and_send_reminders())  # Feature 2: Dori eslatmalari
     background_tasks.add(task1)
     task1.add_done_callback(background_tasks.discard)
+
+    task_expiry = asyncio.create_task(premium_expiry_loop())  # Premium tugash eslatmasi (polling va webhook rejimida ham)
+    background_tasks.add(task_expiry)
+    task_expiry.add_done_callback(background_tasks.discard)
     
     # Yangi Daily Engagement tizimi
     from services import engagement_scheduler

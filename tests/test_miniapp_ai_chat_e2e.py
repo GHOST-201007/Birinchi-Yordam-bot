@@ -501,7 +501,22 @@ class AiChatE2ETest(MiniAppE2EBase):
                 for sel in (f"{LAST_BUBBLE} p", f"{LAST_BUBBLE} strong"):
                     self.assertGreaterEqual(page.evaluate(CONTRAST_JS, sel), 4.5, sel)
                 bg = page.evaluate("getComputedStyle(document.querySelector('.ai-msg--user .ai-bubble')).backgroundColor")
-                self.assertEqual(bg, "rgb(14, 124, 114)" if scheme == "light" else "rgb(61, 194, 179)")   # --primary
+                # --primary: PREMIUM (Pro) holatida aksent tarif rangida (A4: body.tier-pro), bepulda sukut teal (pastdagi test)
+                self.assertEqual(bg, "rgb(0, 113, 127)" if scheme == "light" else "rgb(77, 208, 225)")
+
+    def test_user_bubble_uses_default_primary_for_free_user_and_tier_accent_for_premium(self):
+        default = {"light": "rgb(14, 124, 114)", "dark": "rgb(61, 194, 179)"}
+        pro = {"light": "rgb(0, 113, 127)", "dark": "rgb(77, 208, 225)"}
+        for scheme in ("light", "dark"):
+            for st, expected in ((FREE, default), (PREMIUM, pro)):
+                with self.subTest(scheme=scheme, premium=st["is_premium"]):
+                    page, _ = self.open_ai(st, error(503, "busy"),
+                                           init_script=f"window.Telegram.WebApp.colorScheme = '{scheme}';")
+                    self.send(page, "Savol")
+                    page.wait_for_selector(".ai-msg--user .ai-bubble")
+                    page.wait_for_function("document.getAnimations().length === 0")
+                    bg = page.evaluate("getComputedStyle(document.querySelector('.ai-msg--user .ai-bubble')).backgroundColor")
+                    self.assertEqual(bg, expected[scheme])
 
     def test_bubble_shapes(self):
         page, _ = self.open_ai(PREMIUM)

@@ -3,6 +3,7 @@ test_admin_premium.py — admin /premium paneli: ro'yxat, qidiruv, user kartasi,
 
 DB mantig'i HAQIQIY SQL bilan (tests/sqlite_db.py); Telegram (bot.send_message / get_chat) soxta.
 """
+import asyncio
 import datetime as dt
 import inspect
 import os
@@ -14,6 +15,8 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 os.environ.setdefault("BOT_TOKEN", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890")
 os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
+
+from aiogram import types  # noqa: E402
 
 import bot as bot_mod  # noqa: E402
 import database  # noqa: E402
@@ -54,6 +57,7 @@ class PanelCase(unittest.IsolatedAsyncioTestCase):
         self.fake_bot = mock.MagicMock()
         self.fake_bot.send_message = mock.AsyncMock()
         self.fake_bot.get_chat = mock.AsyncMock()
+        self.fake_bot.set_chat_menu_button = mock.AsyncMock()        # B9: shaxsiy menyu tugmasi (fonda)
         patches = [
             self.db.patched(),
             mock.patch.object(bot_mod, "ADMIN_ID", ADMIN),
@@ -64,6 +68,9 @@ class PanelCase(unittest.IsolatedAsyncioTestCase):
             p.start()
             self.addCleanup(p.stop)
         bot_mod._pm_recent.clear()
+        bot_mod._menu_premium_done.clear()
+        bot_mod._menu_reset_done.clear()
+        bot_mod._premium_menu_cache.clear()
         self.msg_seq = 1000
         self.state = mock.MagicMock()
         self.state.set_state = mock.AsyncMock()
@@ -766,6 +773,101 @@ class RemoveTest(PanelCase):
     async def test_remove_unknown_user(self):
         cb = await self.press(bot_mod._pm_cb("z", 31337, 0, "s"))
         self.assertIn("topilmadi", self.alert(cb))
+
+
+# ───────────────────────────── B9: shaxsiy menyu tugmasi va reply menyu ─────────────────────────────
+class MenuButtonHookTest(PanelCase):
+    async def drain(self):
+        tasks = list(bot_mod._menu_reset_tasks)
+        if tasks:
+            await asyncio.wait(tasks, timeout=2)
+
+    def button_of(self, uid):
+        calls = [c for c in self.fake_bot.set_chat_menu_button.await_args_list if c.kwargs["chat_id"] == uid]
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0].kwargs["menu_button"]
+
+    async def test_grant_sets_personal_app_button_in_both_modes(self):
+        for uid, mode in ((10, "n"), (11, "s")):
+            with self.subTest(mode=mode):
+                self.add_user(uid)
+                await self.grant(uid, "plus", "30", mode, "0" if mode == "n" else "-")
+                await self.drain()
+                button = self.button_of(uid)
+                self.assertIsInstance(button, types.MenuButtonWebApp)
+                self.assertEqual(button.text, "👑 Ilova")
+                self.assertEqual(button.web_app.url, "https://app.example/index.html")      # query parametrsiz, joriy MINI_APP_URL
+                self.assertNotIn("?", button.web_app.url)
+        sent_to = [c.args[0] for c in self.fake_bot.send_message.await_args_list]
+        self.assertEqual(sent_to, [10])                                                     # Sirli rejimda xabar yo'q (tugma xabar emas)
+
+    async def test_unlimited_grant_also_sets_the_button(self):
+        self.add_user(12)
+        await self.grant(12, "ultra", "u")
+        await self.drain()
+        self.assertIsInstance(self.button_of(12), types.MenuButtonWebApp)
+
+    async def test_remove_returns_default_button_in_both_modes(self):
+        for uid, mode in ((20, "n"), (21, "s")):
+            with self.subTest(mode=mode):
+                self.add_user(uid, is_premium=1, premium_type="plus", premium_expires_at=future(days=10))
+                bot_mod._menu_reset_done.add(uid)                                           # "allaqachon tozalangan" belgisi — majburan yuboriladi
+                await self.press(bot_mod._pm_cb("z", uid, 0, mode))
+                await self.drain()
+                self.assertIsInstance(self.button_of(uid), types.MenuButtonDefault)
+
+    async def test_grant_then_remove_round_trip(self):
+        self.add_user(30)
+        await self.grant(30, "pro", "7")
+        await self.drain()
+        await self.press(bot_mod._pm_cb("z", 30, 0, "s"))
+        await self.drain()
+        kinds = [type(c.kwargs["menu_button"]) for c in self.fake_bot.set_chat_menu_button.await_args_list
+                 if c.kwargs["chat_id"] == 30]
+        self.assertEqual(kinds, [types.MenuButtonWebApp, types.MenuButtonDefault])
+
+    async def test_failed_or_blocked_grant_does_not_touch_the_button(self):
+        self.add_user(40, is_premium=1, premium_type="ultra", premium_expires_at=None)     # muddatsiz: kunlik berish bloklanadi
+        await self.press(self.confirm_data(40, "pro", "7"))
+        await self.grant(777, "pro", "7")                                                   # bazada yo'q
+        await self.drain()
+        self.fake_bot.set_chat_menu_button.assert_not_awaited()
+
+    async def test_reply_keyboard_cache_follows_admin_actions(self):
+        self.add_user(50)
+        await self.grant(50, "ultra", "30")
+        self.assertEqual(bot_mod.cached_premium_view(50), {"active": True, "tier": "ultra"})
+        self.add_user(51, is_premium=1, premium_type="plus", premium_expires_at=future(days=5))
+        await self.press(bot_mod._pm_cb("z", 51, 0, "s"))
+        self.assertEqual(bot_mod.cached_premium_view(51), {"active": False, "tier": "free"})
+        # Ustun tarif saqlansa — yakuniy tarif keshga yoziladi
+        self.add_user(52, is_premium=1, premium_type="ultra", premium_expires_at=future(days=10))
+        await self.grant(52, "pro", "3")
+        self.assertEqual(bot_mod.cached_premium_view(52), {"active": True, "tier": "ultra"})
+
+    async def test_telegram_error_in_button_update_does_not_break_the_admin_flow(self):
+        self.add_user(60)
+        self.fake_bot.set_chat_menu_button.side_effect = RuntimeError("Telegram ishlamayapti")
+        with self.assertLogs(level="WARNING"):
+            cb = await self.grant(60, "pro", "7")
+            await self.drain()
+        self.assertIn("Premium berildi", self.edited(cb)[0])                                # admin ekrani normal
+        self.assertEqual(self.row(60)["premium_type"], "pro")
+
+    async def test_button_update_is_not_awaited_inside_the_admin_response(self):
+        self.add_user(61)
+        gate = asyncio.Event()
+
+        async def blocked(**kwargs):
+            await gate.wait()
+
+        self.fake_bot.set_chat_menu_button.side_effect = blocked
+        with mock.patch.object(bot_mod, "MENU_RESET_TIMEOUT", 30.0):
+            cb = await self.grant(61, "pro", "7")
+            self.assertIn("Premium berildi", self.edited(cb)[0])                            # tugma javobni kechiktirmadi
+            self.assertTrue(any(not t.done() for t in bot_mod._menu_reset_tasks))
+            gate.set()
+            await self.drain()
 
 
 # ───────────────────────────── DB yordamchilari ─────────────────────────────

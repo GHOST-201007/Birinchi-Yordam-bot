@@ -5,6 +5,7 @@ import html
 import json
 import os
 import logging
+import math
 import random
 import threading
 import time as _time
@@ -143,7 +144,8 @@ def init_db():
                 last_spin_date TEXT,
                 has_discount INTEGER DEFAULT 0,
                 pending_spin_prize INTEGER,
-                spin_ai_bonus INTEGER DEFAULT 0
+                spin_ai_bonus INTEGER DEFAULT 0,
+                premium_expiry_notified_for TEXT
             )
         ''')
 
@@ -224,6 +226,9 @@ def init_db():
 
         # Migratsiya: Omad barabanidan yutilgan bonus AI savollar (muddatsiz, ishlatilguncha saqlanadi)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS spin_ai_bonus INTEGER DEFAULT 0")
+
+        # Migratsiya: tugashidan oldingi eslatma qaysi premium_expires_at uchun yuborilgani (takrorlanmasligi uchun)
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expiry_notified_for TEXT")
 
         conn.commit()
 
@@ -633,24 +638,44 @@ ADMIN_PAGE_SIZE = 10
 _ADMIN_TIERS = ("pro", "plus", "ultra")
 
 
+def premium_days_left(expires, now=None) -> int:
+    """Qolgan kun: ceil((tugash - hozir) / 1 kun). Vaqt Toshkent (UTC+5) bo'yicha (aware datetime'lar farqi). Tugagan -> 0."""
+    now = now or get_uz_now()
+    return max(0, math.ceil((expires - now).total_seconds() / 86400))
+
+
 def admin_premium_view(is_premium, premium_type, expires_at, now=None) -> dict:
-    """Foydalanuvchining HAQIQIY Premium holati (admin paneli uchun):
-    {"active", "tier" ('free'|'pro'|'plus'|'ultra'), "unlimited", "expires" (datetime | None)}.
+    """Foydalanuvchining HAQIQIY Premium holati — bot, API va admin paneli uchun YAGONA manba:
+    {"active", "tier" ('free'|'pro'|'plus'|'ultra'), "unlimited", "expires" (datetime | None),
+     "days_left" (int | None — muddatsiz/oddiyda None), "ends_today" (24 soatdan kam qolgan)}.
     Kvota kodi (get_ai_quota / try_consume_daily_request) bilan bir xil qoida: muddatsiz premium (is_premium=1,
     muddat bo'sh) premium_type bo'yicha hisoblanadi (noma'lum tur -> ultra); muddati o'tgan premium — oddiy."""
-    free = {"active": False, "tier": "free", "unlimited": False, "expires": None}
+    free = {"active": False, "tier": "free", "unlimited": False, "expires": None, "days_left": None,
+            "ends_today": False}
     if not is_premium:
         return free
     tier = premium_type if premium_type in _ADMIN_TIERS else "ultra"
     if not expires_at:
-        return {"active": True, "tier": tier, "unlimited": True, "expires": None}
+        return {"active": True, "tier": tier, "unlimited": True, "expires": None, "days_left": None,
+                "ends_today": False}
     try:
         expires = _to_uz_datetime(expires_at)
     except (ValueError, TypeError):
         return free
-    if expires <= (now or get_uz_now()):
+    now = now or get_uz_now()
+    if expires <= now:
         return free
-    return {"active": True, "tier": tier, "unlimited": False, "expires": expires}
+    return {"active": True, "tier": tier, "unlimited": False, "expires": expires,
+            "days_left": premium_days_left(expires, now), "ends_today": (expires - now).total_seconds() < 86400}
+
+
+def get_premium_view(user_id: int) -> dict:
+    """admin_premium_view foydalanuvchi uchun (faqat o'qiydi: register_user ham, muddati o'tgan flagni tozalash ham yo'q).
+    Foydalanuvchi bazada bo'lmasa — oddiy."""
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT is_premium, premium_type, premium_expires_at FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+    return admin_premium_view(*row) if row else admin_premium_view(0, None, None)
 
 
 def _admin_user_record(row) -> dict:
@@ -772,6 +797,78 @@ def admin_grant_premium(user_id: int, tier: str, days) -> dict:
         conn.commit()
         result.update(ok=True, tier=final_tier, expires=until, unlimited=False, kept_higher=final_tier != tier)
     return result
+
+
+# ── Tugashidan oldingi eslatma va muddati o'tgan Premiumni yopish (bot.py: premium_expiry_loop) ──
+PREMIUM_EXPIRY_BATCH = 200
+PREMIUM_EXPIRY_WINDOW_SECONDS = 24 * 3600
+
+
+def premium_expiry_candidates(now=None, limit: int = PREMIUM_EXPIRY_BATCH) -> dict:
+    """Muddatli Premiumlar (is_premium=1, muddat bor) ichidan:
+      * "notify"  — hali faol, qolgan vaqt <= 24 soat va BU muddat uchun eslatma yuborilmagan (ban holatini
+        chaqiruvchi is_user_banned bilan tekshiradi: vaqtinchalik ban muddati ham hisobga olinadi);
+      * "expired" — muddati o'tgan (flag hali 1).
+    Muddatsiz va oddiy foydalanuvchilar umuman kirmaydi. Har ro'yxat ko'pi bilan `limit` ta.
+    Elementlar: dict(user_id, tier, expires (datetime), expires_raw (bazadagi qiymat), full_name)."""
+    now = now or get_uz_now()
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "SELECT user_id, premium_type, premium_expires_at, full_name, premium_expiry_notified_for "
+            "FROM users WHERE is_premium = 1 AND premium_expires_at IS NOT NULL"
+        )
+        rows = c.fetchall()
+    notify, expired = [], []
+    for user_id, premium_type, expires_raw, full_name, notified_for in rows:
+        view = admin_premium_view(1, premium_type, expires_raw, now)
+        if view["unlimited"]:
+            continue
+        if not view["active"]:
+            try:
+                expires = _to_uz_datetime(expires_raw)
+            except (ValueError, TypeError):
+                continue
+            if len(expired) < limit:
+                expired.append({"user_id": user_id, "tier": premium_type if premium_type in _ADMIN_TIERS else "pro",
+                                "expires": expires, "expires_raw": expires_raw, "full_name": full_name})
+            continue
+        if len(notify) >= limit:
+            continue
+        if (view["expires"] - now).total_seconds() > PREMIUM_EXPIRY_WINDOW_SECONDS:
+            continue
+        if notified_for == view["expires"].isoformat():
+            continue
+        notify.append({"user_id": user_id, "tier": view["tier"], "expires": view["expires"],
+                       "expires_raw": expires_raw, "full_name": full_name})
+    return {"notify": notify, "expired": expired}
+
+
+def claim_premium_expiry_notice(user_id: int, expires_iso: str) -> bool:
+    """Eslatmani ATOMAR belgilaydi: faqat shu muddat uchun hali belgilanmagan bo'lsa True (bir nechta jarayon bo'lsa ham
+    xabar bitta ketadi). Muddat uzaytirilsa qiymat o'zgaradi va eslatma yana ishlaydi."""
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "UPDATE users SET premium_expiry_notified_for = %s WHERE user_id = %s "
+            "AND premium_expiry_notified_for IS DISTINCT FROM %s",
+            (expires_iso, user_id, expires_iso)
+        )
+        claimed = c.rowcount == 1
+        conn.commit()
+    return claimed
+
+
+def close_expired_premium(user_id: int, expires_raw) -> bool:
+    """Muddati o'tgan Premium flagini yopadi (get_premium_info dagi kabi), lekin faqat muddat hamon o'sha qiymat bo'lsa
+    (parallel uzaytirishni buzmaydi). True — yopildi."""
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "UPDATE users SET is_premium = 0, premium_type = 'free' "
+            "WHERE user_id = %s AND is_premium = 1 AND premium_expires_at = %s",
+            (user_id, expires_raw)
+        )
+        closed = c.rowcount == 1
+        conn.commit()
+    return closed
 
 
 # New helper functions for medicine score and premium awarding

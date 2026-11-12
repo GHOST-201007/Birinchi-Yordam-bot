@@ -66,6 +66,17 @@ Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u ye
 - Har bir o'zgarish logda: `journalctl -u birinchi-yordam-bot | grep "ADMIN PREMIUM"` (admin, user, tarif, muddat, rejim). Bazaga tarix yozilmaydi. Yangi env o'zgaruvchi va migratsiya yo'q.
 - "Xabar bilan" rejimida user botni bloklagan bo'lsa Premium baribir beriladi/olinadi, adminga ogohlantirish chiqadi.
 
+### Premium ko'rinib turishi (mini app va bot)
+Premiumi bor foydalanuvchi buni mini appda ham, botda ham doim ko'radi; bepul foydalanuvchida hech narsa o'zgarmaydi.
+- **Holat bitta joydan:** `database.admin_premium_view` / `get_premium_view(user_id)` (muddati o'tgan flag — oddiy, muddatsiz ham to'g'ri; `days_left` = `ceil((tugash - hozir) / 1 kun)`, Toshkent vaqti). Bot ham, API ham shundan foydalanadi.
+- **Mini app:** `/api/state` (va ai/pro_day sovrinli `/api/spin/claim`) ga `premium_expires_at` (muddatsizda `null`), `premium_unlimited`, `premium_days_left` qo'shildi. Header belgisi (`Ultra · 5 kun` / `· ♾` / `· bugun`), Sog'liq tabida "Mening Premiumim" kartasi, tugashiga ≤ 2 kun qolganda bosh ekran banneri (yopilgani `premium_expires_at` bo'yicha eslab qolinadi), tarif rangidagi aksent (`body.tier-pro|plus|ultra`).
+- **Bot:** reply menyudagi `💎 Premium` tugmasi tarifga mos (`⭐ Premium Pro` / `💎 Premium Plus` / `👑 Premium Ultra`; kun soni yozilmaydi); `/start` salomiga bitta qator; Premiumi borga "Mening obunam" sahifasi (muddatsiz endi sotuv sahifasiga tushmaydi).
+- **Tugash eslatmasi:** fon vazifasi (`premium_expiry_loop`, polling va webhook rejimida ham) soatiga bir marta tekshiradi: faol, muddatli Premium va qolgan vaqt ≤ 24 soat bo'lsa bitta xabar (`🔄 Uzaytirish` tugmasi bilan). Takrorlanmasligi uchun **yangi ustun `users.premium_expiry_notified_for TEXT`** — `init_db()` o'zi qo'shadi (`ADD COLUMN IF NOT EXISTS`), qo'lda hech narsa kerak emas. Muddatsiz, bepul va ban qilinganlarga yuborilmaydi; bir tekshiruvda ko'pi bilan 200 ta. Muddati o'tganlar shu vazifada yopiladi (xabarsiz). Yangi env o'zgaruvchi yo'q.
+- **Chap pastdagi shaxsiy tugma:** `/start` da Premium faol bo'lsa `👑 Ilova` (faqat joriy `MINI_APP_URL`, query parametrsiz), aks holda eski shaxsiy tugma tozalanadi (mavjud mexanizm saqlangan). Admin Premium bersa — tugma qo'yiladi, olib tashlasa yoki muddat tugasa — Default ga qaytadi. Hammasi fonda, timeout bilan.
+  - `MINI_APP_URL` o'zgarsa: Premium userlarning shaxsiy tugmasi bot restartdan keyin ular `/start` bosganda yangilanadi.
+  - ⚠️ `scripts/reset_menu_buttons.py` ni qayta ishga tushirsangiz, Premium userlarning `👑 Ilova` tugmasi ham tozalanadi (ular `/start` bossa qaytadi).
+- "🔄 Uzaytirish" mavjud xarid tugmalarini ko'rsatadi; mavjud siyosat bo'yicha faol Premiumda joriy tarifga teng yoki past tarif sotib olinmaydi (`check_premium_purchase_eligibility`) — bu o'zgartirilmagan.
+
 ### Omad baraboni (8 sovrin)
 Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.
 

@@ -268,21 +268,170 @@ function setGlobalScore(value) {
     }
 }
 
-// Headerdagi Premium ko'rsatkichi (/api/state: is_premium, premium_type)
-const PREMIUM_TIER_NAMES = { pro: 'Premium Pro', plus: 'Premium Plus', ultra: 'Premium Ultra' };
+// ═══════════════════════════════════════════════════════════════════
+// PREMIUM KO'RINISHI (A1–A4): header belgisi, "Mening Premiumim" kartasi, tugash banneri, tarif rangi.
+// Hammasi /api/state dagi HAQIQIY holatdan: is_premium, premium_type, premium_expires_at (muddatsizda null),
+// premium_unlimited, premium_days_left (muddatsizda null), ai_remaining / ai_limit / ai_bonus.
+// Matnlar textContent bilan qo'yiladi; ikonkalar sprite'dan (emoji emas). Bepul foydalanuvchida hech narsa ko'rinmaydi.
+// ═══════════════════════════════════════════════════════════════════
+const PREMIUM_TIER_KEYS = ['pro', 'plus', 'ultra'];
+const PREMIUM_TIERS = {
+    pro: { name: 'Pro', icon: 'star' },
+    plus: { name: 'Plus', icon: 'gem' },
+    ultra: { name: 'Ultra', icon: 'crown' }
+};
+const PREMIUM_BANNER_KEY = 'premium_banner_dismissed';       // yopilgan banner: shu premium_expires_at qiymati uchun
+const PREMIUM_BANNER_DAYS = 2;                                 // 2 kun yoki undan kam qolganda
+
+// Holatdan Premium ma'lumoti yoki null (bepul / noma'lum tarif). Muddat maydonlari bo'lmasa (eski server) — faqat tarif.
+function premiumInfo(s) {
+    if (!s || !s.is_premium || !PREMIUM_TIERS[s.premium_type]) return null;
+    const unlimited = s.premium_unlimited === true;
+    const expires = (typeof s.premium_expires_at === 'string' && s.premium_expires_at) ? s.premium_expires_at : null;
+    const days = (typeof s.premium_days_left === 'number') ? s.premium_days_left : null;
+    const hasTerm = !unlimited && expires !== null && days !== null;
+    const meta = PREMIUM_TIERS[s.premium_type];
+    return {
+        tier: s.premium_type, name: meta.name, icon: meta.icon,
+        unlimited: unlimited, expires: expires, days: days, hasTerm: hasTerm,
+        // Server qolgan kunni ceil((tugash - hozir) / 1 kun) deb beradi: 1 — tugashiga 24 soatdan oshmagan, ya'ni
+        // "bugun tugaydi". Qurilma soatiga tayanilmaydi (soat noto'g'ri bo'lsa ham matn server bilan mos qoladi)
+        today: hasTerm && days <= 1
+    };
+}
+
+// Header: "Ultra · 5 kun" | "Ultra · ♾" | "Ultra · bugun" | "Ultra" (muddat noma'lum)
+function premiumShortText(p) {
+    if (p.unlimited) return `${p.name} · ♾`;
+    if (!p.hasTerm) return p.name;
+    return p.today ? `${p.name} · bugun` : `${p.name} · ${p.days} kun`;
+}
+
+// "2026-12-15T18:00:00+05:00" -> "15.12.2026" (server Toshkent vaqtida beradi; qurilma mintaqasiga bog'liq emas)
+function premiumDateText(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
+}
+
+// Qolgan kunlar chizig'ining to'liq uzunligi: 1–7 kun -> 7, 8–30 kun -> 30, undan ko'p -> 90
+function premiumBarMax(days) {
+    return days <= 7 ? 7 : (days <= 30 ? 30 : 90);
+}
+
+function openPremiumModalFromUi() {
+    const btn = document.getElementById('btn-open-premium');       // mavjud Premium oynasi (#premium-modal)
+    if (btn) btn.click();
+}
+
 function setPremiumBadge(s) {
     const el = document.getElementById('hdr-premium');
     const nameEl = document.getElementById('hdr-premium-name');
-    if (!el || !nameEl) return;
-    if (s && s.is_premium) {
-        nameEl.textContent = PREMIUM_TIER_NAMES[s.premium_type] || 'Premium';
-        el.hidden = false;
-    } else {
-        el.hidden = true;
+    if (el && nameEl) {
+        PREMIUM_TIER_KEYS.forEach((t) => el.classList.remove('hdr-premium--' + t));
+        const p = premiumInfo(s);
+        if (p) {
+            nameEl.textContent = premiumShortText(p);
+            el.classList.add('hdr-premium--' + p.tier);
+            const use = el.querySelector('use');
+            if (use) use.setAttribute('href', '#i-' + p.icon);
+            el.setAttribute('aria-label', `Premium ${p.name}`);
+            el.hidden = false;
+        } else {
+            el.removeAttribute('aria-label');
+            el.hidden = true;
+        }
     }
     const banner = document.getElementById('btn-open-premium');
     if (banner) banner.hidden = !!(s && s.is_premium);
 }
+
+// A2: Sog'liq tabining tepasidagi "Mening Premiumim" kartasi
+function renderPremiumCard(s) {
+    const card = document.getElementById('my-premium');
+    if (!card) return;
+    const p = premiumInfo(s);
+    if (!p) { card.hidden = true; return; }
+    card.hidden = false;
+    document.getElementById('mp-tier').textContent = `Premium ${p.name}`;
+    const use = card.querySelector('.mp-badge use');
+    if (use) use.setAttribute('href', '#i-' + p.icon);
+    document.getElementById('mp-until').textContent = p.unlimited ? 'Muddatsiz' : premiumDateText(p.expires);
+
+    const bar = document.getElementById('mp-bar');
+    const left = document.getElementById('mp-left');
+    if (p.hasTerm) {
+        const max = premiumBarMax(p.days);
+        const now = Math.min(Math.max(p.days, 0), max);
+        bar.setAttribute('aria-valuemax', String(max));
+        bar.setAttribute('aria-valuenow', String(now));
+        bar.setAttribute('aria-valuetext', p.today ? 'Bugun tugaydi' : `${p.days} kun qoldi`);
+        bar.style.setProperty('--mp-pct', String(Math.round((now / max) * 100)));
+        bar.hidden = false;
+        left.textContent = p.today ? 'Bugun tugaydi' : `${p.days} kun qoldi`;
+        left.hidden = false;
+    } else {
+        bar.hidden = true;                                    // muddatsiz yoki muddat noma'lum: chiziq ma'nosiz
+        left.textContent = p.unlimited ? 'Muddatsiz' : '';
+        left.hidden = !p.unlimited;
+    }
+
+    const ai = document.getElementById('mp-ai');
+    if (typeof s.ai_remaining === 'number' && typeof s.ai_limit === 'number') {
+        const bonus = Number(s.ai_bonus) || 0;                // ai_remaining bonusni ham o'z ichiga oladi
+        ai.textContent = `Bugungi AI limit: ${Math.max(0, s.ai_remaining - bonus)}/${s.ai_limit}` +
+            (bonus > 0 ? ` + ${bonus} bonus` : '');
+        ai.hidden = false;
+    } else {
+        ai.hidden = true;
+    }
+    document.getElementById('mp-extend').hidden = p.unlimited;   // muddatsizda uzaytirish yo'q
+}
+
+// A3: bosh ekran tepasida tugash ogohlantirishi (muddatli, <= 2 kun). Yopilishi shu premium_expires_at uchun saqlanadi
+function renderPremiumBanner(s) {
+    const banner = document.getElementById('prem-banner');
+    if (!banner) return;
+    const p = premiumInfo(s);
+    const show = !!p && !p.unlimited && p.hasTerm && p.days <= PREMIUM_BANNER_DAYS &&
+        SafeStorage.getItem(PREMIUM_BANNER_KEY) !== p.expires;
+    banner.hidden = !show;
+    if (show) {
+        banner.dataset.expires = p.expires;
+        document.getElementById('prem-banner-text').textContent = p.today
+            ? 'Premiumingiz bugun tugaydi'
+            : `Premiumingiz ${p.days} kundan keyin tugaydi`;
+    }
+}
+
+// A4: tarif rangidagi aksent (faqat --primary / --on-primary / --primary-soft); Premium tugasa klass olib tashlanadi
+function applyPremiumTier(s) {
+    const p = premiumInfo(s);
+    PREMIUM_TIER_KEYS.forEach((t) => document.body.classList.remove('tier-' + t));
+    if (p) document.body.classList.add('tier-' + p.tier);
+    MainButtonCtl.refreshColors();                            // Telegram MainButton rangi ham tarifga mos
+}
+
+function renderPremiumUi(s) {
+    setPremiumBadge(s);
+    renderPremiumCard(s);
+    renderPremiumBanner(s);
+    applyPremiumTier(s);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const extend = document.getElementById('mp-extend');
+    if (extend) extend.addEventListener('click', openPremiumModalFromUi);
+    const bannerExtend = document.getElementById('prem-banner-extend');
+    if (bannerExtend) bannerExtend.addEventListener('click', openPremiumModalFromUi);
+    const bannerClose = document.getElementById('prem-banner-close');
+    if (bannerClose) {
+        bannerClose.addEventListener('click', () => {
+            const banner = document.getElementById('prem-banner');
+            if (banner && banner.dataset.expires) SafeStorage.setItem(PREMIUM_BANNER_KEY, banner.dataset.expires);
+            if (banner) banner.hidden = true;
+        });
+    }
+});
 
 // Mini app ochilganda (menyu tugmasidan ham — URL'da hech narsa bo'lmaydi) ball serverdan olinadi
 document.addEventListener('DOMContentLoaded', () => {
@@ -1074,7 +1223,7 @@ function todayStateFromUrl() {
     };
 }
 
-onAppStateChange((s) => { setPremiumBadge(s); renderTodayCard(s); renderAiOffer(s); renderAiQuota(s); });
+onAppStateChange((s) => { renderPremiumUi(s); renderTodayCard(s); renderAiOffer(s); renderAiQuota(s); });
 document.addEventListener('DOMContentLoaded', () => {
     getAppState(60000).then((s) => renderTodayCard(s || todayStateFromUrl()));
 });
@@ -3472,7 +3621,8 @@ function initWheelOfFortune() {
     // qo'shimcha /api/state so'rovisiz yoziladi (header nishoni va AI tab sarlavhasi tinglovchilar orqali yangilanadi)
     function applyClaimedState(r) {
         const patch = {};
-        ['is_premium', 'premium_type', 'ai_remaining', 'ai_limit', 'ai_bonus'].forEach((k) => {
+        ['is_premium', 'premium_type', 'premium_expires_at', 'premium_unlimited', 'premium_days_left',
+         'ai_remaining', 'ai_limit', 'ai_bonus'].forEach((k) => {
             if (r[k] !== undefined) patch[k] = r[k];
         });
         if (Object.keys(patch).length) patchAppState(patch);

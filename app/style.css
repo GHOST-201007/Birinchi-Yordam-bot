@@ -32,6 +32,11 @@
     --fs-caption: 12px; --fs-body: 15px; --fs-title: 17px; --fs-h2: 22px; --fs-display: 34px;
     --shadow-card: 0 1px 2px rgba(15, 42, 46, .04), 0 4px 16px rgba(15, 42, 46, .05);
     --ease: cubic-bezier(.2, .8, .2, 1);
+
+    /* Premium tarif ranglari (A1/A4): Pro — teal, Plus — binafsha, Ultra — oltin. Har juftlik kontrasti >= 4.5:1 */
+    --tier-pro: #00717F; --tier-pro-on: #FFFFFF; --tier-pro-soft: #D3EEF2;
+    --tier-plus: #6A3DB8; --tier-plus-on: #FFFFFF; --tier-plus-soft: #E7DDF7;
+    --tier-ultra: #8A5A00; --tier-ultra-on: #FFFFFF; --tier-ultra-soft: #FBECC9;
     color-scheme: light;
 }
 
@@ -45,8 +50,17 @@ body.dark-mode {
     --info: #7CC4F2; --info-soft: #12304A;
     --on-danger: #2A0E0E;
     --shadow-card: none;
+    --tier-pro: #4DD0E1; --tier-pro-on: #04232A; --tier-pro-soft: #123A40;
+    --tier-plus: #B79CFF; --tier-plus-on: #170C3A; --tier-plus-soft: #2B2352;
+    --tier-ultra: #F5B544; --tier-ultra-on: #231600; --tier-ultra-soft: #3B2C10;
     color-scheme: dark;
 }
+
+/* A4: Premium foydalanuvchida aksent rangi tarifga mos. FAQAT aksent (--primary, --on-primary, --primary-soft):
+   fon va matn ranglari o'zgarmaydi. body.dark-mode dan KEYIN turishi shart (bir xil o'ziga xoslik). Bepulda klass yo'q. */
+body.tier-pro { --primary: var(--tier-pro); --on-primary: var(--tier-pro-on); --primary-soft: var(--tier-pro-soft); }
+body.tier-plus { --primary: var(--tier-plus); --on-primary: var(--tier-plus-on); --primary-soft: var(--tier-plus-soft); }
+body.tier-ultra { --primary: var(--tier-ultra); --on-primary: var(--tier-ultra-on); --primary-soft: var(--tier-ultra-soft); }
 
 /* ESKI o'zgaruvchi nomlari — yangi tokenlarga bog'langan (faqat body ichida ishlatiladi). */
 body {
@@ -2208,6 +2222,118 @@ body.dark-mode .fig-views button[aria-pressed="true"] { background: var(--surfac
 .premium-row[hidden] { display: none; }
 .premium-row > .icon:first-child { width: 18px; height: 18px; color: var(--warning); }
 .premium-row-text { flex: 1; text-align: left; }
+
+/* ═══ Premium ko'rinishi: tarif belgisi (A1), "Mening Premiumim" kartasi (A2), tugash banneri (A3) ═══
+   Tarif ranglari :root / body.dark-mode dagi --tier-* tokenlarida; body.tier-* klasslari (A4) faqat aksent
+   (--primary / --on-primary / --primary-soft) ni almashtiradi — fon va matn ranglari o'zgarmaydi. */
+.hdr-premium--pro { background: var(--tier-pro-soft); color: var(--tier-pro); }
+.hdr-premium--plus { background: var(--tier-plus-soft); color: var(--tier-plus); }
+.hdr-premium--ultra { background: var(--tier-ultra-soft); color: var(--tier-ultra); }
+
+.my-premium {
+    margin-bottom: var(--s-3);
+    padding: var(--s-4);
+    border: 1.5px solid var(--primary);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+.my-premium[hidden] { display: none; }
+.mp-head { display: flex; align-items: center; gap: var(--s-3); }
+.mp-badge {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-pill);
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+.mp-badge .icon { width: 22px; height: 22px; }
+.mp-titles { flex: 1; min-width: 0; }
+.mp-kicker { margin: 0; font: 700 var(--fs-caption) var(--font); color: var(--text-2); }
+.mp-tier { margin: 0; font: 800 var(--fs-title) var(--font); color: var(--text); }
+.mp-until { flex: none; font: 800 14px var(--font); color: var(--primary); }
+.mp-bar {
+    height: 8px;
+    margin-top: var(--s-3);
+    border-radius: var(--r-pill);
+    background: var(--primary-soft);
+    overflow: hidden;
+}
+.mp-bar[hidden] { display: none; }
+.mp-bar-fill {
+    display: block;
+    height: 100%;
+    width: calc(var(--mp-pct, 0) * 1%);
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width .5s var(--ease);
+}
+.mp-left { margin: var(--s-2) 0 0; font: 700 14px var(--font); color: var(--text); }
+.mp-left[hidden], .mp-ai[hidden] { display: none; }
+.mp-ai { margin: var(--s-1) 0 0; font: 600 13px var(--font); color: var(--text-2); }
+.mp-extend {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: var(--s-3);
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--primary);
+    color: var(--on-primary);
+    font: 800 15px var(--font);
+    cursor: pointer;
+}
+.mp-extend[hidden] { display: none; }
+
+.prem-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: 44px;
+    margin-bottom: var(--s-3);
+    padding: 0 var(--s-1) 0 var(--s-3);
+    border: 1.5px solid var(--primary);
+    border-radius: var(--r-md);
+    background: var(--primary-soft);
+    color: var(--text);
+    font: 700 13px var(--font);
+}
+.prem-banner[hidden] { display: none; }
+.prem-banner > .icon { flex: none; width: 18px; height: 18px; color: var(--primary); }
+.prem-banner-text { flex: 1; min-width: 0; text-align: left; }
+.prem-banner-btn {
+    flex: none;
+    min-height: 44px;
+    padding: 0 var(--s-3);
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--primary);
+    color: var(--on-primary);
+    font: 800 13px var(--font);
+    cursor: pointer;
+}
+.prem-banner-close {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.prem-banner-close .icon { width: 18px; height: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+    .mp-bar-fill { transition: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .fig-label { transition: none; }

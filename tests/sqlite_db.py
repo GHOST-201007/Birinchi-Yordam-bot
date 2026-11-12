@@ -39,7 +39,10 @@ CREATE TABLE users (
     last_spin_date TEXT,
     has_discount INTEGER DEFAULT 0,
     pending_spin_prize INTEGER,
-    spin_ai_bonus INTEGER DEFAULT 0
+    spin_ai_bonus INTEGER DEFAULT 0,
+    premium_expiry_notified_for TEXT,
+    is_banned INTEGER DEFAULT 0,
+    banned_until TEXT
 )
 """
 

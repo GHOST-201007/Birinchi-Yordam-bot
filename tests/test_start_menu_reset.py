@@ -24,11 +24,18 @@ import bot  # noqa: E402
 
 USER_ID = 900000701
 METHOD = SetChatMenuButton(chat_id=1, menu_button=types.MenuButtonDefault())
+FREE_VIEW = bot.database.admin_premium_view(0, None, None)
 
 
 class StartMenuResetTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         bot._menu_reset_done.clear()
+        bot._menu_premium_done.clear()
+        bot._premium_menu_cache.clear()
+        # /start Premium holatini o'qiydi (admin_premium_view): haqiqiy bazaga murojaat qilinmasligi uchun
+        patcher = mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.menu_call = mock.AsyncMock(return_value=True)
         self.message = mock.MagicMock()
         self.message.text = "/start"
