@@ -377,6 +377,7 @@ class ModeSelectionTest(unittest.IsolatedAsyncioTestCase):
         self.scheduler = mock.MagicMock()
         self.set_commands = mock.AsyncMock()
         self.reminders = mock.AsyncMock()
+        self.expiry_loop = mock.AsyncMock()
         clean = {k: v for k, v in os.environ.items() if k not in ("WEBHOOK_BASE_URL", "WEBHOOK_SECRET")}
         clean.update(env)
         fake_scheduler_module = types.SimpleNamespace(start_scheduler=self.scheduler)
@@ -388,6 +389,7 @@ class ModeSelectionTest(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(bot_mod.medicine_db, "init_medicine_db"),
             mock.patch.object(bot_mod, "set_bot_commands", self.set_commands),
             mock.patch.object(bot_mod, "check_and_send_reminders", self.reminders),
+            mock.patch.object(bot_mod, "premium_expiry_loop", self.expiry_loop),
             mock.patch.object(bot_mod, "start_web_server", self.start_web),
             mock.patch.object(bot_mod, "run_webhook", self.run_webhook),
             # Haqiqiy modul APScheduler talab qiladi; test muhitida u bo'lmasligi mumkin — soxta modul qo'yiladi
@@ -425,6 +427,7 @@ class ModeSelectionTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0)
                 self.set_commands.assert_awaited_once()
                 self.reminders.assert_called_once()
+                self.expiry_loop.assert_called_once()                       # Premium tugash eslatmasi ikkala rejimda ham
                 self.scheduler.assert_called_once()
                 self.assertEqual(self.dp.message.outer_middleware.call_count, 3)
                 self.assertEqual(self.dp.callback_query.outer_middleware.call_count, 3)

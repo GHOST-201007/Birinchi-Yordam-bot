@@ -21,6 +21,7 @@ import bot  # noqa: E402
 USER_ID = 900000601
 FREE_USER = {"is_premium": 0, "premium_type": "free"}
 PRO_USER = {"is_premium": 1, "premium_type": "pro"}
+FREE_VIEW = bot.database.admin_premium_view(0, None, None)      # /start Premium holatini o'qiydi
 
 
 class DeepLinkBase(unittest.TestCase):
@@ -35,6 +36,7 @@ class DeepLinkBase(unittest.TestCase):
         has_discount_mock = mock.MagicMock(return_value=has_discount)
         with mock.patch.dict(os.environ, env or {"PRO_MONTHLY_STARS": "150"}), \
              mock.patch.object(bot.database, "register_user"), \
+             mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW), \
              mock.patch.object(bot.database, "get_user_info", return_value=user_info), \
              mock.patch.object(bot.database, "has_discount", has_discount_mock):
             asyncio.run(bot.cmd_start(message, state))
