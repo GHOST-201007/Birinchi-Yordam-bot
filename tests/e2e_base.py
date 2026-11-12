@@ -94,8 +94,10 @@ def sequence(*specs):
     return next_spec
 
 
-STATE_OK = {"ok": True, "score": 7, "streak": 1, "daily_claimed": False, "prize": 5, "cooldown_seconds": 0}
-CLAIM_OK = {"ok": True, "message": "Tabriklaymiz! +5 ball", "score": 12, "is_super": False}
+STATE_OK = {"ok": True, "score": 7, "streak": 1, "daily_claimed": False, "prize": 5, "prize_type": "points",
+            "cooldown_seconds": 0}
+CLAIM_OK = {"ok": True, "message": "Tabriklaymiz! +5 ball", "score": 12, "is_super": False,
+            "prize": 5, "prize_type": "points", "points": 5, "tip": None}
 
 
 @unittest.skipIf(sync_playwright is None, "playwright o'rnatilmagan")

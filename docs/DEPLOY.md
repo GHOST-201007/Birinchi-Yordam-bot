@@ -59,6 +59,24 @@ Har so'rovda `init_data` (Telegram WebApp imzosi) tekshiriladi; foydalanuvchi uc
 Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/state -H 'Content-Type: application/json' -d '{"init_data":"buzuq"}'` → `403`.
 Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u yerda URL-parametr zaxira yo'lida ishlaydi.
 
+### Omad baraboni (8 sovrin)
+Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.
+
+| Kod (`pending_spin_prize`) | Sovrin | Ehtimol |
+|---|---|---|
+| 1 / 2 / 3 / 5 | shuncha ball | 35% / 20% / 12% / 5% |
+| -2 | 💡 kun maslahati (ball yo'q, `data/spin_tips.json` dan) | 15% |
+| -1 | 🤖 +1 bepul AI savol (`users.spin_ai_bonus`) | 10% |
+| -3 | ⭐ 1 kunlik Premium Pro (faol Plus/Ultra tarifi pasaymaydi, muddati +1 kun) | 2% |
+| 0 | 🏆 SUPER: Premium Plus (30 kun) uchun 50% chegirma | 1% |
+
+- **Migratsiya:** `users.spin_ai_bonus INTEGER DEFAULT 0` — `init_db()` bot ishga tushganda o'zi qo'shadi (`ADD COLUMN IF NOT EXISTS`), qo'lda hech narsa qilinmaydi. `pending_spin_prize` turi o'zgarmagan (INTEGER). Yangi env o'zgaruvchi yo'q.
+- **Eski holat:** deploy paytida bazada `pending_spin_prize = 10` turgan bo'lsa u o'zgartirilmay +10 ball beriladi; noma'lum qiymat — +1 ball.
+- **`data/spin_tips.json`** (40 ta maslahat) repo bilan keladi. Fayl yo'q/buzuq bo'lsa bitta zaxira maslahat ko'rsatiladi (logda xato).
+- **AI kvota tartibi** (bot va mini app umumiy): bepul 1 ta yoki tarif kunlik limiti → u tugagach `spin_ai_bonus`. Xatoda savol o'sha manbaga qaytariladi. Bonus muddatsiz. `ai_remaining` bonusni o'z ichiga oladi, `ai_limit` — faqat tarif limiti, `ai_bonus` alohida.
+- **Mini App API:** `/api/state` → `prize` (kod) + `prize_type` (`points|tip|ai|pro_day|super`) + `ai_bonus`; `/api/spin/claim` → `prize`, `prize_type`, `points`, `tip` (ai/pro_day da yana Premium holati va AI hisoblagichi); `/api/ai/chat` → `bonus`.
+- **⚠️ Eski kodga qaytarishdan OLDIN** (rollback): eski kod `pending_spin_prize` ning noma'lum qiymatini (-1, -2, -3) 10 ball deb beradi. Avval serverda: `UPDATE users SET pending_spin_prize = NULL WHERE pending_spin_prize < 0;` (ustun `spin_ai_bonus` qolaveradi — zararsiz).
+
 ### Telegram webhook (ixtiyoriy — polling o'rniga)
 Standart rejim — **polling** (hech narsa o'zgarmaydi). `.env` da quyidagi **ikkalasi** ham berilsa, bot **webhook** rejimida ishlaydi:
 

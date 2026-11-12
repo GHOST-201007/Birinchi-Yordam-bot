@@ -29,6 +29,13 @@ SPIN_OK_MSG = "Tabriklaymiz! Siz Omad barabanidan <b>+5 ball</b> yutib oldingiz!
 SPIN_USED_MSG = "Sizda tasdiqlanmagan yutuq topilmadi yoki u allaqachon hisobingizga qo'shilgan!"
 
 
+def spin_result(ok=True, message=SPIN_OK_MSG, code=5, prize_type="points", points=5, tip=None):
+    """database.claim_spin_prize natijasi (dict)."""
+    if not ok:
+        return {"ok": False, "message": message, "code": None, "prize_type": None, "points": 0, "tip": None}
+    return {"ok": True, "message": message, "code": code, "prize_type": prize_type, "points": points, "tip": tip}
+
+
 def fresh_init_data(**kw):
     return make_init_data(auth_date=int(time.time()), **kw)
 
@@ -44,11 +51,11 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
             "score": mock.MagicMock(side_effect=lambda uid: self.score["v"]),
             "bonus_info": mock.MagicMock(return_value={"streak": 3, "is_claimed_today": False}),
             "prize": mock.MagicMock(return_value=5),
-            "spin": mock.MagicMock(return_value=(True, SPIN_OK_MSG)),
+            "spin": mock.MagicMock(return_value=spin_result()),
             "daily": mock.MagicMock(return_value=(True, 3, 3)),
             "spin_state": mock.MagicMock(return_value=(None, 5)),
             "premium": mock.MagicMock(return_value=(0, None, "free")),
-            "ai_quota": mock.MagicMock(return_value=(1, 2)),
+            "ai_quota": mock.MagicMock(return_value=(1, 2, 0)),
         }
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
         stack.enter_context(mock.patch.object(bot, "api_rate_limiter", bot.ApiRateLimiter()))
@@ -56,11 +63,11 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(db, "get_score", self.m["score"]))
         stack.enter_context(mock.patch.object(db, "get_daily_bonus_info", self.m["bonus_info"]))
         stack.enter_context(mock.patch.object(db, "generate_or_get_spin_prize", self.m["prize"]))
-        stack.enter_context(mock.patch.object(db, "check_and_grant_spin_bonus", self.m["spin"]))
+        stack.enter_context(mock.patch.object(db, "claim_spin_prize", self.m["spin"]))
         stack.enter_context(mock.patch.object(db, "check_and_grant_daily_bonus", self.m["daily"]))
         stack.enter_context(mock.patch.object(bot, "_read_spin_state", self.m["spin_state"]))
         stack.enter_context(mock.patch.object(db, "get_premium_info", self.m["premium"]))
-        stack.enter_context(mock.patch.object(db, "get_ai_quota", self.m["ai_quota"]))
+        stack.enter_context(mock.patch.object(db, "get_ai_quota_detail", self.m["ai_quota"]))
 
         self.client = TestClient(TestServer(bot.create_web_app()))
         await self.client.start_server()
@@ -120,9 +127,8 @@ class AuthTest(ApiTestBase):
         for name in ("banned", "score", "bonus_info", "prize", "daily", "premium"):
             for call in self.m[name].call_args_list:
                 self.assertEqual(call.args[0], USER_ID, name)
-        # Klient yuborgan ball e'tiborga olinmaydi: server doim 0 uzatadi
-        self.m["spin"].assert_called_once_with(USER_ID, 0)
-        self.m["spin_state"].assert_any_call(USER_ID)
+        # Klient yuborgan ball / sovrin e'tiborga olinmaydi: sovrin faqat serverdagi pending_spin_prize dan
+        self.m["spin"].assert_called_once_with(USER_ID)
         self.assertNotIn(OTHER_ID, [c.args[0] for m in self.m.values() for c in m.call_args_list])
 
     async def test_banned_user_403_and_no_claim(self):
@@ -216,8 +222,9 @@ class StateTest(ApiTestBase):
         resp, data = await self.post("/api/state")
         self.assertEqual(resp.status, 200)
         self.assertEqual(data, {"ok": True, "score": 17, "streak": 3, "daily_claimed": False,
-                                "prize": 5, "cooldown_seconds": 0, "is_premium": False, "premium_type": "free",
-                                "ai_remaining": 1, "ai_limit": 2})
+                                "prize": 5, "prize_type": "points", "cooldown_seconds": 0,
+                                "is_premium": False, "premium_type": "free",
+                                "ai_remaining": 1, "ai_limit": 2, "ai_bonus": 0})
 
     async def test_state_reports_active_premium_tier(self):
         self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "plus")
@@ -234,7 +241,28 @@ class StateTest(ApiTestBase):
         self.m["prize"].return_value = 0
         _, data = await self.post("/api/state")
         self.assertEqual(data["prize"], 0)
+        self.assertEqual(data["prize_type"], "super")
         self.assertEqual(data["cooldown_seconds"], 0)
+
+    async def test_state_reports_prize_code_and_type_for_every_prize(self):
+        expected = {1: "points", 2: "points", 3: "points", 5: "points",
+                    -2: "tip", -1: "ai", -3: "pro_day", 0: "super"}
+        for code, kind in expected.items():
+            with self.subTest(code=code):
+                self.m["prize"].return_value = code
+                _, data = await self.post("/api/state")
+                self.assertEqual((data["prize"], data["prize_type"]), (code, kind))
+
+    async def test_state_no_prize_has_null_type(self):
+        self.m["prize"].return_value = None
+        self.m["spin_state"].return_value = (None, None)
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["prize"], data["prize_type"]), (None, None))
+
+    async def test_state_ai_remaining_includes_bonus_and_reports_it_separately(self):
+        self.m["ai_quota"].return_value = (3, 1, 2)          # bepul: 1 ta ishlatilgan, 2 ta bonus + 1 ta oddiy
+        _, data = await self.post("/api/state")
+        self.assertEqual((data["ai_remaining"], data["ai_limit"], data["ai_bonus"]), (3, 1, 2))
 
     async def test_cooldown_active_prize_null(self):
         one_hour_ago = (bot.database.get_uz_now() - timedelta(hours=1)).isoformat()
@@ -256,12 +284,12 @@ class SpinClaimTest(ApiTestBase):
     async def test_double_claim_second_is_not_ok_and_score_added_once(self):
         claimed = {"done": False}
 
-        def fake_claim(uid, points):
+        def fake_claim(uid):
             if claimed["done"]:
-                return False, SPIN_USED_MSG
+                return spin_result(ok=False, message=SPIN_USED_MSG)
             claimed["done"] = True
             self.score["v"] += 5
-            return True, SPIN_OK_MSG
+            return spin_result()
 
         self.m["spin"].side_effect = fake_claim
         r1, d1 = await self.post("/api/spin/claim")
@@ -280,13 +308,14 @@ class SpinClaimTest(ApiTestBase):
         self.assertNotIn(">", data["message"])
 
     async def test_is_super_only_when_claim_succeeds_with_super_prize(self):
-        self.m["spin_state"].return_value = (None, 0)
-        self.m["spin"].return_value = (True, "SUPER PRIZ! <b>50%</b> chegirma")
+        self.m["spin"].return_value = spin_result(message="SUPER PRIZ! <b>50%</b> chegirma", code=0,
+                                                  prize_type="super", points=0)
         _, data = await self.post("/api/spin/claim")
         self.assertTrue(data["ok"])
         self.assertTrue(data["is_super"])
+        self.assertEqual(data["prize_type"], "super")
 
-        self.m["spin"].return_value = (False, SPIN_USED_MSG)
+        self.m["spin"].return_value = spin_result(ok=False, message=SPIN_USED_MSG)
         _, data = await self.post("/api/spin/claim")
         self.assertFalse(data["ok"])
         self.assertFalse(data["is_super"])
@@ -294,6 +323,42 @@ class SpinClaimTest(ApiTestBase):
     async def test_normal_prize_is_not_super(self):
         _, data = await self.post("/api/spin/claim")
         self.assertFalse(data["is_super"])
+
+    async def test_points_prize_fields(self):
+        _, data = await self.post("/api/spin/claim")
+        self.assertEqual((data["prize"], data["prize_type"], data["points"], data["tip"]), (5, "points", 5, None))
+        self.assertNotIn("ai_bonus", data)               # faqat ai / pro_day turlarida
+
+    async def test_tip_prize_returns_plain_tip_and_no_points(self):
+        tip = "Kuyganda joyni 10–20 daqiqa salqin oqar suv ostida tuting."
+        self.m["spin"].return_value = spin_result(
+            message=f"💡 <b>Kun maslahati</b>\n\n{tip}", code=-2, prize_type="tip", points=0, tip=tip)
+        _, data = await self.post("/api/spin/claim")
+        self.assertEqual((data["ok"], data["prize"], data["prize_type"], data["points"]), (True, -2, "tip", 0))
+        self.assertEqual(data["tip"], tip)
+        self.assertNotIn("<", data["message"])
+        self.assertFalse(data["is_super"])
+
+    async def test_ai_prize_returns_fresh_quota_for_counter(self):
+        self.m["spin"].return_value = spin_result(message="+1 AI", code=-1, prize_type="ai", points=0)
+        self.m["ai_quota"].return_value = (2, 1, 2)
+        _, data = await self.post("/api/spin/claim")
+        self.assertEqual((data["prize"], data["prize_type"], data["points"]), (-1, "ai", 0))
+        self.assertEqual((data["ai_remaining"], data["ai_limit"], data["ai_bonus"]), (2, 1, 2))
+        self.assertEqual((data["is_premium"], data["premium_type"]), (False, "free"))
+
+    async def test_pro_day_prize_returns_premium_state(self):
+        self.m["spin"].return_value = spin_result(message="Pro 1 kun", code=-3, prize_type="pro_day", points=0)
+        self.m["premium"].return_value = (1, "2026-12-01 10:00:00", "pro")
+        _, data = await self.post("/api/spin/claim")
+        self.assertEqual((data["prize"], data["prize_type"]), (-3, "pro_day"))
+        self.assertEqual((data["is_premium"], data["premium_type"]), (True, "pro"))
+
+    async def test_failed_claim_has_no_prize_fields(self):
+        self.m["spin"].return_value = spin_result(ok=False, message=SPIN_USED_MSG)
+        _, data = await self.post("/api/spin/claim")
+        self.assertEqual((data["ok"], data["prize"], data["prize_type"], data["points"], data["tip"]),
+                         (False, None, None, 0, None))
 
 
 class BonusClaimTest(ApiTestBase):

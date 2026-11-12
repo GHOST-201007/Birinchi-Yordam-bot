@@ -1227,13 +1227,13 @@ function splitProhibited(text) {
 
 // ── Toast (qisqa xabar) ──
 let toastTimer = null;
-function showToast(msg) {
+function showToast(msg, ms) {
     const t = document.getElementById('toast');
     if (!t) return;
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+    toastTimer = setTimeout(() => { t.hidden = true; }, Math.min(10000, Math.max(2200, ms || 0)));
 }
 
 // ── Ulashish: matnni nusxalash (tg.shareToStory rasm talab qiladi — bu yerda mos emas) ──
@@ -2972,7 +2972,10 @@ function wheelWaitingMarkup() {
 }
 
 // Natija kartasidagi emoji o'rniga SVG ikonka
-const WHEEL_CARD_ICONS = { '🏆': 'crown', '⏳': 'loader', '✅': 'circle-check', '⚠️': 'alert-triangle', 'ℹ️': 'info', '🎉': 'sparkles' };
+const WHEEL_CARD_ICONS = {
+    '🏆': 'crown', '⏳': 'loader', '✅': 'circle-check', '⚠️': 'alert-triangle', 'ℹ️': 'info', '🎉': 'sparkles',
+    '💡': 'lightbulb', '🤖': 'bot', '⭐': 'star'
+};
 
 function initWheelOfFortune() {
     const openBtn = document.getElementById('btn-open-wheel');
@@ -3228,26 +3231,91 @@ function initWheelOfFortune() {
         }
     };
 
-    // Segmentlar — server bilan bir xil qiymatlar va tartib (database.py: 1, 3, 5, 10, 0 = SUPER)
+    // Segmentlar — server bilan bir xil sovrin KODLARI (database.SPIN_PRIZES): 1, 2, 3, 5 ball; -2 kun maslahati;
+    // -1 +1 bepul AI savol; -3 1 kunlik Premium Pro; 0 = SUPER. Bo'lak sovrin KODI bo'yicha topiladi
+    // (ball bo'yicha emas: manfiy kodlar bor). Ikonkalar emoji emas, sprite'dan (icon) chiziladi.
     const segments = [
-        { text: "+1", label: "ball", points: 1, tone: 'primary' },
-        { text: "+3", label: "ball", points: 3, tone: 'teal' },
-        { text: "+5", label: "ball", points: 5, tone: 'neutral' },
-        { text: "+10", label: "ball", points: 10, tone: 'primary2' },
-        { text: "SUPER", label: "priz", points: 0, tone: 'warning' }
+        { code: 1, text: "+1", label: "ball", tone: 'primary' },
+        { code: 2, text: "+2", label: "ball", tone: 'teal' },
+        { code: 3, text: "+3", label: "ball", tone: 'neutral' },
+        { code: 5, text: "+5", label: "ball", tone: 'primary2' },
+        { code: -2, icon: 'lightbulb', label: "Maslahat", tone: 'violet' },
+        { code: -1, icon: 'bot', label: "AI savol", tone: 'mint' },
+        { code: -3, icon: 'star', label: "1 kun Pro", tone: 'indigo' },
+        { code: 0, text: "SUPER", label: "priz", tone: 'warning' }
     ];
+
+    // Sovrin kodi -> turi (server: database.spin_prize_type). 10 — eski barabandan qolgan ball sovrini.
+    function prizeTypeOfCode(code) {
+        if (code === 0) return 'super';
+        if (code === -1) return 'ai';
+        if (code === -2) return 'tip';
+        if (code === -3) return 'pro_day';
+        return 'points';
+    }
+
+    // Server javobidagi tur; eski server (prize_type yo'q) bo'lsa is_super bo'yicha
+    function claimedPrizeType(r) {
+        if (['points', 'tip', 'ai', 'pro_day', 'super'].indexOf(r.prize_type) !== -1) return r.prize_type;
+        return r.is_super ? 'super' : 'points';
+    }
 
     // Ranglar mavzuga qarab (matn kontrasti >= 4.5:1)
     function segmentColors(tone) {
         const dark = document.body.classList.contains('dark-mode');
         const map = dark ? {
             primary: ['#1F6FA3', '#FFFFFF'], teal: ['#0F7D75', '#FFFFFF'], neutral: ['#2A3441', '#E8EEF5'],
-            primary2: ['#3FA9E8', '#06121C'], warning: ['#F5A524', '#1A1200']
+            primary2: ['#3FA9E8', '#06121C'], violet: ['#7C4DBA', '#FFFFFF'], mint: ['#3BB38B', '#04201A'],
+            indigo: ['#5B54D6', '#FFFFFF'], warning: ['#F5A524', '#1A1200']
         } : {
             primary: ['#0872AB', '#FFFFFF'], teal: ['#0B746D', '#FFFFFF'], neutral: ['#E9EEF4', '#0F1B2D'],
-            primary2: ['#2B8FCB', '#06121C'], warning: ['#F5A524', '#1A1200']
+            primary2: ['#2B8FCB', '#06121C'], violet: ['#6B3FA0', '#FFFFFF'], mint: ['#BFEBDD', '#06281F'],
+            indigo: ['#4338CA', '#FFFFFF'], warning: ['#F5A524', '#1A1200']
         };
         return map[tone];
+    }
+
+    // Sprite ikonkasi (<symbol id="i-NAME">, faqat <path>) -> Path2D ro'yxati
+    const wheelIconCache = {};
+    function wheelIconPaths(name) {
+        if (!wheelIconCache[name]) {
+            const sym = document.getElementById('i-' + name);
+            wheelIconCache[name] = sym
+                ? Array.from(sym.querySelectorAll('path')).map((p) => new Path2D(p.getAttribute('d')))
+                : [];
+        }
+        return wheelIconCache[name];
+    }
+
+    // 24x24 stroke-ikonkani canvasga chizadi (markaz cx, cy; o'lcham size px). Sektor bilan birga burilgan
+    // koordinata tizimida ikonkaning "yuqorisi" g'ildirak chetiga qaraydi (+90 daraja), shunda lampa/yulduz tanish
+    // ko'rinishda bo'ladi. Ikonka topilmasa false.
+    function drawWheelIcon(ctx, name, cx, cy, size, color) {
+        const paths = wheelIconPaths(name);
+        if (!paths.length) return false;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.PI / 2);
+        ctx.translate(-size / 2, -size / 2);
+        ctx.scale(size / 24, size / 24);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        paths.forEach((p) => ctx.stroke(p));
+        ctx.restore();
+        return true;
+    }
+
+    // Matn maxWidth ga sig'maguncha shrift kichraytiriladi (8 bo'lakda joy tor)
+    function fitFontPx(ctx, text, weight, maxPx, maxWidth, family) {
+        let px = maxPx;
+        ctx.font = `${weight} ${px}px ${family}`;
+        while (px > 14 && ctx.measureText(text).width > maxWidth) {
+            px -= 2;
+            ctx.font = `${weight} ${px}px ${family}`;
+        }
+        return px;
     }
 
     function drawWheel() {
@@ -3280,10 +3348,15 @@ function initWheelOfFortune() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = fg;
-            ctx.font = `800 ${seg.points === 0 ? 40 : 52}px ${font}`;
-            ctx.fillText(seg.text, r * 0.62, -10);
-            ctx.font = `600 26px ${font}`;
-            ctx.fillText(seg.label, r * 0.62, 30);
+            const cx = r * 0.64;
+            let drawn = false;
+            if (seg.icon) drawn = drawWheelIcon(ctx, seg.icon, cx, -12, 58, fg);
+            if (!drawn && seg.text) {
+                ctx.font = `800 ${fitFontPx(ctx, seg.text, 800, seg.text.length > 3 ? 40 : 52, 150, font)}px ${font}`;
+                ctx.fillText(seg.text, cx, -12);
+            }
+            ctx.font = `600 ${fitFontPx(ctx, seg.label, 600, 26, 150, font)}px ${font}`;
+            ctx.fillText(seg.label, cx, 34);
             ctx.restore();
         }
         // Tashqi chiziq
@@ -3294,46 +3367,49 @@ function initWheelOfFortune() {
         ctx.stroke();
     }
 
-    // Animatsiya tugagach ko'rsatiladigan karta. Tugma bosilganda: API ishlayotgan bo'lsa serverda hisobga qo'shiladi,
-    // aks holda ZAXIRA yo'l — eski botga deep link.
-    function renderSpinConfirmCard(winningPoints) {
-        let icon, title, desc, btnText;
-        if (winningPoints === 0) {
-            icon = svgIcon('crown');
-            title = "SUPER PRIZ!";
-            desc = "Siz <b>Super Priz</b> — 30 kunlik Premium Plus uchun <b>50% chegirma</b> yutib oldingiz!";
-            btnText = "Mukofotni olish";
-        } else {
-            icon = svgIcon('sparkles');
-            title = `+${winningPoints} ball yutdingiz!`;
-            desc = "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang.";
-            btnText = "Mukofotni olish";
-        }
+    // Server sovrin kodiga mos bo'laklar indekslari. Eski barabandan qolgan ball sovrini (masalan 10) uchun
+    // g'ildirakda bo'lak yo'q: eng katta ball bo'lagida to'xtaydi, karta/ball esa serverdagi qiymat bo'yicha.
+    function segmentIndexesFor(code) {
+        const exact = [];
+        segments.forEach((seg, i) => { if (seg.code === code) exact.push(i); });
+        if (exact.length || !(code > 0)) return exact;
+        let best = -1;
+        segments.forEach((seg, i) => { if (seg.code > 0 && (best < 0 || seg.code > segments[best].code)) best = i; });
+        return best < 0 ? [] : [best];
+    }
 
-        resultMsg.innerHTML = `
-            <div class="result-icon${winningPoints === 0 ? ' result-icon--super' : ''}">${icon}</div>
-            <p class="result-title">${title}</p>
-            <p class="result-desc">${desc}</p>
-            <button type="button" class="result-confirm-btn" id="btn-confirm-spin">${btnText}</button>
-        `;
-        resultMsg.classList.remove('hidden');
-
-        document.getElementById('btn-confirm-spin').onclick = () => {
+    // Animatsiya tugagach ko'rsatiladigan karta (har sovrin turi uchun alohida). Tugma bosilganda: API ishlayotgan
+    // bo'lsa serverda hisobga qo'shiladi, aks holda ZAXIRA yo'l — eski botga deep link.
+    function renderSpinConfirmCard(code) {
+        const cards = {
+            points: { icon: '🎉', title: `+${code} ball yutdingiz!`, desc: "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang." },
+            tip: { icon: '💡', title: "Kun maslahati", desc: "Bugungi maslahatni ochish uchun tasdiqlang." },
+            ai: { icon: '🤖', title: "+1 bepul AI savol", desc: "AI tabida ishlatishingiz mumkin. Hisobingizga qo'shish uchun tasdiqlang." },
+            pro_day: { icon: '⭐', title: "1 kunlik Premium Pro yutdingiz!", desc: "Faollashtirish uchun tasdiqlang.", accent: true },
+            super: {
+                icon: '🏆', title: "SUPER PRIZ!", accent: true,
+                desc: ["Siz ", { b: "Super Priz" }, " — 30 kunlik Premium Plus uchun ", { b: "50% chegirma" }, " yutib oldingiz!"]
+            }
+        };
+        const card = cards[prizeTypeOfCode(code)];
+        renderWheelCard(card.icon, card.title, card.desc, "Mukofotni olish", () => {
             if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
             unclaimedPrize = null;
             if (wheelApiActive) {
-                claimSpinViaApi(winningPoints);
+                claimSpinViaApi(code);
             } else {
-                openSpinDeepLink(winningPoints);
+                openSpinDeepLink(code);
             }
-        };
+        }, { btnId: 'btn-confirm-spin', accent: card.accent });
     }
 
-    // ZAXIRA yo'l (API yo'q yoki xato): eski mantiq — botga deep link orqali tasdiqlash
-    function openSpinDeepLink(winningPoints) {
+    // ZAXIRA yo'l (API yo'q yoki xato): eski mantiq — botga deep link orqali tasdiqlash.
+    // Parametr faqat belgi: sovrin botda baribir serverdagi pending_spin_prize dan olinadi.
+    function openSpinDeepLink(code) {
         if (tg) {
             const botUsername = BOT_USERNAME;
-            const pv = (winningPoints === 0) ? "super" : winningPoints;
+            const named = { '0': 'super', '-1': 'ai', '-2': 'tip', '-3': 'proday' };
+            const pv = named[String(code)] || code;
             tg.openTelegramLink(`https://t.me/${botUsername}?start=spin_${pv}`);
             tg.close();
         } else {
@@ -3341,23 +3417,34 @@ function initWheelOfFortune() {
         }
     }
 
-    // Natija kartasi: matnlar textContent orqali qo'yiladi (server xabari HTML sifatida talqin qilinmaydi)
-    function renderWheelCard(icon, title, desc, btnText, onBtn) {
+    // Natija kartasi: matnlar textContent orqali qo'yiladi (server xabari / maslahati HTML sifatida talqin qilinmaydi).
+    // desc — satr yoki [satr, {b: "qalin matn"}, ...] ro'yxati. opts: { btnId, accent (oltin ikonka) }.
+    function renderWheelCard(icon, title, desc, btnText, onBtn, opts) {
+        const o = opts || {};
         resultMsg.replaceChildren();
         const iconEl = document.createElement('div');
-        iconEl.className = 'result-icon';
+        iconEl.className = o.accent ? 'result-icon result-icon--super' : 'result-icon';
         iconEl.innerHTML = svgIcon(WHEEL_CARD_ICONS[icon] || 'info', icon === '⏳' ? 'icon-spin' : '');
         const titleEl = document.createElement('p');
         titleEl.className = 'result-title';
         titleEl.textContent = title;
         const descEl = document.createElement('p');
         descEl.className = 'result-desc';
-        descEl.textContent = desc;
+        (Array.isArray(desc) ? desc : [desc]).forEach((part) => {
+            if (part && typeof part === 'object') {
+                const b = document.createElement('b');
+                b.textContent = part.b;
+                descEl.appendChild(b);
+            } else {
+                descEl.appendChild(document.createTextNode(part === null || part === undefined ? '' : String(part)));
+            }
+        });
         resultMsg.append(iconEl, titleEl, descEl);
         if (btnText && onBtn) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'result-confirm-btn';
+            if (o.btnId) btn.id = o.btnId;
             btn.textContent = btnText;
             btn.onclick = onBtn;
             resultMsg.appendChild(btn);
@@ -3370,22 +3457,53 @@ function initWheelOfFortune() {
             "Premium olish", () => {
                 if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
                 buyPremium('buy_plus_30');      // chegirma server tomonida avtomatik (has_discount)
-            });
+            }, { accent: true });
     }
 
-    // Javob kelmadi: server ballni allaqachon bergan bo'lishi mumkin — holatni qayta so'raymiz
-    async function recoverSpinClaim(winningPoints, prevScore) {
+    function renderAiPrizeCard() {
+        renderWheelCard("🤖", "+1 bepul AI savol", "AI tabida ishlatishingiz mumkin");
+    }
+
+    function renderProDayCard(text) {
+        renderWheelCard("⭐", "1 kunlik Premium Pro faollashdi!", text || "", null, null, { accent: true });
+    }
+
+    // Claim javobidagi Premium holati va AI hisoblagichi (faqat ai / pro_day turlarida keladi) — keshga
+    // qo'shimcha /api/state so'rovisiz yoziladi (header nishoni va AI tab sarlavhasi tinglovchilar orqali yangilanadi)
+    function applyClaimedState(r) {
+        const patch = {};
+        ['is_premium', 'premium_type', 'ai_remaining', 'ai_limit', 'ai_bonus'].forEach((k) => {
+            if (r[k] !== undefined) patch[k] = r[k];
+        });
+        if (Object.keys(patch).length) patchAppState(patch);
+    }
+
+    // Javob kelmadi: server sovrinni allaqachon bergan bo'lishi mumkin — holatni qayta so'raymiz
+    async function recoverSpinClaim(winningCode, prevScore) {
         renderWheelCard("⏳", "Natija tekshirilmoqda...", "");
         const s = await recoverStateAfterClaimFailure();
         if (!s) {                                   // holat ham olinmadi: ESKI zaxira yo'l
-            openSpinDeepLink(winningPoints);
+            openSpinDeepLink(winningCode);
             return;
         }
         setGlobalScore(s.score);
         if (s.prize === null && Number(s.cooldown_seconds) > 0) {
-            // Server ballni allaqachon bergan: deep link YO'Q
-            if (winningPoints === 0) {
+            // Server sovrinni allaqachon bergan: deep link YO'Q
+            const type = prizeTypeOfCode(winningCode);
+            if (type === 'super') {
                 renderSuperPrizeCard();
+                return;
+            }
+            if (type === 'ai') {
+                renderAiPrizeCard();
+                return;
+            }
+            if (type === 'pro_day') {
+                renderProDayCard("");
+                return;
+            }
+            if (type === 'tip') {
+                renderWheelCard("💡", "Kun maslahati", "Maslahat berildi, lekin ulanish uzilgani uchun matnni ko'rsatib bo'lmadi. Ertaga yangisini oling.");
                 return;
             }
             const diff = (typeof prevScore === 'number') ? s.score - prevScore : 0;
@@ -3394,14 +3512,14 @@ function initWheelOfFortune() {
             return;
         }
         // Server hali bermagan (ulanish muammosi). Server ikki marta bermaydi, shuning uchun qayta urinish xavfsiz
-        unclaimedPrize = winningPoints;              // foydalanuvchi yopib ketsa — yopishda yana bir urinish
-        renderWheelCard("⚠️", "Ulanishda xatolik", "Ball hali qo'shilmadi. Qayta urinib ko'ring.",
-            "Qayta urinish", () => { unclaimedPrize = null; claimSpinViaApi(winningPoints); });
+        unclaimedPrize = winningCode;                // foydalanuvchi yopib ketsa — yopishda yana bir urinish
+        renderWheelCard("⚠️", "Ulanishda xatolik", "Sovrin hali qo'shilmadi. Qayta urinib ko'ring.",
+            "Qayta urinish", () => { unclaimedPrize = null; claimSpinViaApi(winningCode); });
     }
 
-    // "Hisobga qo'shish" bosilganda ballni serverda hisobga qo'shadi (botga chiqmasdan, tg.close() yo'q)
-    async function claimSpinViaApi(winningPoints, opts) {
-        const toast = (msg) => { if (opts && opts.toast) showToast(msg); };
+    // "Mukofotni olish" bosilganda sovrinni serverda hisobga qo'shadi (botga chiqmasdan, tg.close() yo'q)
+    async function claimSpinViaApi(winningCode, opts) {
+        const toast = (msg, ms) => { if (opts && opts.toast) showToast(msg, ms); };
         const prevScore = AppState.data ? AppState.data.score : null;
         renderWheelCard("⏳", "Hisobga qo'shilmoqda...", "");
         let r;
@@ -3410,25 +3528,39 @@ function initWheelOfFortune() {
             if (!r || typeof r.ok !== 'boolean') throw new Error('bad-claim');
         } catch (err) {
             console.warn("[wheel] /api/spin/claim javobi olinmadi, holat tekshiriladi:", err);
-            await recoverSpinClaim(winningPoints, prevScore);
+            await recoverSpinClaim(winningCode, prevScore);
             return;
         }
         if (typeof r.score === 'number') setGlobalScore(r.score);
         // Serverda cooldown boshlandi: keshni shunga moslaymiz (qayta ochilganda KUTISH ko'rinadi)
-        patchAppState({ score: r.score, prize: null, cooldown_seconds: 24 * 60 * 60 });
+        patchAppState({ score: r.score, prize: null, prize_type: null, cooldown_seconds: 24 * 60 * 60 });
 
         if (!r.ok) {
-            renderWheelCard("ℹ️", "Ball qo'shilmadi", r.message || "Mukofot allaqachon olingan.");
+            renderWheelCard("ℹ️", prizeTypeOfCode(winningCode) === 'points' ? "Ball qo'shilmadi" : "Sovrin qo'shilmadi",
+                r.message || "Mukofot allaqachon olingan.");
             toast(r.message || "Mukofot allaqachon olingan.");
             return;
         }
-        if (r.is_super) {
+        applyClaimedState(r);
+        const type = claimedPrizeType(r);
+        if (type === 'super') {
             renderSuperPrizeCard();
             toast("SUPER PRIZ: Premium Plus uchun 50% chegirma faollashtirildi");
+        } else if (type === 'tip') {
+            const tip = (typeof r.tip === 'string' && r.tip) ? r.tip : (r.message || '');
+            renderWheelCard("💡", "Kun maslahati", tip);
+            toast("Kun maslahati: " + tip, 2200 + tip.length * 50);       // uzun matn — uzoqroq ko'rinadi
+        } else if (type === 'ai') {
+            renderAiPrizeCard();
+            toast("+1 bepul AI savol hisobingizga qo'shildi");
+        } else if (type === 'pro_day') {
+            renderProDayCard(r.message);
+            toast("1 kunlik Premium Pro faollashdi");
         } else {
-            // Ball soni SERVERDAN: sarlavhada oldingi/yangi score farqi, matnda server xabari (r.message — server
-            // uni allaqachon oddiy matnga aylantirgan). Klientdagi winningPoints ko'rsatilmaydi. renderWheelCard textContent ishlatadi.
-            const gained = (typeof prevScore === 'number' && typeof r.score === 'number') ? r.score - prevScore : 0;
+            // Ball soni SERVERDAN: javobdagi points, bo'lmasa oldingi/yangi score farqi; matnda server xabari
+            // (r.message — server uni allaqachon oddiy matnga aylantirgan). Klientdagi sovrin kodi ko'rsatilmaydi.
+            const gained = (typeof r.points === 'number' && r.points > 0) ? r.points
+                : ((typeof prevScore === 'number' && typeof r.score === 'number') ? r.score - prevScore : 0);
             renderWheelCard("🎉",
                 gained > 0 ? `+${gained} ball yutdingiz!` : "Ball hisobingizga qo'shildi",
                 r.message || "✅ Ball hisobingizga qo'shildi");
@@ -3467,12 +3599,8 @@ function initWheelOfFortune() {
             }
             return;
         }
-        const winningPoints = serverPrize;
-
-        const eligible = [];
-        for (let i = 0; i < segments.length; i++) {
-            if (segments[i].points === winningPoints) eligible.push(i);
-        }
+        const winningCode = serverPrize;
+        const eligible = segmentIndexesFor(winningCode);
 
         // XAVFSIZLIK: server prize frontend da mavjud bo'lmasa blokla
         if (!eligible.length) {
@@ -3513,11 +3641,11 @@ function initWheelOfFortune() {
 
             if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-            // Confetti — faqat SUPER priz'da
-            if (winningPoints === 0) fireConfetti();
+            // Konfetti — faqat SUPER va 1 kunlik Pro'da
+            if (winningCode === 0 || winningCode === -3) fireConfetti();
 
-            unclaimedPrize = winningPoints;
-            renderSpinConfirmCard(winningPoints);
+            unclaimedPrize = winningCode;
+            renderSpinConfirmCard(winningCode);
         }, spinMs + 100);
     };
 
@@ -4141,22 +4269,26 @@ function aiIsFree(limit) {
 function renderAiQuota(s) {
     const el = document.getElementById('ai-quota');
     if (!el) return;
-    let remaining = null, limit = null;
+    let remaining = null, limit = null, bonus = 0;
     if (s && typeof s.ai_remaining === 'number' && typeof s.ai_limit === 'number') {
-        remaining = s.ai_remaining; limit = s.ai_limit;
+        remaining = s.ai_remaining; limit = s.ai_limit; bonus = Number(s.ai_bonus) || 0;
     } else if (aiChat.quota) {
-        remaining = aiChat.quota.remaining; limit = aiChat.quota.limit;
+        remaining = aiChat.quota.remaining; limit = aiChat.quota.limit; bonus = aiChat.quota.bonus || 0;
     }
     if (remaining === null) { el.hidden = true; return; }
-    el.textContent = aiIsFree(limit) ? `Bepul savol: ${remaining}/${limit}` : `Bugun: ${remaining}/${limit} so'rov`;
+    // remaining barabandan yutilgan bonusni ham o'z ichiga oladi: oddiy qoldiq alohida, bonus "+ N bonus" bilan
+    const base = Math.max(0, remaining - bonus);
+    const main = aiIsFree(limit) ? `Bepul savol: ${base}/${limit}` : `Bugun: ${base}/${limit} so'rov`;
+    el.textContent = bonus > 0 ? `${main} + ${bonus} bonus` : main;
     el.hidden = false;
 }
 
 // Javobdagi remaining/limit -> umumiy holat (hisoblagich va Premium taklif kartasi tinglovchilar orqali yangilanadi)
-function aiApplyQuota(remaining, limit) {
+function aiApplyQuota(remaining, limit, bonus) {
     if (typeof remaining !== 'number' || typeof limit !== 'number') return;
-    aiChat.quota = { remaining: remaining, limit: limit };
-    if (AppState.data) patchAppState({ ai_remaining: remaining, ai_limit: limit });
+    const b = (typeof bonus === 'number' && bonus > 0) ? Math.min(bonus, remaining) : 0;
+    aiChat.quota = { remaining: remaining, limit: limit, bonus: b };
+    if (AppState.data) patchAppState({ ai_remaining: remaining, ai_limit: limit, ai_bonus: b });
     else renderAiQuota(null);
     if (remaining === 0 && aiIsFree(limit) && !aiChat.offerShown) showAiPremiumOffer();   // holat eskirgan bo'lsa ham
 }
@@ -4222,7 +4354,7 @@ function aiHandleResult(message, res, failure) {
         aiChat.pending = null;
         if (aiChat.context) aiSetContext(null);               // kontekst birinchi yuborishda uzatildi
         const el = aiAddReply(reply);
-        aiApplyQuota(data.remaining, data.limit);
+        aiApplyQuota(data.remaining, data.limit, data.bonus);
         aiScrollTo(el);
         return;
     }

@@ -1,7 +1,7 @@
 """
 test_miniapp_wheel_redesign_e2e.py — redesign 4.4-I: Omad barabani ("klinik" variant).
-Bottom sheet (~85%), LED/neon/"KUNLIK BONUS" yo'q, 5 segment (server bilan bir xil), 4s aylanish,
-confetti faqat SUPER'da, MainButton "Mukofotni olish", katta tabular taymer.
+Bottom sheet (~85%), LED/neon/"KUNLIK BONUS" yo'q, 8 segment (server bilan bir xil kodlar), 4s aylanish,
+konfetti faqat SUPER va 1 kunlik Pro'da, MainButton "Mukofotni olish", katta tabular taymer.
 api()/getAppState/claim*/recover* mantig'i test_miniapp_wheel_e2e.py va late_response testlarida tekshiriladi.
 """
 import os
@@ -30,19 +30,18 @@ class WheelStaticTest(unittest.TestCase):
         with open(os.path.join(ROOT, "app", "app.js"), encoding="utf-8") as f:
             self.js = f.read()
 
-    def test_segments_match_server_values_and_order(self):
+    def test_segments_match_server_codes(self):
         block = self.js[self.js.index("const segments = ["): self.js.index("];", self.js.index("const segments = ["))]
-        self.assertEqual([int(x) for x in re.findall(r"points: (\d+)", block)], [1, 3, 5, 10, 0])
-        with open(os.path.join(ROOT, "database.py"), encoding="utf-8") as f:
-            db = f.read()
-        self.assertIn("Frontend segments: 1, 3, 5, 10, 0 (SUPER)", db)
-        server = [int(x) for x in re.findall(r"prize = (\d+)", db[db.index("# Generate new prize"):db.index("# Jami: 1,3,5,10,SUPER")])]
-        self.assertEqual(sorted(server), sorted([1, 3, 5, 10, 0]))
+        codes = [int(x) for x in re.findall(r"code: (-?\d+)", block)]
+        self.assertEqual(codes, [1, 2, 3, 5, -2, -1, -3, 0])                 # 8 bo'lak
+        import database
+        self.assertEqual(sorted(codes), sorted(database.SPIN_PRIZE_CODES))   # server jadvali bilan bir xil kodlar
+        self.assertNotIn("points:", block)                                   # bo'lak ball bo'yicha emas, kod bo'yicha topiladi
 
     def test_segment_text_contrast(self):
-        block = self.js[self.js.index("function segmentColors(tone)"):self.js.index("function drawWheel()")]
+        block = self.js[self.js.index("function segmentColors(tone)"):self.js.index("// Sprite ikonkasi")]
         pairs = re.findall(r"\['(#[0-9A-Fa-f]{6})', '(#[0-9A-Fa-f]{6})'\]", block)
-        self.assertEqual(len(pairs), 10)                                     # 5 ton x 2 mavzu
+        self.assertEqual(len(pairs), 16)                                     # 8 ton x 2 mavzu
         for bg, fg in pairs:
             self.assertGreaterEqual(_ratio(bg, fg), 4.5, (bg, fg))
 
@@ -98,8 +97,8 @@ class WheelRedesignE2ETest(MiniAppE2EBase):
         page.clock.fast_forward(800)
         page.wait_for_selector("#btn-confirm-spin", state="attached")
 
-    def test_confetti_only_for_super(self):
-        for prize, expected in ((5, 0), (0, 1)):
+    def test_confetti_only_for_super_and_one_day_pro(self):
+        for prize, expected in ((1, 0), (2, 0), (3, 0), (5, 0), (-2, 0), (-1, 0), (-3, 1), (0, 1)):
             with self.subTest(prize=prize):
                 page, _ = self.open_ready(state={**STATE_OK, "prize": prize})
                 page.evaluate("() => { window.__confetti = 0; window.fireConfetti = () => { window.__confetti++; }; }")

@@ -1330,7 +1330,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
         builder.adjust(1)
         await message.answer(
             "🎡 <b>Omad Barabani!</b>\n\n"
-            "Har kuni 1 marta barabanni bepul aylantirib ball yoki Premium yuting!\n"
+            "Har kuni 1 marta barabanni bepul aylantiring: ball, bepul AI savol, kun maslahati, "
+            "1 kunlik Premium Pro yoki SUPER sovrin (Premium Plus uchun 50% chegirma) yutishingiz mumkin!\n"
             "Aylantirish uchun quyidagi tugmani bosing:",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
@@ -1340,15 +1341,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Check for spin bonus parameter from Wheel of Fortune Web App
     if len(args) > 1 and args[1].startswith("spin_"):
         try:
-            param = args[1].split("_")[1]
-            if param == "super":
-                success, msg = await asyncio.to_thread(database.check_and_grant_spin_bonus, user.id, 0)  # 0 represents super prize
-            else:
-                pts = int(param)
-                success, msg = await asyncio.to_thread(database.check_and_grant_spin_bonus, user.id, pts)
-                
+            # spin_5 / spin_super / spin_tip / spin_ai / spin_proday — Mini App'ning eski zaxira yo'li. Parametr
+            # hisobga olinmaydi: sovrin FAQAT serverdagi pending_spin_prize dan olinadi (turi ham undan aniqlanadi).
+            result = await asyncio.to_thread(database.claim_spin_prize, user.id)
+            msg = result["message"]
+
             reply_markup = get_start_keyboard()
-            if param == "super":
+            if result["ok"] and result["prize_type"] == "super":
                 builder = InlineKeyboardBuilder()
                 builder.button(text="💎 Premium xarid qilish", callback_data="buy_premium")
                 builder.adjust(1)
@@ -1417,10 +1416,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
         
         consumed_free = False
         consumed_daily = False
+        consumed_bonus = False
         if await asyncio.to_thread(database.try_consume_free_ai, user_id):
             consumed_free = True
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
+        elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+            consumed_bonus = True
         else:
             await premium_upsell(message)       # limit tugadi — Premium taklifi (tugma bilan)
             return
@@ -1446,6 +1448,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 await asyncio.to_thread(database.refund_free_ai, user_id)
             if consumed_daily:
                 await asyncio.to_thread(database.refund_daily_request, user_id)
+            if consumed_bonus:
+                await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
             ai_response = "🤖 AI xizmati hozircha javob bermayapti. Keyinroq qayta urinib ko'ring."
             
         await message.answer(ai_response, parse_mode="HTML")
@@ -1709,7 +1713,7 @@ async def send_free_premium_info(user_id: int, user: types.User, chat_id: int, b
         "💰 <b>Ball to'plash yo'llari:</b>\n"
         "1. 🔥 <b>Kunlik bonus:</b> Har kuni botga kirib, ballarni to'plang (1, 2, 3... ball va 7-kuni 🎁 +20 ball!).\n"
         "2. 👥 <b>Do'stlarni taklif qilish:</b> Har bir taklif qilgan do'stingiz uchun <b>+10 ball</b>, har 5 ta do'st uchun esa qo'shimcha <b>🎁 +50 ball</b> beriladi!\n"
-        "3. 🎡 <b>Omad barabani:</b> Har kuni 1 marta barabanni bepul aylantirib ball yutib oling!\n\n"
+        "3. 🎡 <b>Omad barabani:</b> Har kuni 1 marta barabanni bepul aylantiring — ball, bepul AI savol, kun maslahati yoki 1 kunlik Premium Pro yutishingiz mumkin!\n\n"
         f"🏆 <b>Sizning joriy ballaringiz:</b> <b>{score}</b> ball\n\n"
         "Omad barabanini aylantirish yoki do'stlarni taklif qilish uchun quyidagi tugmalardan foydalaning 👇"
     )
@@ -1918,10 +1922,13 @@ async def process_disease_callback(callback: types.CallbackQuery):
     
     consumed_free = False
     consumed_daily = False
+    consumed_bonus = False
     if await asyncio.to_thread(database.try_consume_free_ai, user_id):
         consumed_free = True
     elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
         consumed_daily = True
+    elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+        consumed_bonus = True
     else:
         await premium_upsell(callback)       # limit tugadi — Premium taklifi (tugma bilan)
         return
@@ -1962,6 +1969,8 @@ async def process_disease_callback(callback: types.CallbackQuery):
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
             await asyncio.to_thread(database.refund_daily_request, user_id)
+        if consumed_bonus:
+            await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
 
 @dp.callback_query(F.data.startswith("det_"))
 async def process_disease_detail_callback(callback: types.CallbackQuery):
@@ -2477,11 +2486,14 @@ async def handle_voice(message: types.Message):
 
     consumed_free = False
     consumed_daily = False
+    consumed_bonus = False
     try:
         if await asyncio.to_thread(database.try_consume_free_ai, user_id):
             consumed_free = True
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
+        elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+            consumed_bonus = True
         else:
             await premium_upsell(message)
             return
@@ -2495,13 +2507,16 @@ async def handle_voice(message: types.Message):
 
     async def refund_once():
         # Faqat sarflangan limit va faqat bir marta qaytariladi (qayta chaqirilsa ham ikki marta emas)
-        nonlocal consumed_free, consumed_daily
+        nonlocal consumed_free, consumed_daily, consumed_bonus
         if consumed_free:
             consumed_free = False
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
             consumed_daily = False
             await asyncio.to_thread(database.refund_daily_request, user_id)
+        if consumed_bonus:
+            consumed_bonus = False
+            await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
@@ -3402,11 +3417,14 @@ async def handle_image(message: types.Message, state: FSMContext):
 
     consumed_free = False
     consumed_daily = False
+    consumed_bonus = False
     try:
         if await asyncio.to_thread(database.try_consume_free_ai, user_id):
             consumed_free = True
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
+        elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+            consumed_bonus = True
         else:
             await premium_upsell(message)
             return
@@ -3420,13 +3438,16 @@ async def handle_image(message: types.Message, state: FSMContext):
 
     async def refund_once():
         # Faqat sarflangan limitni va faqat bir marta qaytaramiz
-        nonlocal consumed_free, consumed_daily
+        nonlocal consumed_free, consumed_daily, consumed_bonus
         if consumed_free:
             consumed_free = False
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
             consumed_daily = False
             await asyncio.to_thread(database.refund_daily_request, user_id)
+        if consumed_bonus:
+            consumed_bonus = False
+            await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
 
     status_msg = None
     try:
@@ -3792,10 +3813,11 @@ async def web_app_data_handler(message: types.Message):
     """Mini App'dan kelgan ma'lumotlarni qayta ishlash"""
     consumed_free = False
     consumed_daily = False
+    consumed_bonus = False
     user_id = message.from_user.id if message.from_user else None
 
     async def refund_once():
-        nonlocal consumed_free, consumed_daily
+        nonlocal consumed_free, consumed_daily, consumed_bonus
         if not user_id:
             return
         if consumed_free:
@@ -3804,6 +3826,9 @@ async def web_app_data_handler(message: types.Message):
         if consumed_daily:
             consumed_daily = False
             await asyncio.to_thread(database.refund_daily_request, user_id)
+        if consumed_bonus:
+            consumed_bonus = False
+            await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
 
     try:
         data = json.loads(message.web_app_data.data)
@@ -3814,6 +3839,8 @@ async def web_app_data_handler(message: types.Message):
                 consumed_free = True
             elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
                 consumed_daily = True
+            elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+                consumed_bonus = True
             else:
                 await premium_upsell(message)
                 return
@@ -4406,15 +4433,19 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
     _active_ai_users.add(user_id)
     consumed_free = False
     consumed_daily = False
+    consumed_bonus = False
 
     async def refund_once():
-        nonlocal consumed_free, consumed_daily
+        nonlocal consumed_free, consumed_daily, consumed_bonus
         if consumed_free:
             consumed_free = False
             await asyncio.to_thread(database.refund_free_ai, user_id)
         if consumed_daily:
             consumed_daily = False
             await asyncio.to_thread(database.refund_daily_request, user_id)
+        if consumed_bonus:
+            consumed_bonus = False
+            await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
 
     try:
         # 1 ta bepul savol tizimi yoki kunlik limit tekshiruvi
@@ -4422,6 +4453,8 @@ async def handle_ai_chat(message: types.Message, state: FSMContext):
             consumed_free = True
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
+        elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+            consumed_bonus = True
         else:
             # Bepul limit tugagan — premium talab qilamiz
             builder = InlineKeyboardBuilder()
@@ -4988,12 +5021,25 @@ async def _api_handle(request: web.Request, name: str, action, *, with_body: boo
         return _api_error(500, "server_error")
 
 
+async def _premium_quota_fields(user_id: int) -> dict:
+    """Header'dagi Premium ko'rsatkichi va AI tabi hisoblagichi uchun (faqat o'qish).
+    ai_remaining barabandan yutilgan bonusni ham o'z ichiga oladi, ai_bonus esa alohida; ai_limit — faqat tarif limiti."""
+    is_prem, _expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
+    ai_remaining, ai_limit, ai_bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
+    return {
+        "is_premium": bool(is_prem),
+        "premium_type": (prem_type or "free") if is_prem else "free",
+        "ai_remaining": ai_remaining,
+        "ai_limit": ai_limit,
+        "ai_bonus": ai_bonus,
+    }
+
+
 async def _api_state_action(user_id: int) -> dict:
     score = await asyncio.to_thread(database.get_score, user_id)
-    is_prem, _expires, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
     bonus = await asyncio.to_thread(database.get_daily_bonus_info, user_id)
     prize = await asyncio.to_thread(database.generate_or_get_spin_prize, user_id)
-    ai_remaining, ai_limit = await asyncio.to_thread(database.get_ai_quota, user_id)
+    quota = await _premium_quota_fields(user_id)
     cooldown = 0
     if prize is None:
         last_spin, _ = await asyncio.to_thread(_read_spin_state, user_id)
@@ -5003,23 +5049,35 @@ async def _api_state_action(user_id: int) -> dict:
         "score": score,
         "streak": bonus["streak"],
         "daily_claimed": bool(bonus["is_claimed_today"]),
-        "prize": prize,                 # None -> null (kutish yoki foydalanuvchi yo'q); 0 -> SUPER PRIZ
+        # Sovrin KODI (database.SPIN_PRIZES): 1/2/3/5 ball, -2 maslahat, -1 AI savol, -3 1 kun Pro, 0 SUPER.
+        # None -> null (kutish yoki foydalanuvchi yo'q)
+        "prize": prize,
+        "prize_type": database.spin_prize_type(prize),     # points / tip / ai / pro_day / super / None
         "cooldown_seconds": cooldown,
-        # Header'dagi Premium ko'rsatkichi uchun (faqat o'qish; yuqoridagi maydonlar o'zgarmagan)
-        "is_premium": bool(is_prem),
-        "premium_type": (prem_type or "free") if is_prem else "free",
-        # AI tabi sarlavhasi ("Bugun: 12/15") — bot bilan umumiy kvota (faqat o'qish)
-        "ai_remaining": ai_remaining,
-        "ai_limit": ai_limit,
+        **quota,
     }
 
 
 async def _api_spin_claim_action(user_id: int) -> dict:
-    _, pending = await asyncio.to_thread(_read_spin_state, user_id)    # faqat o'qiydi, yangi yutuq yaratmaydi
-    ok, message = await asyncio.to_thread(database.check_and_grant_spin_bonus, user_id, 0)
+    # Sovrin faqat serverdagi pending_spin_prize dan; mijoz yuborgan hech narsa hisobga olinmaydi
+    result = await asyncio.to_thread(database.claim_spin_prize, user_id)
     score = await asyncio.to_thread(database.get_score, user_id)
-    return {"ok": bool(ok), "message": _plain_text(message), "score": score,
-            "is_super": bool(ok and pending == 0)}
+    ok = bool(result["ok"])
+    prize_type = result["prize_type"] if ok else None
+    response = {
+        "ok": ok,
+        "message": _plain_text(result["message"]),
+        "score": score,
+        "is_super": ok and prize_type == "super",
+        "prize": result["code"] if ok else None,
+        "prize_type": prize_type,                     # points / tip / ai / pro_day / super
+        "points": result["points"] if ok else 0,      # berilgan ball (ball bo'lmagan turlarda 0)
+        "tip": result["tip"] if ok else None,         # kun maslahati (oddiy matn; mijoz textContent bilan qo'yadi)
+    }
+    if ok and prize_type in ("ai", "pro_day"):
+        # Yangi AI hisoblagich / Premium holati — qo'shimcha /api/state so'rovisiz yangilanishi uchun
+        response.update(await _premium_quota_fields(user_id))
+    return response
 
 
 async def _api_bonus_claim_action(user_id: int) -> dict:
@@ -5205,7 +5263,7 @@ async def api_ai_chat(request: web.Request) -> web.Response:
         return _ai_chat_error(code, {"Retry-After": str(int(API_RATE_WINDOW))} if status == 429 else None)
 
     result = "server"
-    consumed_free = consumed_daily = False
+    consumed_free = consumed_daily = consumed_bonus = False
     active = False
     try:
         banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
@@ -5235,10 +5293,12 @@ async def api_ai_chat(request: web.Request) -> web.Response:
             consumed_free = True
         elif await asyncio.to_thread(database.try_consume_daily_request, user_id):
             consumed_daily = True
+        elif await asyncio.to_thread(database.try_consume_spin_ai_bonus, user_id):   # barabandan yutilgan bonus (oxirgi)
+            consumed_bonus = True
         else:
             # Limit tugadi: Premium taklifi (klient "offer" bo'yicha Premium oynasini ko'rsatadi)
             result = "limit"
-            remaining, limit = await asyncio.to_thread(database.get_ai_quota, user_id)
+            remaining, limit, _bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
             is_prem, _exp, prem_type = await asyncio.to_thread(database.get_premium_info, user_id)
             extra = {"remaining": remaining, "limit": limit, "offer": "premium" if prem_type != "ultra" else None}
             return _ai_chat_error("limit" if is_prem else "limit_free", extra=extra)
@@ -5254,10 +5314,11 @@ async def api_ai_chat(request: web.Request) -> web.Response:
             result = "busy"
             return _ai_chat_error("busy")
 
-        consumed_free = consumed_daily = False          # muvaffaqiyat: kvota yeyilgan holda qoladi
-        remaining, limit = await asyncio.to_thread(database.get_ai_quota, user_id)
+        consumed_free = consumed_daily = consumed_bonus = False     # muvaffaqiyat: kvota yeyilgan holda qoladi
+        remaining, limit, bonus = await asyncio.to_thread(database.get_ai_quota_detail, user_id)
         result = "ok"
-        return _api_json({"ok": True, "reply": reply, "remaining": remaining, "limit": limit})
+        # remaining bonusni ham o'z ichiga oladi; bonus alohida - mini app yorlig'i ("... + N bonus") uchun
+        return _api_json({"ok": True, "reply": reply, "remaining": remaining, "limit": limit, "bonus": bonus})
     except Exception:
         logging.error("API ai/chat xatosi (user=%s)", user_id)      # stack trace va matn loglanmaydi
         result = "server"
@@ -5269,6 +5330,8 @@ async def api_ai_chat(request: web.Request) -> web.Response:
                 await asyncio.to_thread(database.refund_free_ai, user_id)
             if consumed_daily:
                 await asyncio.to_thread(database.refund_daily_request, user_id)
+            if consumed_bonus:
+                await asyncio.to_thread(database.refund_spin_ai_bonus, user_id)
         except Exception:
             logging.error("API ai/chat: kvotani qaytarib bo'lmadi (user=%s)", user_id)
         if active:

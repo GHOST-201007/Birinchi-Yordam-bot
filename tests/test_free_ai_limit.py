@@ -51,6 +51,7 @@ class BotLimitOfferTest(unittest.IsolatedAsyncioTestCase):
         upsell = mock.AsyncMock()
         with mock.patch.object(bot.database, "try_consume_free_ai", return_value=False), \
                 mock.patch.object(bot.database, "try_consume_daily_request", return_value=False), \
+                mock.patch.object(bot.database, "try_consume_spin_ai_bonus", return_value=False), \
                 mock.patch.object(bot, "premium_upsell", upsell), \
                 mock.patch.object(bot, "get_gemini_response", mock.AsyncMock()) as ai:
             await bot.process_disease_callback(callback)

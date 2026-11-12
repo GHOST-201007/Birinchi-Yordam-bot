@@ -23,11 +23,12 @@ SECRET_MSG = "Mening ko'kragim og'riyapti MAXFIY-MATN-42"
 class FakeQuota:
     """Bot va mini app ulashadigan bitta kunlik kvota (database funksiyalari o'rnida)."""
 
-    def __init__(self, free=False, daily_limit=2):
+    def __init__(self, free=False, daily_limit=2, bonus=0):
         self.free_left = 1 if free else 0
         self.daily_limit = daily_limit
         self.used = 0
         self.refunds = 0
+        self.bonus = bonus                  # barabandan yutilgan savollar (oxirgi manba)
 
     def consume_free(self, uid):
         if self.free_left:
@@ -49,8 +50,22 @@ class FakeQuota:
         self.refunds += 1
         self.free_left = 1
 
+    def consume_bonus(self, uid):
+        if self.bonus > 0:
+            self.bonus -= 1
+            return True
+        return False
+
+    def refund_bonus(self, uid):
+        self.refunds += 1
+        self.bonus += 1
+
     def quota(self, uid):
         return self.daily_limit - self.used + self.free_left, self.daily_limit + (1 if self.free_left else 0)
+
+    def quota_detail(self, uid):
+        remaining, limit = self.quota(uid)
+        return remaining + self.bonus, limit, self.bonus
 
 
 class AiChatTestBase(ApiTestBase):
@@ -65,7 +80,9 @@ class AiChatTestBase(ApiTestBase):
             mock.patch.object(db, "try_consume_daily_request", side_effect=self.q.consume_daily),
             mock.patch.object(db, "refund_daily_request", side_effect=self.q.refund_daily),
             mock.patch.object(db, "refund_free_ai", side_effect=self.q.refund_free),
-            mock.patch.object(db, "get_ai_quota", side_effect=self.q.quota),
+            mock.patch.object(db, "try_consume_spin_ai_bonus", side_effect=self.q.consume_bonus),
+            mock.patch.object(db, "refund_spin_ai_bonus", side_effect=self.q.refund_bonus),
+            mock.patch.object(db, "get_ai_quota_detail", side_effect=self.q.quota_detail),
             mock.patch.object(db, "get_medical_profile", return_value=None),
             mock.patch.object(bot, "get_gemini_response", self.ai),
             mock.patch.object(bot, "ai_chat_throttle", bot.AiChatThrottle(clock=lambda: self.now[0])),
@@ -179,7 +196,7 @@ class AiChatQuotaTest(AiChatTestBase):
         before = self.q.quota(USER_ID)[0]
         resp, data = await self.chat()
         self.assertEqual(resp.status, 200)
-        self.assertEqual(sorted(data), ["limit", "ok", "remaining", "reply"])
+        self.assertEqual(sorted(data), ["bonus", "limit", "ok", "remaining", "reply"])
         self.assertTrue(data["ok"])
         self.assertEqual(data["remaining"], before - 1)                         # aynan 1 ga kamaydi
         self.assertEqual(data["limit"], 2)
@@ -243,6 +260,7 @@ class AiChatQuotaTest(AiChatTestBase):
         src = inspect.getsource(bot.handle_ai_chat)
         self.assertIn("database.try_consume_free_ai", src)
         self.assertIn("database.try_consume_daily_request", src)
+        self.assertIn("database.try_consume_spin_ai_bonus", src)
 
     async def test_parallel_request_busy(self):
         bot._active_ai_users.add(USER_ID)
@@ -400,6 +418,67 @@ class AiConditionKeysTest(unittest.TestCase):
         self.assertEqual(bot.ai_disease_key("Qazg‘oq"), "qazgoq")
 
 
+class AiChatBonusTest(AiChatTestBase):
+    """Barabandan yutilgan bonus savollar: oddiy kvota tugagach sarflanadi, xatoda o'sha manbaga qaytadi."""
+
+    async def test_bonus_used_only_after_regular_quota_is_exhausted(self):
+        self.q.bonus = 2
+        for expected_used, expected_bonus in ((1, 2), (2, 2), (2, 1), (2, 0)):
+            resp, data = await self.chat()
+            self.assertEqual(resp.status, 200)
+            self.assertEqual((self.q.used, self.q.bonus), (expected_used, expected_bonus))
+        resp, data = await self.chat()                                           # hammasi tugadi
+        self.assertEqual((resp.status, data["error"]), (429, "limit"))
+
+    async def test_success_response_reports_remaining_with_bonus_and_bonus_separately(self):
+        self.q.used = self.q.daily_limit                                         # oddiy kvota tugagan
+        self.q.bonus = 3
+        resp, data = await self.chat()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual((data["remaining"], data["limit"], data["bonus"]), (2, 2, 2))      # 3 - 1 = 2 bonus qoldi
+
+    async def test_ai_failure_refunds_bonus_to_bonus_not_to_daily(self):
+        self.q.used = self.q.daily_limit
+        self.q.bonus = 1
+        self.ai.return_value = None                                              # AI javob bermadi
+        resp, data = await self.chat()
+        self.assertEqual((resp.status, data["error"]), (503, "busy"))
+        self.assertEqual(self.q.bonus, 1)                                        # bonusga qaytdi
+        self.assertEqual(self.q.used, self.q.daily_limit)                        # kunlik kvotaga tegilmadi
+
+    async def test_ai_exception_refunds_bonus(self):
+        self.q.used = self.q.daily_limit
+        self.q.bonus = 2
+        self.ai.side_effect = RuntimeError("gemini")
+        resp, _ = await self.chat()
+        self.assertEqual(resp.status, 503)
+        self.assertEqual(self.q.bonus, 2)
+
+    async def test_regular_source_refund_does_not_touch_bonus(self):
+        self.q.bonus = 2
+        self.ai.return_value = None
+        resp, _ = await self.chat()                                              # kunlik kvotadan olingan edi
+        self.assertEqual(resp.status, 503)
+        self.assertEqual((self.q.used, self.q.bonus), (0, 2))
+
+    async def test_success_does_not_refund_bonus(self):
+        self.q.used = self.q.daily_limit
+        self.q.bonus = 1
+        refunds = self.q.refunds
+        resp, _ = await self.chat()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual((self.q.bonus, self.q.refunds), (0, refunds))
+
+    async def test_free_user_with_bonus_is_not_offered_premium_yet(self):
+        self.q.used = self.q.daily_limit
+        self.q.bonus = 1
+        resp, data = await self.chat()                                           # bonus sarflandi
+        self.assertEqual(resp.status, 200)
+        resp, data = await self.chat()                                           # endi hammasi tugagan
+        self.assertEqual((resp.status, data["error"]), (429, "limit"))
+        self.assertEqual(data["remaining"], 0)
+
+
 class AiQuotaReadTest(unittest.TestCase):
     """database.get_ai_quota — faqat o'qiydi, try_consume_* qoidasi bilan bir xil."""
 
@@ -420,29 +499,54 @@ class AiQuotaReadTest(unittest.TestCase):
         return result
 
     def test_free_user_with_unused_free_question(self):
-        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0)), (1, 1))     # jami 1 ta: 1/1
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0, 0)), (1, 1))     # jami 1 ta: 1/1
 
     def test_free_user_used_free_question(self):
-        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1)), (0, 1))     # ishlatilgach 0/1
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1, 0)), (0, 1))     # ishlatilgach 0/1
 
     def test_free_question_does_not_renew_next_day(self):
-        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-01", 1)), (0, 1))     # bir martalik, kunlik emas
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-01", 1, 0)), (0, 1))     # bir martalik, kunlik emas
 
     def test_free_limit_ignores_old_env(self):
         with mock.patch.dict("os.environ", {"FREE_AI_DAILY_LIMIT": "5"}):
-            self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0)), (1, 1))
+            self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0, 0)), (1, 1))
 
     def test_expired_premium_counts_as_free(self):
-        self.assertEqual(self.quota((1, "2020-01-01T00:00:00+05:00", "pro", 3, "2026-11-08", 1)), (0, 1))
+        self.assertEqual(self.quota((1, "2020-01-01T00:00:00+05:00", "pro", 3, "2026-11-08", 1, 0)), (0, 1))
 
     def test_premium_yesterday_requests_not_counted(self):
-        self.assertEqual(self.quota((1, None, "plus", 9, "2026-11-07", 1)), (30, 30))
+        self.assertEqual(self.quota((1, None, "plus", 9, "2026-11-07", 1, 0)), (30, 30))
 
     def test_pro_without_expiry_uses_tier_limit(self):
-        self.assertEqual(self.quota((1, None, "pro", 3, "2026-11-08", 1)), (12, 15))
+        self.assertEqual(self.quota((1, None, "pro", 3, "2026-11-08", 1, 0)), (12, 15))
 
     def test_new_user(self):
         self.assertEqual(self.quota(None), (1, 1))
+
+    def test_bonus_is_added_to_remaining_but_not_to_limit(self):
+        # bepul: 1 ta ishlatilgan + 2 ta bonus -> qolgan 2, limit 1 (mini app limit<=1 ni "bepul" deb biladi)
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1, 2)), (2, 1))
+        # bepul savol hali bor + 3 ta bonus
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 0, 3)), (4, 1))
+        # premium Pro: 3 ta ishlatilgan (12 qolgan) + 2 ta bonus
+        self.assertEqual(self.quota((1, None, "pro", 3, "2026-11-08", 0, 2)), (14, 15))
+
+    def test_bonus_survives_day_change_and_premium_expiry(self):
+        # muddatsiz saqlanadi: kunlik hisoblagich yangilansa ham, premium tugasa ham
+        self.assertEqual(self.quota((1, None, "plus", 30, "2026-11-07", 1, 4)), (34, 30))
+        self.assertEqual(self.quota((1, "2020-01-01T00:00:00+05:00", "pro", 3, "2026-11-08", 1, 2)), (2, 1))
+
+    def test_null_or_negative_bonus_counts_as_zero(self):
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1, None)), (0, 1))
+        self.assertEqual(self.quota((0, None, "free", 0, "2026-11-08", 1, -5)), (0, 1))
+
+    def test_detail_returns_bonus_separately(self):
+        cur = mock.MagicMock()
+        cur.fetchone.return_value = (0, None, "free", 0, "2026-11-08", 1, 2)
+        cm = mock.MagicMock()
+        cm.__enter__.return_value = (mock.MagicMock(), cur)
+        with mock.patch.object(bot.database, "_managed_cursor", return_value=cm):
+            self.assertEqual(bot.database.get_ai_quota_detail(USER_ID), (2, 1, 2))
 
 
 if __name__ == "__main__":

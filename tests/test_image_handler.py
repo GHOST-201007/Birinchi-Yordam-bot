@@ -54,6 +54,8 @@ class ImageHandlerTestBase(unittest.TestCase):
         self.try_daily = mock.MagicMock(return_value=False)
         self.refund_free = mock.MagicMock()
         self.refund_daily = mock.MagicMock()
+        self.try_bonus = mock.MagicMock(return_value=False)
+        self.refund_bonus = mock.MagicMock()
         self.get_profile = mock.MagicMock(return_value=None)
         self.upsell = mock.AsyncMock()
 
@@ -66,6 +68,8 @@ class ImageHandlerTestBase(unittest.TestCase):
             mock.patch.object(bot.database, "try_consume_daily_request", self.try_daily),
             mock.patch.object(bot.database, "refund_free_ai", self.refund_free),
             mock.patch.object(bot.database, "refund_daily_request", self.refund_daily),
+            mock.patch.object(bot.database, "try_consume_spin_ai_bonus", self.try_bonus),
+            mock.patch.object(bot.database, "refund_spin_ai_bonus", self.refund_bonus),
             mock.patch.object(bot.database, "get_medical_profile", self.get_profile),
         ]
         for p in self._patchers:
