@@ -626,6 +626,154 @@ def set_premium(user_id, status: int, months: int = 1):
             )
         conn.commit()
 
+# ═══════════════════════════════════════════════════════════════════
+# ADMIN PREMIUM PANELI (bot.py: /premium) — ro'yxat, qidiruv, berish, muddatsiz
+# ═══════════════════════════════════════════════════════════════════
+ADMIN_PAGE_SIZE = 10
+_ADMIN_TIERS = ("pro", "plus", "ultra")
+
+
+def admin_premium_view(is_premium, premium_type, expires_at, now=None) -> dict:
+    """Foydalanuvchining HAQIQIY Premium holati (admin paneli uchun):
+    {"active", "tier" ('free'|'pro'|'plus'|'ultra'), "unlimited", "expires" (datetime | None)}.
+    Kvota kodi (get_ai_quota / try_consume_daily_request) bilan bir xil qoida: muddatsiz premium (is_premium=1,
+    muddat bo'sh) premium_type bo'yicha hisoblanadi (noma'lum tur -> ultra); muddati o'tgan premium — oddiy."""
+    free = {"active": False, "tier": "free", "unlimited": False, "expires": None}
+    if not is_premium:
+        return free
+    tier = premium_type if premium_type in _ADMIN_TIERS else "ultra"
+    if not expires_at:
+        return {"active": True, "tier": tier, "unlimited": True, "expires": None}
+    try:
+        expires = _to_uz_datetime(expires_at)
+    except (ValueError, TypeError):
+        return free
+    if expires <= (now or get_uz_now()):
+        return free
+    return {"active": True, "tier": tier, "unlimited": False, "expires": expires}
+
+
+def _admin_user_record(row) -> dict:
+    user_id, is_premium, premium_type, expires_at, full_name, username, score = row
+    record = {"user_id": user_id, "full_name": full_name, "username": username, "score": int(score or 0)}
+    record.update(admin_premium_view(is_premium, premium_type, expires_at))
+    return record
+
+
+def admin_users_page(page: int = 0, page_size: int = ADMIN_PAGE_SIZE) -> dict:
+    """Bazadagi foydalanuvchilar (yangi ro'yxatdan o'tganlar birinchi), sahifalab.
+    {"users": [...], "page", "pages", "total", "premium_count"}. Sahifa chegaradan chiqsa — chegaraga keltiriladi."""
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT COUNT(*) FROM users")
+        total = int(c.fetchone()[0] or 0)
+        c.execute("SELECT is_premium, premium_type, premium_expires_at FROM users WHERE is_premium = 1")
+        premium_count = sum(1 for r in c.fetchall() if admin_premium_view(r[0], r[1], r[2])["active"])
+        pages = max(1, -(-total // page_size))
+        page = min(max(int(page), 0), pages - 1)
+        c.execute(
+            "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
+            "COALESCE(medicine_score, 0) FROM users "
+            "ORDER BY registered_at DESC NULLS LAST, user_id DESC LIMIT %s OFFSET %s",
+            (page_size, page * page_size)
+        )
+        users = [_admin_user_record(r) for r in c.fetchall()]
+    return {"users": users, "page": page, "pages": pages, "total": total, "premium_count": premium_count}
+
+
+def admin_get_user(user_id: int):
+    """Bitta foydalanuvchi yozuvi (dict) yoki None."""
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
+            "COALESCE(medicine_score, 0) FROM users WHERE user_id = %s", (user_id,)
+        )
+        row = c.fetchone()
+    return _admin_user_record(row) if row else None
+
+
+def admin_find_user(query: str):
+    """Qidiruv: raqamli ID yoki @username (kichik/katta harf farqsiz). Faqat bazadagi foydalanuvchilar. Topilmasa None."""
+    q = (query or "").strip()
+    if q.startswith("@"):
+        q = q[1:].strip()
+    if not q or len(q) > 64:
+        return None
+    with _managed_cursor() as (conn, c):
+        if q.isascii() and q.isdigit():
+            if int(q) > 2 ** 63 - 1:                      # BIGINT dan katta ID bazada bo'lishi mumkin emas
+                return None
+            c.execute(
+                "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
+                "COALESCE(medicine_score, 0) FROM users WHERE user_id = %s", (int(q),)
+            )
+        else:
+            c.execute(
+                "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
+                "COALESCE(medicine_score, 0) FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 1", (q,)
+            )
+        row = c.fetchone()
+    return _admin_user_record(row) if row else None
+
+
+def set_premium_unlimited(user_id: int, tier: str, _cursor=None) -> bool:
+    """Muddatsiz Premium: is_premium=1, premium_type=tier, premium_expires_at=NULL, premium_until=NULL.
+    Kvota kodi muddatsizni premium_type bo'yicha hisoblaydi (tarif limiti). _cursor berilsa — chaqiruvchining
+    tranzaksiyasida (commit/close bu yerda emas). True — foydalanuvchi topildi va yangilandi."""
+    if tier not in _ADMIN_TIERS:
+        raise ValueError(f"Noto'g'ri premium_type: {tier!r}. Faqat {_ADMIN_TIERS} qabul qilinadi.")
+    sql = ("UPDATE users SET is_premium = 1, premium_type = %s, premium_expires_at = NULL, premium_until = NULL "
+           "WHERE user_id = %s")
+    if _cursor is not None:
+        _cursor.execute(sql, (tier, user_id))
+        return _cursor.rowcount > 0
+    with _managed_cursor() as (conn, c):
+        c.execute(sql, (tier, user_id))
+        updated = c.rowcount > 0
+        conn.commit()
+    return updated
+
+
+def admin_grant_premium(user_id: int, tier: str, days) -> dict:
+    """Admin Premium beradi — BITTA tranzaksiyada. days=None — muddatsiz.
+    * Kunlik muddat: grant_premium_days (faol muddatga qo'shadi, yuqori tarifni saqlaydi: Ultra + 3 kun Pro ->
+      Ultra saqlanadi, muddat +3 kun).
+    * Userda muddatsiz Premium bo'lsa kunlik muddat BERILMAYDI (grant_premium_days uni kunlikka almashtirib yuborardi):
+      error="unlimited_exists". Muddatsiz -> muddatsiz (tarifni almashtirish) mumkin.
+    Natija: {"ok", "error" (None | "not_found" | "unlimited_exists"), "tier" (yakuniy), "previous_tier", "expires",
+    "unlimited", "kept_higher" (yakuniy tarif so'ralganidan yuqori)}."""
+    if tier not in _ADMIN_TIERS:
+        raise ValueError(f"Noto'g'ri premium_type: {tier!r}. Faqat {_ADMIN_TIERS} qabul qilinadi.")
+    if days is not None:
+        _validate_premium_grant_args(tier, days)
+    result = {"ok": False, "error": None, "tier": None, "previous_tier": "free", "expires": None,
+              "unlimited": days is None, "kept_higher": False}
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT is_premium, premium_type, premium_expires_at FROM users WHERE user_id = %s FOR UPDATE",
+                  (user_id,))
+        row = c.fetchone()
+        if not row:
+            result["error"] = "not_found"
+            return result
+        before = admin_premium_view(row[0], row[1], row[2])
+        result["previous_tier"] = before["tier"] if before["active"] else "free"
+
+        if days is None:
+            set_premium_unlimited(user_id, tier, _cursor=c)
+            conn.commit()
+            result.update(ok=True, tier=tier)
+            return result
+
+        if before["unlimited"]:
+            result["error"] = "unlimited_exists"
+            return result
+        until = grant_premium_days(user_id, days, tier, _cursor=c)
+        c.execute("SELECT premium_type FROM users WHERE user_id = %s", (user_id,))
+        final_tier = c.fetchone()[0] or tier
+        conn.commit()
+        result.update(ok=True, tier=final_tier, expires=until, unlimited=False, kept_higher=final_tier != tier)
+    return result
+
+
 # New helper functions for medicine score and premium awarding
 
 def add_score(user_id: int, points: int = 1) -> None:

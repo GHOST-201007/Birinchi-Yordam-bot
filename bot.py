@@ -3921,48 +3921,6 @@ async def cmd_test_scheduler(message: types.Message):
         await message.answer(f"❌ <b>Test xatosi:</b> {e}", parse_mode="HTML")
         logging.exception(f"[SCHEDULER TEST] ERROR: {e}")
 
-def _build_premium_list_keyboard(users_info):
-    """Premium boshqaruv uchun keyboard quradi"""
-    builder = InlineKeyboardBuilder()
-    for row in users_info:
-        user_id, is_premium = row[0], row[1]
-        full_name = row[3] if len(row) > 3 else None
-        username = row[4] if len(row) > 4 else None
-        display = full_name or f"ID:{user_id}"
-        status_icon = "🌟" if is_premium else "👤"
-        action = "❌ Olib tashlash" if is_premium else "🌟 Premium berish"
-        builder.button(
-            text=f"{status_icon} {display} — {action}",
-            callback_data=f"pm_toggle_{user_id}"
-        )
-    builder.button(text="🔄 Yangilash", callback_data="pm_refresh")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def _build_premium_list_text(users_info, total, premium_count):
-    """Premium ro'yxat matni"""
-    text = (
-        f"💎 <b>Premium Boshqaruvi</b>\n\n"
-        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n"
-        f"🌟 Premium foydalanuvchilar: <b>{premium_count}</b>\n\n"
-        f"<b>So'nggi {len(users_info)} ta foydalanuvchi:</b>\n"
-        "─────────────────\n"
-    )
-    for row in users_info:
-        user_id, is_premium = row[0], row[1]
-        full_name = row[3] if len(row) > 3 else None
-        username = row[4] if len(row) > 4 else None
-        icon = "🌟" if is_premium else "👤"
-        name_str = html.escape(full_name or "Noma'lum")
-        uname_str = f" (@{html.escape(username)})" if username else ""
-        prem_str = "Premium" if is_premium else "Oddiy"
-        text += f"{icon} <b>{name_str}</b>{uname_str}\n"
-        text += f"   🆔 <code>{user_id}</code>  |  {prem_str}\n\n"
-    text += "Tugma bosib premium berishingiz yoki olib tashlashingiz mumkin 👇"
-    return text
-
-
 async def _resolve_users_info(users_info):
     """Foydalanuvchilar ismlari va usernamelarini Telegram'dan yuklab yangilaydi (agar yo'q bo'lsa)"""
     resolved = []
@@ -3984,74 +3942,507 @@ async def _resolve_users_info(users_info):
     return resolved
 
 
+# ═══════════════════════════════════════════════════════════════════
+# ADMIN: PREMIUM BOSHQARUV PANELI (/premium, faqat ADMIN_ID)
+# Ro'yxat -> user kartasi -> tarif -> muddat -> rejim -> sabab -> tasdiqlash. Hammasi tugmalar; qo'lda yoziladigan
+# yagona joy — qidiruv (ID yoki @username). Oraliq tanlovlar callback_data da (stateless, restartdan omon qoladi):
+# "pm:<amal>:<maydonlar>". Oddiy userlar uchun /premium (_show_premium_page) o'zgarmagan.
+# ═══════════════════════════════════════════════════════════════════
+class AdminPremiumStates(StatesGroup):
+    waiting_search = State()
+
+
+PM_TIER_CODES = {"pro": "p", "plus": "l", "ultra": "u"}
+PM_TIER_LABELS = {"pro": "⭐ Pro", "plus": "💎 Plus", "ultra": "👑 Ultra"}
+PM_TIER_NAMES = {"free": "Oddiy", "pro": "Pro", "plus": "Plus", "ultra": "Ultra"}
+PM_TIER_RANK = {"free": 0, "pro": 1, "plus": 2, "ultra": 3}
+PM_DURATIONS = {"1": 1, "3": 3, "7": 7, "30": 30, "90": 90, "u": None}        # "u" — muddatsiz
+PM_MODES = {"n": "📣 Xabar bilan", "s": "🤫 Sirli"}
+PM_REASONS = (
+    "🏆 Konkurs g'olibi",
+    "🎂 Tug'ilgan kun sovg'asi",
+    "🎁 Sovg'a",
+    "🙏 Faolligingiz uchun",
+    "🛠 Noqulaylik uchun kompensatsiya",
+    "➖ Sababsiz",
+)
+PM_NO_REASON = 5
+PM_RECENT_TTL = 60.0
+PM_UNLIMITED_BLOCK_MSG = "⚠️ Userda muddatsiz Premium bor — avval olib tashlang."
+PM_NOT_DELIVERED_MSG = "⚠️ Xabar yetkazilmadi (user botni bloklagan bo'lishi mumkin)"
+_pm_recent: dict = {}
+
+
+def _is_admin(user_id) -> bool:
+    return bool(ADMIN_ID) and str(user_id) == str(ADMIN_ID)
+
+
+def _pm_cb(*parts) -> str:
+    data = "pm:" + ":".join(str(p) for p in parts)
+    if len(data.encode("utf-8")) > 64:
+        raise ValueError(f"callback_data 64 baytdan oshdi: {data}")
+    return data
+
+
+def _pm_btn(text: str, *parts) -> types.InlineKeyboardButton:
+    return types.InlineKeyboardButton(text=text, callback_data=_pm_cb(*parts))
+
+
+def _pm_markup(rows) -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _pm_tiers() -> list:
+    """[(kod, tarif, yorliq)] — get_stars_tariffs() dagi tarif turlari bilan bir xil, Pro -> Ultra tartibida."""
+    in_tariffs = {entry[0] for entry in get_stars_tariffs().values()}
+    return [(PM_TIER_CODES[t], t, PM_TIER_LABELS[t]) for t in ("pro", "plus", "ultra") if t in in_tariffs]
+
+
+def _pm_claim_once(key) -> bool:
+    """Bir xil tasdiqlash tugmasining ikki marta (qo'sh bosish) bajarilishiga yo'l qo'ymaydi (PM_RECENT_TTL soniya)."""
+    now = time.monotonic()
+    for k in [k for k, ts in _pm_recent.items() if now - ts > PM_RECENT_TTL]:
+        del _pm_recent[k]
+    if key in _pm_recent:
+        return False
+    _pm_recent[key] = now
+    return True
+
+
+def _pm_fmt_dt(dt) -> str:
+    return dt.astimezone(timezone(timedelta(hours=5))).strftime("%d.%m.%Y %H:%M")
+
+
+def _pm_name(user: dict) -> str:
+    return user.get("full_name") or f"User {user['user_id']}"
+
+
+def _pm_tier_text(user: dict) -> str:
+    if not user["active"]:
+        return PM_TIER_NAMES["free"]
+    return PM_TIER_NAMES[user["tier"]] + (" ♾" if user["unlimited"] else "")
+
+
+def _pm_days_text(days) -> str:
+    return "♾ Muddatsiz" if days is None else f"{days} kun"
+
+
+def _pm_user_line(user: dict) -> str:
+    uname = f" (@{html.escape(user['username'])})" if user.get("username") else ""
+    return f"👤 <b>{html.escape(_pm_name(user))}</b>{uname}\n🆔 <code>{user['user_id']}</code>"
+
+
+def _pm_expiry_text(user: dict) -> str:
+    if not user["active"]:
+        return "—"
+    return "♾ Muddatsiz" if user["unlimited"] else f"{_pm_fmt_dt(user['expires'])} (Toshkent vaqti)"
+
+
+async def _pm_fill_names(users: list) -> None:
+    """Bazada ismi yo'q foydalanuvchilar uchun Telegram'dan ism olinadi (mavjud _resolve_users_info orqali)."""
+    missing = [u for u in users if not u.get("full_name")]
+    if not missing:
+        return
+    resolved = await _resolve_users_info([(u["user_id"], 1 if u["active"] else 0, None, None, u.get("username"))
+                                          for u in missing])
+    for user, row in zip(missing, resolved):
+        user["full_name"], user["username"] = row[3], row[4] or user.get("username")
+
+
+async def _pm_load_list(page: int):
+    data = await asyncio.to_thread(database.admin_users_page, page)
+    await _pm_fill_names(data["users"])
+    return data
+
+
+async def _pm_load_user(user_id: int):
+    user = await asyncio.to_thread(database.admin_get_user, user_id)
+    if user:
+        await _pm_fill_names([user])
+    return user
+
+
+# ── ko'rinishlar: (matn, tugmalar) ──────────────────────────────────────────
+def _pm_list_view(data: dict):
+    page, pages = data["page"], data["pages"]
+    text = (
+        "💎 <b>Premium Boshqaruvi</b>\n\n"
+        f"👥 Jami foydalanuvchilar: <b>{data['total']}</b>\n"
+        f"🌟 Premium foydalanuvchilar: <b>{data['premium_count']}</b>\n\n"
+        f"📄 Sahifa: <b>{page + 1}/{pages}</b>\n"
+        "Foydalanuvchini tanlang 👇"
+    )
+    rows = []
+    for user in data["users"]:
+        name = _pm_name(user)
+        name = name if len(name) <= 24 else name[:23] + "…"
+        icon = "🌟" if user["active"] else "👤"
+        rows.append([_pm_btn(f"{icon} {name} — {_pm_tier_text(user)}", "u", user["user_id"], page)])
+    nav = []
+    if page > 0:
+        nav.append(_pm_btn("◀️", "l", page - 1))
+    if page < pages - 1:
+        nav.append(_pm_btn("▶️", "l", page + 1))
+    if nav:
+        rows.append(nav)
+    rows.append([_pm_btn("🔍 Qidirish", "s")])
+    return text, _pm_markup(rows)
+
+
+def _pm_card_view(user: dict, pg: int):
+    text = (
+        f"{_pm_user_line(user)}\n\n"
+        f"💎 Tarif: <b>{_pm_tier_text(user)}</b>\n"
+        f"⏳ Tugash sanasi: <b>{_pm_expiry_text(user)}</b>\n"
+        f"🏆 Ballar: <b>{user['score']}</b>"
+    )
+    uid = user["user_id"]
+    rows = [[_pm_btn("🎁 Premium berish", "g", uid, pg)]]
+    if user["active"]:
+        rows.append([_pm_btn("❌ Premiumni olib tashlash", "x", uid, pg)])
+    rows.append([_pm_btn("⬅️ Ro'yxatga", "l", pg)])
+    return text, _pm_markup(rows)
+
+
+def _pm_tier_view(user: dict, pg: int):
+    uid = user["user_id"]
+    text = f"🎁 <b>Premium berish</b>\n\n{_pm_user_line(user)}\n\n<b>1/4.</b> Tarifni tanlang 👇"
+    rows = [[_pm_btn(label, "t", uid, pg, code) for code, _tier, label in _pm_tiers()],
+            [_pm_btn("⬅️ Orqaga", "u", uid, pg)]]
+    return text, _pm_markup(rows)
+
+
+def _pm_days_view(user: dict, pg: int, tier: str):
+    uid, tcode = user["user_id"], PM_TIER_CODES[tier]
+    text = (f"🎁 <b>Premium berish</b>\n\n{_pm_user_line(user)}\n"
+            f"💎 Tarif: <b>{PM_TIER_NAMES[tier]}</b>\n\n<b>2/4.</b> Muddatni tanlang 👇")
+    first = [_pm_btn(f"{d} kun", "d", uid, pg, tcode, d) for d in ("1", "3", "7")]
+    second = [_pm_btn(f"{d} kun", "d", uid, pg, tcode, d) for d in ("30", "90")]
+    rows = [first, second, [_pm_btn("♾ Muddatsiz", "d", uid, pg, tcode, "u")],
+            [_pm_btn("⬅️ Orqaga", "g", uid, pg)]]
+    return text, _pm_markup(rows)
+
+
+def _pm_mode_view(user: dict, pg: int, tier: str, dur: str):
+    uid, tcode = user["user_id"], PM_TIER_CODES[tier]
+    text = (f"🎁 <b>Premium berish</b>\n\n{_pm_user_line(user)}\n"
+            f"💎 Tarif: <b>{PM_TIER_NAMES[tier]}</b>  |  ⏱ Muddat: <b>{_pm_days_text(PM_DURATIONS[dur])}</b>\n\n"
+            "<b>3/4.</b> Rejimni tanlang 👇\n"
+            "📣 Xabar bilan — userga tabrik xabari boradi\n🤫 Sirli — userga hech narsa bormaydi")
+    rows = [[_pm_btn(PM_MODES["n"], "m", uid, pg, tcode, dur, "n"), _pm_btn(PM_MODES["s"], "m", uid, pg, tcode, dur, "s")],
+            [_pm_btn("⬅️ Orqaga", "t", uid, pg, tcode)]]
+    return text, _pm_markup(rows)
+
+
+def _pm_reason_view(user: dict, pg: int, tier: str, dur: str):
+    uid, tcode = user["user_id"], PM_TIER_CODES[tier]
+    text = (f"🎁 <b>Premium berish</b>\n\n{_pm_user_line(user)}\n\n"
+            "<b>4/4.</b> Sababni tanlang (userga xabarda ko'rsatiladi) 👇")
+    rows = [[_pm_btn(label, "r", uid, pg, tcode, dur, "n", idx)] for idx, label in enumerate(PM_REASONS)]
+    rows.append([_pm_btn("⬅️ Orqaga", "d", uid, pg, tcode, dur)])
+    return text, _pm_markup(rows)
+
+
+def _pm_confirm_view(user: dict, pg: int, tier: str, dur: str, mode: str, reason: int):
+    uid, tcode, days = user["user_id"], PM_TIER_CODES[tier], PM_DURATIONS[dur]
+    lines = ["🎁 <b>Premium berish — tasdiqlang</b>", "", _pm_user_line(user), "",
+             f"💎 Tarif: <b>{PM_TIER_NAMES[tier]}</b>",
+             f"⏱ Muddat: <b>{_pm_days_text(days)}</b>",
+             f"Rejim: <b>{PM_MODES[mode]}</b>"]
+    if mode == "n" and reason != PM_NO_REASON:
+        lines.append(f"📝 Sabab: {PM_REASONS[reason]}")
+    if user["active"] and days is not None and PM_TIER_RANK[user["tier"]] > PM_TIER_RANK[tier]:
+        lines += ["", f"ℹ️ Userda hozir Premium {PM_TIER_NAMES[user['tier']]} bor: tarif saqlanadi, muddat +{days} kun."]
+    elif user["unlimited"] and days is None:
+        lines += ["", f"ℹ️ Userda muddatsiz Premium {PM_TIER_NAMES[user['tier']]} bor: tarif {PM_TIER_NAMES[tier]} ga almashadi."]
+    back = _pm_btn("⬅️ Orqaga", "m", uid, pg, tcode, dur, "n") if mode == "n" else _pm_btn("⬅️ Orqaga", "d", uid, pg, tcode, dur)
+    reason_part = reason if mode == "n" else "-"
+    rows = [[_pm_btn("✅ Tasdiqlash", "c", uid, pg, tcode, dur, mode, reason_part),
+             _pm_btn("✖️ Bekor qilish", "u", uid, pg)], [back]]
+    return "\n".join(lines), _pm_markup(rows)
+
+
+def _pm_remove_mode_view(user: dict, pg: int):
+    uid = user["user_id"]
+    text = (f"❌ <b>Premiumni olib tashlash</b>\n\n{_pm_user_line(user)}\n"
+            f"💎 Hozir: <b>{_pm_tier_text(user)}</b>\n\nRejimni tanlang 👇\n"
+            "📣 Xabar bilan — userga xabar boradi\n🤫 Sirli — userga hech narsa bormaydi")
+    rows = [[_pm_btn(PM_MODES["n"], "y", uid, pg, "n"), _pm_btn(PM_MODES["s"], "y", uid, pg, "s")],
+            [_pm_btn("⬅️ Orqaga", "u", uid, pg)]]
+    return text, _pm_markup(rows)
+
+
+def _pm_remove_confirm_view(user: dict, pg: int, mode: str):
+    uid = user["user_id"]
+    text = (f"❌ <b>Premiumni olib tashlash — tasdiqlang</b>\n\n{_pm_user_line(user)}\n"
+            f"💎 Hozir: <b>{_pm_tier_text(user)}</b>\nRejim: <b>{PM_MODES[mode]}</b>")
+    rows = [[_pm_btn("✅ Tasdiqlash", "z", uid, pg, mode), _pm_btn("✖️ Bekor qilish", "u", uid, pg)],
+            [_pm_btn("⬅️ Orqaga", "x", uid, pg)]]
+    return text, _pm_markup(rows)
+
+
+def _pm_result_markup(uid: int, pg: int):
+    return _pm_markup([[_pm_btn("👤 Karta", "u", uid, pg), _pm_btn("⬅️ Ro'yxatga", "l", pg)]])
+
+
+def _pm_grant_result_text(user: dict, result: dict, days, mode: str, notified) -> str:
+    lines = ["✅ <b>Premium berildi</b>", "", _pm_user_line(user), ""]
+    final = PM_TIER_NAMES[result["tier"]]
+    if result["kept_higher"] and days is not None:
+        lines.append(f"💎 Tarif: <b>{final}</b> saqlandi, muddat +{days} kun")
+    else:
+        lines.append(f"💎 Tarif: <b>{final}</b>")
+    lines.append("♾ Muddatsiz" if result["unlimited"] else f"⏳ Tugash sanasi: <b>{_pm_fmt_dt(result['expires'])}</b> (Toshkent vaqti)")
+    lines.append(f"Rejim: <b>{PM_MODES[mode]}</b>")
+    if mode == "n" and notified is False:
+        lines += ["", PM_NOT_DELIVERED_MSG]
+    return "\n".join(lines)
+
+
+def _pm_remove_result_text(user: dict, mode: str, notified) -> str:
+    lines = ["✅ <b>Premium olib tashlandi</b>", "", _pm_user_line(user), "", f"Rejim: <b>{PM_MODES[mode]}</b>"]
+    if mode == "n" and notified is False:
+        lines += ["", PM_NOT_DELIVERED_MSG]
+    return "\n".join(lines)
+
+
+# ── userga xabarlar (faqat "Xabar bilan" rejimida) ──────────────────────────
+def _pm_user_grant_text(tier: str, days, result: dict, reason: int) -> str:
+    period = "Muddatsiz" if days is None else f"{days} kunlik"
+    lines = [f"🎁 Tabriklaymiz! Siz admin tomonidan <b>{period} Premium {PM_TIER_NAMES[tier]}</b> oldingiz!"]
+    if reason != PM_NO_REASON:
+        lines.append(f"📝 Sabab: {PM_REASONS[reason]}")
+    if result["kept_higher"]:
+        lines.append(f"ℹ️ Joriy tarifingiz: <b>Premium {PM_TIER_NAMES[result['tier']]}</b> (saqlandi).")
+    lines.append("♾ Muddatsiz" if result["unlimited"] else f"⏳ Tugash sanasi: <b>{_pm_fmt_dt(result['expires'])}</b> (Toshkent vaqti)")
+    return "\n".join(lines)
+
+
+PM_USER_REMOVED_TEXT = "ℹ️ Sizning Premium obunangiz admin tomonidan bekor qilindi."
+
+
+def _pm_open_app_markup():
+    url = os.getenv("MINI_APP_URL", MINI_APP_URL)
+    if not url:
+        return None
+    # Oddiy URL: get_web_app_url() qabul qiluvchi uchun baraban sovrinini oldindan yaratib qo'yadi — bu yerda kerak emas
+    return types.InlineKeyboardMarkup(inline_keyboard=[[
+        types.InlineKeyboardButton(text="🚑 Mini Ilovani ochish", web_app=types.WebAppInfo(url=url))
+    ]])
+
+
+async def _pm_notify(user_id: int, text: str, markup=None) -> bool:
+    """Userga xabar. Yetkazilmasa (bloklagan bo'lishi mumkin) False — Premium baribir berilgan/olingan."""
+    try:
+        await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=markup)
+        return True
+    except Exception as e:
+        logging.warning("[ADMIN PREMIUM] userga xabar yetmadi (user=%s): %s", user_id, type(e).__name__)
+        return False
+
+
+async def _pm_edit(callback: types.CallbackQuery, text: str, markup) -> None:
+    try:
+        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    except Exception as e:
+        if "message is not modified" not in str(e):
+            logging.warning("[ADMIN PREMIUM] xabarni tahrirlab bo'lmadi: %s", e)
+
+
+# ── bajarish ────────────────────────────────────────────────────────────────
+async def _pm_do_grant(callback, uid, pg, tier, dur, mode, reason):
+    days = PM_DURATIONS[dur]
+    admin_id = callback.from_user.id
+    key = (callback.message.chat.id, callback.message.message_id, callback.data)
+    if not _pm_claim_once(key):
+        await callback.answer("⏳ Bu amal allaqachon bajarilgan.", show_alert=True)
+        return
+    try:
+        result = await asyncio.to_thread(database.admin_grant_premium, uid, tier, days)
+    except Exception:
+        _pm_recent.pop(key, None)
+        logging.exception("[ADMIN PREMIUM] berishda DB xatosi (admin=%s user=%s)", admin_id, uid)
+        await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
+        return
+    if not result["ok"]:
+        _pm_recent.pop(key, None)
+        msg = PM_UNLIMITED_BLOCK_MSG if result["error"] == "unlimited_exists" else "❌ Foydalanuvchi bazada topilmadi."
+        await callback.answer(msg, show_alert=True)
+        return
+    logging.info("[ADMIN PREMIUM] admin=%s user=%s amal=berish tarif=%s (yakuniy=%s) muddat=%s rejim=%s sabab=%s",
+                 admin_id, uid, tier, result["tier"], "muddatsiz" if days is None else f"{days} kun", mode,
+                 PM_REASONS[reason] if mode == "n" else "-")
+    notified = None
+    if mode == "n":
+        notified = await _pm_notify(uid, _pm_user_grant_text(tier, days, result, reason), _pm_open_app_markup())
+    user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
+    await _pm_edit(callback, _pm_grant_result_text(user, result, days, mode, notified), _pm_result_markup(uid, pg))
+
+
+async def _pm_do_remove(callback, uid, pg, mode):
+    admin_id = callback.from_user.id
+    key = (callback.message.chat.id, callback.message.message_id, callback.data)
+    if not _pm_claim_once(key):
+        await callback.answer("⏳ Bu amal allaqachon bajarilgan.", show_alert=True)
+        return
+    try:
+        await asyncio.to_thread(database.set_premium, uid, 0)
+    except Exception:
+        _pm_recent.pop(key, None)
+        logging.exception("[ADMIN PREMIUM] olib tashlashda DB xatosi (admin=%s user=%s)", admin_id, uid)
+        await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
+        return
+    logging.info("[ADMIN PREMIUM] admin=%s user=%s amal=olib tashlash rejim=%s", admin_id, uid, mode)
+    notified = await _pm_notify(uid, PM_USER_REMOVED_TEXT) if mode == "n" else None
+    user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
+    await _pm_edit(callback, _pm_remove_result_text(user, mode, notified), _pm_result_markup(uid, pg))
+
+
+# ── callback ma'lumotini tekshirish ─────────────────────────────────────────
+def _pm_parse(args: list, need: int) -> dict:
+    """["uid", "pg", tarif_kodi, muddat, rejim, sabab] dan dict. Noto'g'ri qiymat — ValueError."""
+    if len(args) != need:
+        raise ValueError("maydonlar soni")
+    f = {"uid": int(args[0]), "pg": max(0, int(args[1]))}
+    if need >= 3:
+        tiers = {code: tier for code, tier, _label in _pm_tiers()}
+        if args[2] not in tiers:
+            raise ValueError("tarif")
+        f["tier"] = tiers[args[2]]
+    if need >= 4:
+        if args[3] not in PM_DURATIONS:
+            raise ValueError("muddat")
+        f["dur"] = args[3]
+        f["days"] = PM_DURATIONS[args[3]]
+    if need >= 5:
+        if args[4] not in PM_MODES:
+            raise ValueError("rejim")
+        f["mode"] = args[4]
+    if need >= 6:
+        if f["mode"] == "n":
+            f["reason"] = int(args[5])
+            if not 0 <= f["reason"] < len(PM_REASONS):
+                raise ValueError("sabab")
+        elif args[5] == "-":
+            f["reason"] = PM_NO_REASON
+        else:
+            raise ValueError("sabab")
+    return f
+
+
+async def _pm_dispatch(callback: types.CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":")
+    action, args = parts[1], parts[2:]
+    if action != "s":
+        await state.clear()                                    # qidiruv kutish holatidan chiqish
+
+    if action == "l":                                          # ro'yxat sahifasi
+        text, markup = _pm_list_view(await _pm_load_list(int(args[0])))
+        await _pm_edit(callback, text, markup)
+        return
+    if action == "s":                                          # qidiruv: ID yoki @username yoziladi
+        await state.set_state(AdminPremiumStates.waiting_search)
+        await _pm_edit(callback, "🔍 <b>Qidirish</b>\n\nFoydalanuvchi ID raqamini yoki @username ni yozib yuboring.",
+                       _pm_markup([[_pm_btn("⬅️ Ro'yxatga", "l", 0)]]))
+        return
+
+    if action in ("u", "g", "x"):
+        f = _pm_parse(args, 2)
+    elif action == "t":
+        f = _pm_parse(args, 3)
+    elif action == "d":
+        f = _pm_parse(args, 4)
+    elif action == "m":
+        f = _pm_parse(args, 5)
+    elif action in ("r", "c"):
+        f = _pm_parse(args, 6)
+    elif action in ("y", "z"):
+        f = {"uid": int(args[0]), "pg": max(0, int(args[1]))}
+        if len(args) != 3 or args[2] not in PM_MODES:
+            raise ValueError("rejim")
+        f["mode"] = args[2]
+    else:
+        raise ValueError("amal")
+
+    uid, pg = f["uid"], f["pg"]
+    user = await _pm_load_user(uid)
+    if not user:
+        await callback.answer("❌ Foydalanuvchi bazada topilmadi.", show_alert=True)
+        return
+
+    if action == "u":
+        text, markup = _pm_card_view(user, pg)
+    elif action == "g":
+        text, markup = _pm_tier_view(user, pg)
+    elif action == "t":
+        text, markup = _pm_days_view(user, pg, f["tier"])
+    elif action == "d":
+        if f["days"] is not None and user["unlimited"]:
+            await callback.answer(PM_UNLIMITED_BLOCK_MSG, show_alert=True)
+            return
+        text, markup = _pm_mode_view(user, pg, f["tier"], f["dur"])
+    elif action == "m":
+        if f["mode"] == "n":
+            text, markup = _pm_reason_view(user, pg, f["tier"], f["dur"])
+        else:
+            text, markup = _pm_confirm_view(user, pg, f["tier"], f["dur"], "s", PM_NO_REASON)
+    elif action == "r":
+        text, markup = _pm_confirm_view(user, pg, f["tier"], f["dur"], f["mode"], f["reason"])
+    elif action == "c":
+        await _pm_do_grant(callback, uid, pg, f["tier"], f["dur"], f["mode"], f["reason"])
+        return
+    elif action == "x":
+        text, markup = _pm_remove_mode_view(user, pg)
+    elif action == "y":
+        text, markup = _pm_remove_confirm_view(user, pg, f["mode"])
+    else:                                                      # "z"
+        await _pm_do_remove(callback, uid, pg, f["mode"])
+        return
+    await _pm_edit(callback, text, markup)
+
+
 @dp.message(Command("premium"))
-async def cmd_premium(message: types.Message):
-    """Admin uchun interaktiv Premium boshqaruvi"""
-    if str(message.from_user.id) != str(ADMIN_ID):
-        # Oddiy foydalanuvchilar uchun Premium sahifasini ko'rsatish
+async def cmd_premium(message: types.Message, state: FSMContext):
+    """Admin: interaktiv Premium paneli. Oddiy foydalanuvchi: Premium sahifasi (o'zgarmagan)."""
+    if not _is_admin(message.from_user.id):
         return await _show_premium_page(message)
-    raw_users = await asyncio.to_thread(database.get_all_users_info, limit=15)
-    users_info = await _resolve_users_info(raw_users)
-    total = await asyncio.to_thread(database.get_users_count)
-    premium_count = await asyncio.to_thread(database.get_premium_count)
-    text = _build_premium_list_text(users_info, total, premium_count)
-    markup = _build_premium_list_keyboard(users_info)
+    await state.clear()
+    text, markup = _pm_list_view(await _pm_load_list(0))
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 
-@dp.callback_query(F.data == "pm_refresh")
-async def cb_pm_refresh(callback: types.CallbackQuery):
-    """Premium ro'yxatini yangilash"""
-    if str(callback.from_user.id) != str(ADMIN_ID):
+@dp.callback_query(F.data.startswith("pm:"))
+async def cb_premium_panel(callback: types.CallbackQuery, state: FSMContext):
+    """Premium paneli tugmalari. HAR BIR bosishda ADMIN_ID tekshiriladi."""
+    if not _is_admin(callback.from_user.id):
         await callback.answer("❌ Siz admin emassiz!", show_alert=True)
         return
-    raw_users = await asyncio.to_thread(database.get_all_users_info, limit=15)
-    users_info = await _resolve_users_info(raw_users)
-    total = await asyncio.to_thread(database.get_users_count)
-    premium_count = await asyncio.to_thread(database.get_premium_count)
-    text = _build_premium_list_text(users_info, total, premium_count)
-    markup = _build_premium_list_keyboard(users_info)
     try:
-        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+        await _pm_dispatch(callback, state)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Noto'g'ri so'rov. /premium ni qayta oching.", show_alert=True)
     except Exception:
-        pass
-    await callback.answer("🔄 Yangilandi!")
+        logging.exception("[ADMIN PREMIUM] panelda kutilmagan xato")
+        await callback.answer("⚠️ Xatolik yuz berdi. Qayta urinib ko'ring.", show_alert=True)
 
 
-@dp.callback_query(F.data.startswith("pm_toggle_"))
-async def cb_pm_toggle(callback: types.CallbackQuery):
-    """Foydalanuvchining premium holatini o'zgartirish"""
-    if str(callback.from_user.id) != str(ADMIN_ID):
-        await callback.answer("❌ Siz admin emassiz!", show_alert=True)
+@dp.message(AdminPremiumStates.waiting_search, F.text)
+async def pm_search_input(message: types.Message, state: FSMContext):
+    """Qidiruv: admin ID yoki @username yozadi -> user kartasi (yoki "Topilmadi")."""
+    if not _is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ Siz admin emassiz!")
         return
-    try:
-        target_id = int(callback.data.replace("pm_toggle_", ""))
-        # Hozirgi holatni aniq bilish
-        raw_all = await asyncio.to_thread(database.get_all_users_info, limit=100)
-        current_status = 0
-        for row in raw_all:
-            uid = row[0]
-            is_prem = row[1]
-            if uid == target_id:
-                current_status = is_prem
-                break
-        new_status = 0 if current_status else 1
-        await asyncio.to_thread(database.set_premium, target_id, new_status)
-        action_text = "🌟 Premium berildi!" if new_status else "❌ Premium olib tashlandi!"
-        await callback.answer(f"{action_text} (ID: {target_id})", show_alert=True)
-        # Ro'yxatni yangilash
-        raw_users = await asyncio.to_thread(database.get_all_users_info, limit=15)
-        users_info = await _resolve_users_info(raw_users)
-        total = await asyncio.to_thread(database.get_users_count)
-        premium_count = await asyncio.to_thread(database.get_premium_count)
-        text = _build_premium_list_text(users_info, total, premium_count)
-        markup = _build_premium_list_keyboard(users_info)
-        try:
-            await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
-        except Exception:
-            pass
-    except Exception as e:
-        await callback.answer(f"Xatolik: {e}", show_alert=True)
+    await state.clear()
+    user = await asyncio.to_thread(database.admin_find_user, message.text)
+    if not user:
+        await message.answer(
+            "❌ Topilmadi. Faqat botga /start bosgan foydalanuvchilar qidiriladi.",
+            reply_markup=_pm_markup([[_pm_btn("🔍 Qayta qidirish", "s"), _pm_btn("⬅️ Ro'yxatga", "l", 0)]]))
+        return
+    await _pm_fill_names([user])
+    text, markup = _pm_card_view(user, 0)
+    await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 
 def _build_ban_list_keyboard(users_info):
