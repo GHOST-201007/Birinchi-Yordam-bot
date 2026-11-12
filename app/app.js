@@ -418,11 +418,34 @@ function applyPremiumTier(s) {
     MainButtonCtl.refreshColors();                            // Telegram MainButton rangi ham tarifga mos
 }
 
+// "Bugun" bo'limidagi Premium kartasi: bepul — "Premium / Tariflar va bonuslar / Ochish"; Premium — tarif nomi,
+// qolgan kun ("5 kun qoldi", muddatsizda "♾") va "Uzaytirish" ("Ko'rish" — muddatsizda). Rang tarifga ergashadi (body.tier-*).
+function renderTodayPremium(s) {
+    const title = document.getElementById('today-premium-title');
+    const sub = document.getElementById('today-premium-sub');
+    const btn = document.getElementById('today-premium-btn');
+    const main = document.getElementById('today-premium-card');
+    if (!title || !sub || !btn) return;
+    const p = premiumInfo(s);
+    if (!p) {
+        title.textContent = 'Premium';
+        sub.textContent = 'Tariflar va bonuslar';
+        btn.textContent = 'Ochish';
+        if (main) main.setAttribute('aria-label', 'Premium: tariflar va bonuslar');
+        return;
+    }
+    title.textContent = p.name;
+    sub.textContent = p.unlimited ? '♾' : (p.hasTerm ? (p.today ? 'Bugun tugaydi' : `${p.days} kun qoldi`) : 'Faol');
+    btn.textContent = p.unlimited ? "Ko'rish" : 'Uzaytirish';
+    if (main) main.setAttribute('aria-label', `Premium ${p.name}: ${p.unlimited ? 'muddatsiz' : sub.textContent}`);
+}
+
 function renderPremiumUi(s) {
     setPremiumBadge(s);
     renderPremiumCard(s);
     renderPremiumBanner(s);
     applyPremiumTier(s);
+    renderTodayPremium(s);
     renderPremiumPlans(s, false);
 }
 
@@ -431,6 +454,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (extend) extend.addEventListener('click', openPremiumModalFromUi);
     const bannerExtend = document.getElementById('prem-banner-extend');
     if (bannerExtend) bannerExtend.addEventListener('click', openPremiumModalFromUi);
+    // Bosh ekran kartasi: BITTA Premium oynasini ochadi (btn-open-premium, AI limit taklifi bilan bir xil)
+    ['today-premium-card', 'today-premium-btn'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', () => {
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+            openPremiumModalFromUi();
+        });
+    });
     const bannerClose = document.getElementById('prem-banner-close');
     if (bannerClose) {
         bannerClose.addEventListener('click', () => {
@@ -4160,7 +4191,15 @@ function renderPremiumPlans(s, preselect) {
     if (!modal) return;
     const p = premiumInfo(s);
     const title = document.getElementById('premium-title');
-    if (title) title.textContent = p ? 'Premiumni uzaytirish' : 'Premium';
+    if (title) title.textContent = (p && !p.unlimited) ? 'Premiumni uzaytirish' : 'Premium';
+    // Muddatsiz Premium: sotib olinadigan tarif yo'q — tariflar, imkoniyatlar va "Davom etish" yashirinadi
+    const unlimited = !!(p && p.unlimited);
+    ['premium-plans', 'premium-features-label', 'premium-features', 'premium-continue'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = unlimited;
+    });
+    const note = document.getElementById('pm-unlimited');
+    if (note) note.hidden = !unlimited;
     const opts = premiumPlanOptions(s);
     opts.forEach((o) => {
         const input = modal.querySelector(`input[name="premium-plan"][value="${o.plan}"]`);
@@ -4182,7 +4221,83 @@ function renderPremiumPlans(s, preselect) {
     }
     renderPremiumFeatures();
     syncPremiumMainButton();
+    renderPremiumPoints(s);
 }
+
+// ── 100 ball -> Premium Plus: progress + "Almashtirish" (server: POST /api/points/redeem, botdagi tugma bilan BIR mantiq).
+// Takliflarda MUDDAT yozilmaydi (egasi qarori). Muddatsiz Premiumda va ball noma'lum bo'lsa bo'lim ko'rinmaydi.
+const REDEEM_COST = 100;                       // server bilan bir xil (bot.py REDEEM_POINTS_COST; API javobida "cost" ham keladi)
+const REDEEM_PATCH_KEYS = ['score', 'is_premium', 'premium_type', 'premium_expires_at', 'premium_unlimited',
+                           'premium_days_left', 'ai_remaining', 'ai_limit', 'ai_bonus'];
+let pointsRedeeming = false;
+
+function setPointsMessage(text, isError) {
+    const el = document.getElementById('pm-points-msg');
+    if (!el) return;
+    el.textContent = text || '';
+    el.hidden = !text;
+    el.classList.toggle('is-error', !!(text && isError));
+}
+
+function renderPremiumPoints(s) {
+    const box = document.getElementById('pm-points');
+    if (!box) return;
+    const p = premiumInfo(s);
+    const score = (s && typeof s.score === 'number') ? Math.max(0, s.score) : null;
+    if (score === null || (p && p.unlimited)) { box.hidden = true; return; }
+    box.hidden = false;
+    document.getElementById('pm-points-title').textContent = `${REDEEM_COST} ball → ${premiumTierTitle('pro')}`;
+    const shown = Math.min(score, REDEEM_COST);
+    const bar = document.getElementById('pm-points-bar');
+    bar.setAttribute('aria-valuemax', String(REDEEM_COST));
+    bar.setAttribute('aria-valuenow', String(shown));
+    bar.setAttribute('aria-valuetext', `${score} / ${REDEEM_COST} ball`);
+    bar.style.setProperty('--pm-pct', String(Math.round((shown / REDEEM_COST) * 100)));
+    document.getElementById('pm-points-count').textContent = `${score} / ${REDEEM_COST} ball`;
+    const enough = score >= REDEEM_COST;
+    document.getElementById('pm-points-hint').hidden = enough;
+    document.getElementById('pm-points-how').hidden = enough;
+    document.getElementById('pm-points-hint').textContent = `Yana ${REDEEM_COST - score} ball kerak`;
+    const btn = document.getElementById('pm-points-redeem');
+    btn.hidden = !enough;
+    btn.disabled = pointsRedeeming;
+}
+
+async function redeemPoints() {
+    if (pointsRedeeming) return;                                   // qo'sh bosish: bitta so'rov
+    if (!canUseApi()) { setPointsMessage("Almashtirish uchun mini appni Telegram ichida oching.", true); return; }
+    pointsRedeeming = true;
+    setPointsMessage('');
+    renderPremiumPoints(AppState.data);                            // tugma o'chadi
+    let r = null;
+    try {
+        r = await api('points/redeem', {});
+    } catch (err) {
+        console.warn("[points] /api/points/redeem javobi olinmadi, holat tekshiriladi:", err);
+    }
+    pointsRedeeming = false;
+    if (!r || typeof r.ok !== 'boolean') {
+        // Javob kelmadi: server ballni allaqachon yechgan bo'lishi mumkin — holat qayta so'raladi
+        const s = await recoverStateAfterClaimFailure();
+        if (s) setGlobalScore(s.score);
+        renderPremiumPoints(AppState.data);
+        setPointsMessage(s ? "Aloqa uzildi. Holat yangilandi — natijani tekshiring." : "Aloqa yo'q. Qayta urinib ko'ring.", true);
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+        return;
+    }
+    const patch = {};
+    REDEEM_PATCH_KEYS.forEach((k) => { if (r[k] !== undefined) patch[k] = r[k]; });
+    patchAppState(patch);                                          // header, karta, tariflar va ball bo'limi yangilanadi
+    if (typeof r.score === 'number') setGlobalScore(r.score);
+    renderPremiumPoints(AppState.data);
+    setPointsMessage(r.message || (r.ok ? 'Almashtirildi.' : "Almashtirib bo'lmadi."), !r.ok);
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(r.ok ? 'success' : 'error');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('pm-points-redeem');
+    if (btn) btn.addEventListener('click', redeemPoints);
+});
 
 // Tarif kartalaridagi nom (index.html: .plan-name[data-tier]) PREMIUM_TIERS dan — HTML dagi matn ham shu nom bilan
 // yozilgan, bu — ikkalasi hech qachon ajralib ketmasligi uchun kafolat.
@@ -4216,6 +4331,11 @@ function syncPremiumMainButton() {
         if (MainButtonCtl.owner === 'premium') MainButtonCtl.clear();
         return;
     }
+    const info = premiumInfo(AppState.data);
+    if (info && info.unlimited) {                                  // muddatsiz: sotib olinadigan narsa yo'q
+        if (MainButtonCtl.owner === 'premium') MainButtonCtl.clear();
+        return;
+    }
     const { plan, price, extension } = selectedPremiumPlan();
     MainButtonCtl.set({ text: `★ ${price} — ${extension ? 'Uzaytirish' : 'Davom etish'}`, owner: 'premium', onClick: () => buyPremium(plan) },
                       document.getElementById('premium-continue'));
@@ -4237,6 +4357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderPremiumFeatures();
 
         btnOpenPremium.addEventListener('click', () => {
+            setPointsMessage('');
             renderPremiumPlans(AppState.data, true);          // faqat sotib olish mumkin bo'lgan tariflar (uzaytirish)
             premiumModal.classList.remove('hidden');
             premiumModal.style.display = 'flex';
@@ -4752,24 +4873,8 @@ function initAiChat() {
 document.addEventListener('DOMContentLoaded', initAiChat);
 // ═══ /AI SUHBAT TABI ═══
 
-// ── AI tabi: Premium taklif kartasi (bepul savol ishlatilgach). To'lov — mavjud buyPremium (openInvoice) ──
-function aiOfferPlan() {
-    const r = document.querySelector('#ai-premium-offer input[name="ai-offer-plan"]:checked');
-    return r ? r.value : 'buy_plus_30';
-}
-
-function renderAiOfferFeatures() {
-    const list = document.getElementById('ai-offer-features');
-    if (!list) return;
-    list.innerHTML = '';
-    (PREMIUM_FEATURES[aiOfferPlan()] || []).forEach(text => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="pm-check" aria-hidden="true">${svgIcon('check')}</span><span></span>`;
-        li.lastChild.textContent = text;
-        list.appendChild(li);
-    });
-}
-
+// ── AI tabi: Premium taklif kartasi (bepul savol ishlatilgach). Tarif tanlash va to'lov — BITTA Premium oynasida
+// (#premium-modal: tariflar, 100 ball -> Premium, buyPremium/openInvoice); karta faqat shu oynani ochadi ──
 // Ko'rsatiladi: bepul foydalanuvchi va AI kvotasi 0 (bepul savol ishlatilgan). Premium bo'lsa — yo'q.
 // Karta ko'rinsa suhbatdagi yozish paneli o'chiriladi (aiSync).
 function renderAiOffer(s) {
@@ -4778,7 +4883,6 @@ function renderAiOffer(s) {
     const show = !!s && !s.is_premium && s.ai_remaining === 0 && !(s.ai_limit > 1);    // limit > 1 — Premium tarif
     card.hidden = !show;
     aiChat.offerShown = show;
-    if (show) renderAiOfferFeatures();
     aiSync();
 }
 
@@ -4787,17 +4891,12 @@ function showAiPremiumOffer() {       // /api/ai/chat "limit" javobida (holat yu
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const card = document.getElementById('ai-premium-offer');
-    if (!card) return;
-    card.querySelectorAll('input[name="ai-offer-plan"]').forEach(r => r.addEventListener('change', () => {
-        if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
-        renderAiOfferFeatures();
-    }));
-    document.getElementById('ai-offer-buy').addEventListener('click', () => {
+    const buy = document.getElementById('ai-offer-buy');
+    if (!buy) return;
+    buy.addEventListener('click', () => {
         if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-        buyPremium(aiOfferPlan());
+        openPremiumModalFromUi();
     });
-    renderAiOfferFeatures();
 });
 
 // ZAXIRA yo'l: Premium'ni bot orqali (deep link) sotib olish — eski mantiq o'zgarmagan

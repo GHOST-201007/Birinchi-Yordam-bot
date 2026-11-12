@@ -53,7 +53,7 @@ bash /root/Birinchi-Yordam-bot/deploy.sh
 ### Mini App API (`/api/...`)
 Bot jarayonidagi aiohttp serveri (`PORT`, default 10000) **faqat `127.0.0.1`** da tinglaydi: internetdan to'g'ridan-to'g'ri ochiq emas.
 Nginx `location /api/` ni `http://127.0.0.1:10000` ga **URI o'zgartirmasdan** uzatadi (`proxy_pass` oxirida `/` yo'q), shuning uchun
-endpointlar aynan shu yo'llarda: `POST /api/state`, `POST /api/spin/claim`, `POST /api/bonus/claim`, `POST /api/invoice` (`/health` — ichki tekshiruv).
+endpointlar aynan shu yo'llarda: `POST /api/state`, `POST /api/spin/claim`, `POST /api/bonus/claim`, `POST /api/points/redeem`, `POST /api/invoice` (`/health` — ichki tekshiruv).
 `/api/invoice` tanasi `{"init_data": ..., "plan": "buy_pro_7"|"buy_plus_30"|"buy_ultra_30"}`: narx va payload faqat serverdan (`build_premium_offer`), javob `{"ok": true, "url": <Stars invoice link>}`; yangi env o'zgaruvchi kerak emas.
 Har so'rovda `init_data` (Telegram WebApp imzosi) tekshiriladi; foydalanuvchi uchun daqiqasiga 20 so'rov; tana ≤ 4 KB.
 Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/state -H 'Content-Type: application/json' -d '{"init_data":"buzuq"}'` → `403`.
@@ -89,7 +89,7 @@ Premiumi bor foydalanuvchi buni mini appda ham, botda ham doim ko'radi; bepul fo
 - ⚠️ **Ichki kod ≠ ko'rinadigan nom.** Bazadagi `premium_type`, payloadlar, `callback_data`, env nomlari, `tier_rank` va CSS klasslari (`tier-pro`, `tier-plus`) o'zgarmagan, **migratsiya yo'q**. Faqat foydalanuvchi va admin ko'radigan matn almashgan. Kodni o'qiyotganda: `pro` = "Plus" (eng arzon), `plus` = "Pro".
 - **Nom bitta joyda:** Python — `database.TIER_DISPLAY` / `TIER_ICON` (`bot.py` shundan oladi, matnlar `tier_title()` orqali); Mini App — `app.js` dagi `PREMIUM_TIERS`. `tests/test_tier_names.py` ikkalasi mos ekanini va bot hamda Mini App matnlarida eski nom–muddat juftliklari (masalan, 7 kunlik tarif eski nomi bilan) qolmaganini tekshiradi.
 - **Rang va ikonka darajaga bog'liq:** eng arzon — teal ⭐, o'rta — binafsha 💎, eng yuqori — oltin 👑.
-- Baraban: "1 kunlik Premium **Plus**" (ichki `pro`); SUPER sovrin — Premium **Pro** (30 kun, ichki `plus`) uchun 50% chegirma. 100 ball → 3 kunlik Premium **Plus**.
+- Baraban: "1 kunlik Premium **Plus**" (ichki `pro`); SUPER sovrin — Premium **Pro** (30 kun, ichki `plus`) uchun 50% chegirma. 100 ball → Premium **Plus** (ichki `pro`, 3 kun; takliflarda muddat yozilmaydi — pastdagi "Premium kartasi va 100 ball").
 
 **Bir xil tarifni qayta sotib olish = uzaytirish.** Qoida YAGONA (`bot.premium_purchase_decision` / `check_premium_purchase_eligibility`), holat `database.get_premium_view` dan (muddati o'tgan flag bloklamaydi). Bot tugmalari, `?start=buy_*` deep link, Mini App `/api/invoice` va `pre_checkout_query` hammasi shundan foydalanadi:
 - Joriy tarif bilan **bir xil** tarif — ruxsat: tugash sanasi + tarif muddati (Plus +7 kun, Pro/Ultra +30 kun). "2 oy" kabi yangi variantlar yo'q.
@@ -101,6 +101,13 @@ Premiumi bor foydalanuvchi buni mini appda ham, botda ham doim ko'radi; bepul fo
 - `database.process_paid_premium` / `grant_premium_days` faol muddatga qo'shadi va yuqori tarifni saqlaydi (testlar bilan tasdiqlangan). Eslatma: ular muddatsiz Premiumni muddatli qilib yuboradi — shuning uchun xarid qoidasi muddatsizni oldindan rad etadi.
 
 **To'lovdan keyin menyu darhol yangilanadi:** `successful_payment` (va 100 ball → Premium) javobiga `get_start_keyboard(<yangi holat>)` qo'shiladi (pastdagi tugma darhol `👑 Premium Ultra` kabi bo'ladi), menyu keshi yangilanadi va shaxsiy `👑 Ilova` tugmasi fonda qo'yiladi (`refresh_premium_menu`). Baraban 1 kunlik sovrini `/start spin_*` yo'lida shunday, Mini App yo'lida (`/api/spin/claim`) bot xabar yubormaydi — kesh va shaxsiy tugma yangilanadi. To'lov mantig'i (summa, payload, takroriy to'lov himoyasi, reconcile) o'zgarmagan. Yangi env o'zgaruvchi va migratsiya yo'q.
+
+### Premium kartasi va 100 ball
+- **Bosh ekran:** "Bugun" bo'limida Bonus va Baraban ostida uchinchi karta — **Premium** (2+1 joylashuv, 360 px da sig'adi). Bepul: `Premium / Tariflar va bonuslar / Ochish`; Premium: tarif nomi, `5 kun qoldi` (muddatsizda `♾`), `Uzaytirish` (muddatsizda `Ko'rish`), rangi tarifga ergashadi. Bosilsa BITTA Premium oynasi (`#premium-modal`) ochiladi: Sog'liq tabidagi `btn-open-premium` qatori ham, AI limit tugagandagi taklif (`★ Premium tariflari`) ham shu oynani ochadi — AI taklifining o'z tarif kartalari yo'q.
+- **Oyna:** tariflar (pastroqlari yashirin, joriy tarif "yana N kun"), so'ng **"100 ball → Premium Plus"** bo'limi: progress (`13 / 100 ball`), 100 va undan ko'p bo'lsa `Almashtirish`, aks holda `Yana 87 ball kerak`. Muddatsiz Premiumda bu bo'lim va tariflar yo'q ("Sizda muddatsiz Premium bor").
+- **Takliflarda muddat yozilmaydi** (bot va Mini App: "100 ball → Premium Plus"); muddat faqat olingandan KEYIN: `100 ball yechildi! Premium Plus faollashdi — tugash: 15.11.2026`. Mantiq o'zgarmagan: ichki `pro`, 3 kun. `tests/test_points_redeem.py` takliflarda "kun" so'zi yo'qligini tekshiradi.
+- **`POST /api/points/redeem`** (`init_data` HMAC, boshqa endpointlar kabi): tanada faqat `init_data`; javob `{"ok", "reason" (null | not_enough | unlimited | busy | banned), "message", "score", "cost": 100}` + `_premium_quota_fields` (yangi Premium holati va AI hisoblagichi). Mantiq botdagi tugma bilan BITTA: `bot.redeem_points_for_premium` (ban, muddatsiz Premium, yetarli ball; ballni yechish va Premium berish `database.check_and_grant_premium` ichida bir tranzaksiyada; bir foydalanuvchining parallel so'rovlari bitta ishlaydi). Muvaffaqiyatdan keyin menyu keshi va shaxsiy "👑 Ilova" tugmasi yangilanadi.
+- `database.check_and_grant_premium` endi **muddatsiz Premiumni ham himoyalaydi** (ball yechilmaydi, Premium o'zgarmaydi) — kunlik bonus, referal va baraban avto-berishi ham shu funksiyadan o'tadi. Yangi env o'zgaruvchi va migratsiya yo'q.
 
 ### Omad baraboni (8 sovrin)
 Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.

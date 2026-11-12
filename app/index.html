@@ -362,6 +362,14 @@
                         </button>
                         <button type="button" class="today-btn tabular" id="btn-open-wheel">Aylantirish</button>
                     </div>
+                    <div class="today-card today-card--wide" id="today-premium">
+                        <button type="button" class="today-main" id="today-premium-card" aria-label="Premium">
+                            <span class="today-icon today-icon--premium"><svg class="icon" aria-hidden="true"><use href="#i-crown"/></svg></span>
+                            <span class="today-title" id="today-premium-title">Premium</span>
+                            <span class="today-sub tabular" id="today-premium-sub">Tariflar va bonuslar</span>
+                        </button>
+                        <button type="button" class="today-btn" id="today-premium-btn">Ochish</button>
+                    </div>
                 </div>
 
                 <button type="button" class="list-row home-test-row" id="home-quiz-row">
@@ -708,38 +716,8 @@
                             <p class="ai-offer-text">AI maslahatni davom ettirish uchun Premium tarifini tanlang</p>
                         </div>
                         <div class="ai-offer-body">
-                            <div class="plan-list" role="radiogroup" aria-label="Tarifni tanlang">
-                            <label class="plan-card">
-                                <input type="radio" name="ai-offer-plan" value="buy_pro_7">
-                                <span class="plan-radio" aria-hidden="true"></span>
-                                <span class="plan-info">
-                                    <span class="plan-name" data-tier="pro">Premium Plus</span>
-                                    <span class="plan-days">7 kun · kuniga 15 AI so'rov</span>
-                                </span>
-                                <span class="plan-price tabular">★ 50</span>
-                            </label>
-                            <label class="plan-card">
-                                <input type="radio" name="ai-offer-plan" value="buy_plus_30" checked>
-                                <span class="plan-radio" aria-hidden="true"></span>
-                                <span class="plan-info">
-                                    <span class="plan-name" data-tier="plus">Premium Pro<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
-                                    <span class="plan-days">30 kun · kuniga 30 AI so'rov</span>
-                                </span>
-                                <span class="plan-price tabular">★ 150</span>
-                            </label>
-                            <label class="plan-card">
-                                <input type="radio" name="ai-offer-plan" value="buy_ultra_30">
-                                <span class="plan-radio" aria-hidden="true"></span>
-                                <span class="plan-info">
-                                    <span class="plan-name" data-tier="ultra">Premium Ultra</span>
-                                    <span class="plan-days">30 kun · kuniga 100 AI so'rov</span>
-                                </span>
-                                <span class="plan-price tabular">★ 300</span>
-                            </label>
-                            </div>
-                            <ul class="pm-features" id="ai-offer-features" aria-live="polite"></ul>
-                            <button type="button" class="btn-primary ai-offer-buy" id="ai-offer-buy">★ Premium olish</button>
-                            <p class="ai-offer-note">To'lov — Telegram Stars orqali</p>
+                            <button type="button" class="btn-primary ai-offer-buy" id="ai-offer-buy">★ Premium tariflari</button>
+                            <p class="ai-offer-note">To'lov — Telegram Stars orqali yoki 100 ball evaziga</p>
                         </div>
                     </section>
                     <p class="ai-disclaimer"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Bu tashxis emas. Hayot xavf ostida bo'lsa — 103.</span></p>
@@ -894,7 +872,9 @@
                 <p class="pm-subtitle">Telegram Stars orqali oson xarid qiling va cheksiz imkoniyatlarga ega bo'ling!</p>
             </div>
 
-            <div class="plan-list" role="radiogroup" aria-label="Tarifni tanlang">
+            <p class="pm-unlimited" id="pm-unlimited" role="status" hidden>Sizda muddatsiz Premium bor — uzaytirish kerak emas.</p>
+
+            <div class="plan-list" id="premium-plans" role="radiogroup" aria-label="Tarifni tanlang">
                 <label class="plan-card">
                     <input type="radio" name="premium-plan" value="buy_pro_7" data-price="50">
                     <span class="plan-radio" aria-hidden="true"></span>
@@ -924,8 +904,19 @@
                 </label>
             </div>
 
-            <h3 class="section-label">Imkoniyatlar</h3>
+            <h3 class="section-label" id="premium-features-label">Imkoniyatlar</h3>
             <ul class="pm-features" id="premium-features" aria-live="polite"></ul>
+
+            <!-- 100 ball -> Premium Plus (app.js renderPremiumPoints / redeemPoints; server: POST /api/points/redeem) -->
+            <section class="pm-points" id="pm-points" aria-labelledby="pm-points-title" hidden>
+                <h3 class="pm-points-title" id="pm-points-title">100 ball → Premium Plus</h3>
+                <div class="pm-points-bar" id="pm-points-bar" role="progressbar" aria-labelledby="pm-points-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="pm-points-fill"></span></div>
+                <p class="pm-points-count tabular" id="pm-points-count">0 / 100 ball</p>
+                <p class="pm-points-hint" id="pm-points-hint">Yana 100 ball kerak</p>
+                <p class="pm-points-how" id="pm-points-how">Baraban, kunlik bonus va test orqali ball yig'ing</p>
+                <button type="button" class="pm-points-btn" id="pm-points-redeem" hidden>Almashtirish</button>
+                <p class="pm-points-msg" id="pm-points-msg" role="status" aria-live="polite" hidden></p>
+            </section>
 
             <button type="button" class="btn-primary inpage-main" id="premium-continue">★ 150 — Davom etish</button>
         </div>

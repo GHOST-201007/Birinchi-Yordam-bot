@@ -1716,7 +1716,7 @@ def _fallback_premium_view(tier: str, expires):
 
 
 async def refresh_premium_menu(bot_instance, user_id: int, fallback_view=None):
-    """Premium holati O'ZGARGANDAN KEYIN (Stars to'lovi, 100 ball -> Premium, baraban 1 kunlik sovrini): yangi holatni
+    """Premium holati O'ZGARGANDAN KEYIN (Stars to'lovi, 100 ball -> Premium, baraban Premium sovrini): yangi holatni
     DB'dan o'qiydi (o'qib bo'lmasa fallback_view), menyu keshini yangilaydi va shaxsiy "👑 Ilova" tugmasini FONDA
     sinxronlaydi. Yangi holatni (yoki None) qaytaradi — chaqiruvchi xabariga get_start_keyboard(view) qo'yadi.
     HECH QACHON xato ko'tarmaydi: to'lov / sovrin mantig'i bu yangilanishga bog'liq emas."""
@@ -3087,7 +3087,7 @@ def _premium_sales_text(view, plans: list, score: int) -> str:
     return (
         head
         + "🎁 <b>BEPUL REWARD</b>\n"
-        + f"• <b>100 Ball → 3 kun Premium {TIER_DISPLAY['pro']}</b>\n"
+        + f"• <b>{redeem_offer_text()}</b>\n"
         + "  <i>Botda to'plagan ballaringiz evaziga!</i>\n\n"
         + "".join(_sales_tier_block(tier) for tier, _ in plans)
         + f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n\n"
@@ -3153,9 +3153,9 @@ async def _show_premium_sales(message_or_cb, view=None):
 
     if not (active and not plans):                         # muddatsiz Premiumga ball almashtirish ham kerak emas
         if score >= 100:
-            builder.button(text=f"🎁 100 ball → 3 kun Premium {TIER_DISPLAY['pro']}", callback_data="redeem_points_premium")
+            builder.button(text=f"🎁 {redeem_offer_text()}", callback_data="redeem_points_premium")
         else:
-            builder.button(text=f"🎁 100 ball → 3 kun {TIER_DISPLAY['pro']} (Yana {100 - score} ball kerak)",
+            builder.button(text=f"🎁 {redeem_offer_text()} (Yana {REDEEM_POINTS_COST - score} ball kerak)",
                            callback_data="redeem_points_info")
 
     for tier, extension in plans:
@@ -3192,35 +3192,97 @@ async def process_premium_extend(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "redeem_points_info")
 async def process_redeem_points_info(callback: types.CallbackQuery):
     score = await asyncio.to_thread(database.get_score, callback.from_user.id)
-    needed = max(0, 100 - score)
+    needed = max(0, REDEEM_POINTS_COST - score)
     logging.info(f"User {callback.from_user.id} requested redeem points info: score={score}, needed={needed}")
-    await callback.answer(f"⚠️ Sizda {score} ball bor. 3 kunlik Premium {TIER_DISPLAY['pro']} uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
+    await callback.answer(f"⚠️ Sizda {score} ball bor. Premium {TIER_DISPLAY['pro']} uchun yana {needed} ball to'plashingiz kerak!", show_alert=True)
+
+# ─── 100 ball -> Premium: YAGONA mantiq (bot tugmasi va Mini App /api/points/redeem) ─────────────────────────
+REDEEM_POINTS_COST = 100                 # database.check_and_grant_premium ham aynan 100 ball yechadi (ichki pro, 3 kun)
+_redeem_in_flight: set = set()           # parallel (qo'sh bosish) so'rovlar: bitta foydalanuvchida bittadan ortiq emas
+REDEEM_REFUSALS = {
+    "banned": "Hisobingiz bloklangan.",
+    "unlimited": "Sizda muddatsiz Premium bor — ball almashtirish shart emas.",
+    "busy": "So'rov bajarilmoqda, biroz kuting.",
+}
+
+
+def redeem_offer_text() -> str:
+    """Taklif / tugma matni: "100 ball → Premium Plus". Takliflarda MUDDAT yozilmaydi (egasi qarori): muddat faqat
+    olingandan KEYIN ko'rsatiladi. Mantiq (ichki pro, 3 kun) o'zgarmagan."""
+    return f"{REDEEM_POINTS_COST} ball → Premium {TIER_DISPLAY['pro']}"
+
+
+def redeem_success_message(view) -> str:
+    """Olingandan keyingi xabar (oddiy matn, emojisiz): "100 ball yechildi! Premium Plus faollashdi — tugash: 15.11.2026".
+    Yuqoriroq tarif (Pro / Ultra) saqlangan bo'lsa — muddati uzaygani aytiladi."""
+    head = f"{REDEEM_POINTS_COST} ball yechildi! "
+    if not (view and view.get("active") and view.get("tier") in TIER_DISPLAY):
+        return head + f"Premium {TIER_DISPLAY['pro']} faollashdi"
+    tail = f" — tugash: {view['expires']:%d.%m.%Y}" if view.get("expires") else ""
+    name = TIER_DISPLAY[view["tier"]]
+    if view["tier"] == "pro":
+        return head + f"Premium {name} faollashdi{tail}"
+    return head + f"Premium {name} muddati uzaytirildi{tail}"
+
+
+async def redeem_points_for_premium(user_id: int, bot_instance=None) -> dict:
+    """100 ball -> Premium Plus (ichki pro): bot tugmasi (process_redeem_points_premium) va Mini App (/api/points/redeem)
+    UCHUN BITTA mantiq. Qoidalar: ban bo'lmasin; muddatsiz Premium bo'lmasin; ball yetarli bo'lsin; ballarni yechish va
+    Premium berish BIR tranzaksiyada (database.check_and_grant_premium); bir foydalanuvchining parallel so'rovlari
+    ketma-ket emas, BITTA ishlaydi (qo'sh bosish ikki marta yechmaydi). Muvaffaqiyatdan keyin menyu keshi va shaxsiy
+    "👑 Ilova" tugmasi yangilanadi (refresh_premium_menu).
+
+    Qaytaradi: {"ok", "reason" (None | banned | unlimited | not_enough | busy), "message" (oddiy matn), "score" (joriy
+    ball), "view" (ok bo'lsa yangi Premium holati, bo'lmasa o'qilgan holat yoki None)}."""
+    async def outcome(ok, reason, message=None, view=None):
+        score = await asyncio.to_thread(database.get_score, user_id)
+        if message is None:
+            message = REDEEM_REFUSALS.get(reason) or f"Ballaringiz yetarli emas (hozirda {score} ball bor)."
+        return {"ok": ok, "reason": reason, "message": message, "score": score, "view": view}
+
+    if user_id in _redeem_in_flight:
+        return await outcome(False, "busy")
+    _redeem_in_flight.add(user_id)
+    try:
+        banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
+        if banned:
+            return await outcome(False, "banned")
+        prev_view = await _load_premium_view(user_id)
+        if prev_view and prev_view.get("active") and prev_view.get("unlimited"):
+            return await outcome(False, "unlimited", view=prev_view)
+        granted = await asyncio.to_thread(database.check_and_grant_premium, user_id)
+        if not granted:
+            # Ball yetarli emas — yoki muddatsiz Premium (DB shuni o'zi ham rad etadi): sababni holatdan aniqlaymiz
+            view = await _load_premium_view(user_id)
+            if view and view.get("active") and view.get("unlimited"):
+                return await outcome(False, "unlimited", view=view)
+            return await outcome(False, "not_enough", view=view)
+        logging.info("User %s redeemed %s points for Premium %s (internal pro)", user_id, REDEEM_POINTS_COST,
+                     TIER_DISPLAY["pro"])
+        view = await refresh_premium_menu(bot_instance if bot_instance is not None else bot, user_id)
+        return await outcome(True, None, redeem_success_message(view), view)
+    finally:
+        _redeem_in_flight.discard(user_id)
+
 
 @dp.callback_query(F.data == "redeem_points_premium")
 async def process_redeem_points_premium(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    prev_view = await _load_premium_view(user_id)
-    if prev_view and prev_view.get("active") and prev_view.get("unlimited"):
-        # grant muddatsiz Premiumni 3 kunlik bilan ALMASHTIRIB yuborardi — ballar ham yechilmaydi
-        await callback.answer("ℹ️ Sizda muddatsiz Premium bor — ball almashtirish shart emas.", show_alert=True)
+    result = await redeem_points_for_premium(user_id, callback.bot)
+    if not result["ok"]:
+        logging.info("User %s failed redeem: reason=%s score=%s", user_id, result["reason"], result["score"])
+        await callback.answer(f"⚠️ {result['message']}", show_alert=True)
         return
-    success = await asyncio.to_thread(database.check_and_grant_premium, user_id)
-    if success:
-        logging.info(f"User {user_id} successfully redeemed 100 points for Premium {TIER_DISPLAY['pro']} (internal pro).")
-        await callback.answer(f"🎉 100 ball yechildi! 3 kunlik Premium {TIER_DISPLAY['pro']} aktivlashtirildi!", show_alert=True)
-        # Menyu keshi va shaxsiy "👑 Ilova" tugmasi yangilanadi; sahifa tahrirlanadi (tahrirda reply menyu o'zgarmaydi)
-        new_view = await refresh_premium_menu(callback.bot, user_id)
-        await _show_premium_page(callback)
-        if new_view and new_view.get("active") and callback.message is not None:
-            # Reply menyu faqat YANGI xabar bilan yangilanadi: pastdagi tugma darhol tarifga mos bo'lsin
-            await callback.message.answer(
-                f"✅ {PREMIUM_TIER_TITLES.get(new_view['tier'], PREMIUM_BUTTON_DEFAULT)} faol — pastdagi menyu yangilandi.",
-                reply_markup=get_start_keyboard(new_view),
-            )
-    else:
-        score = await asyncio.to_thread(database.get_score, user_id)
-        logging.info(f"User {user_id} failed redeem: score={score}")
-        await callback.answer(f"⚠️ Ballaringiz yetarli emas (Hozirda {score} ball bor).", show_alert=True)
+    await callback.answer(f"🎉 {result['message']}", show_alert=True)
+    new_view = result["view"]
+    # Sahifa tahrirlanadi (tahrirda reply menyu o'zgarmaydi)
+    await _show_premium_page(callback)
+    if new_view and new_view.get("active") and callback.message is not None:
+        # Reply menyu faqat YANGI xabar bilan yangilanadi: pastdagi tugma darhol tarifga mos bo'lsin
+        await callback.message.answer(
+            f"✅ {PREMIUM_TIER_TITLES.get(new_view['tier'], PREMIUM_BUTTON_DEFAULT)} faol — pastdagi menyu yangilandi.",
+            reply_markup=get_start_keyboard(new_view),
+        )
 
 @dp.callback_query(F.data.in_(["buy_pro_7", "buy_plus_30", "buy_plus_30_discount", "buy_ultra_30", "pay_stars"]))
 async def process_pay_stars_tariff(callback: types.CallbackQuery):
@@ -5880,6 +5942,22 @@ async def _api_state_action(user_id: int) -> dict:
     }
 
 
+async def _api_points_redeem_action(user_id: int) -> dict:
+    """100 ball -> Premium Plus: botdagi tugma bilan BIR XIL mantiq (redeem_points_for_premium). Mijoz hech narsa
+    yubormaydi (summa / tarif serverda). Javob har doim yangi holatni qaytaradi: ball + Premium maydonlari
+    (_premium_quota_fields), shunda mijoz header, karta va ballni qo'shimcha /api/state so'rovisiz yangilaydi."""
+    result = await redeem_points_for_premium(user_id)
+    response = {
+        "ok": result["ok"],
+        "reason": result["reason"],          # None | not_enough | unlimited | busy | banned
+        "message": result["message"],        # oddiy matn (mijoz textContent / alert bilan ko'rsatadi)
+        "score": result["score"],
+        "cost": REDEEM_POINTS_COST,
+    }
+    response.update(await _premium_quota_fields(user_id))
+    return response
+
+
 async def _api_spin_claim_action(user_id: int) -> dict:
     # Sovrin faqat serverdagi pending_spin_prize dan; mijoz yuborgan hech narsa hisobga olinmaydi
     result = await asyncio.to_thread(database.claim_spin_prize, user_id)
@@ -6171,6 +6249,10 @@ async def api_spin_claim(request: web.Request) -> web.Response:
     return await _api_handle(request, "spin/claim", _api_spin_claim_action)
 
 
+async def api_points_redeem(request: web.Request) -> web.Response:
+    return await _api_handle(request, "points/redeem", _api_points_redeem_action)
+
+
 async def api_bonus_claim(request: web.Request) -> web.Response:
     return await _api_handle(request, "bonus/claim", _api_bonus_claim_action)
 
@@ -6233,6 +6315,7 @@ def create_web_app(webhook_secret: str | None = None) -> web.Application:
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/spin/claim", api_spin_claim)
     app.router.add_post("/api/bonus/claim", api_bonus_claim)
+    app.router.add_post("/api/points/redeem", api_points_redeem)
     app.router.add_post("/api/invoice", api_invoice)
     app.router.add_post("/api/ai/chat", api_ai_chat)
     if webhook_secret:

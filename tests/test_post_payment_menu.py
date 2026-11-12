@@ -232,14 +232,22 @@ class RedeemTest(PaymentBase):
         cb.bot = SimpleNamespace()
         return cb
 
+    def patches(self, views, granted=True, score=40):
+        """Bazaga tegmaydi: ban, holat, ball va 100 ballni yechish mock."""
+        return (mock.patch.object(database, "is_user_banned", return_value=(False, None)),
+                mock.patch.object(database, "get_score", return_value=score),
+                mock.patch.object(database, "check_and_grant_premium", return_value=granted),
+                mock.patch.object(database, "get_premium_view", views))
+
     async def test_redeem_sends_new_keyboard_and_updates_menu(self):
         cb = self.callback()
         after = active("pro", NOW + dt.timedelta(days=3))
-        with mock.patch.object(database, "check_and_grant_premium", return_value=True), \
-                mock.patch.object(database, "get_premium_view", mock.MagicMock(side_effect=[free(), after, after])), \
-                mock.patch.object(bot, "_show_premium_page", mock.AsyncMock()) as page:
+        p1, p2, p3, p4 = self.patches(mock.MagicMock(side_effect=[free(), after, after]))
+        with p1, p2, p3, p4, mock.patch.object(bot, "_show_premium_page", mock.AsyncMock()) as page:
             await bot.process_redeem_points_premium(cb)
-        self.assertIn("3 kunlik Premium Plus", cb.answer.await_args.args[0])
+        # Muddat olingandan KEYIN ko'rsatiladi (takliflarda yo'q)
+        self.assertEqual(cb.answer.await_args.args[0],
+                         "🎉 100 ball yechildi! Premium Plus faollashdi — tugash: 15.11.2026")
         page.assert_awaited_once()
         sent = cb.message.answer.await_args
         self.assertIn("⭐ Premium Plus faol", sent.args[0])
@@ -250,18 +258,17 @@ class RedeemTest(PaymentBase):
     async def test_redeem_keeps_higher_tier_on_the_keyboard(self):
         cb = self.callback()
         after = active("ultra", NOW + dt.timedelta(days=13))
-        with mock.patch.object(database, "check_and_grant_premium", return_value=True), \
-                mock.patch.object(database, "get_premium_view", mock.MagicMock(side_effect=[after, after, after])), \
-                mock.patch.object(bot, "_show_premium_page", mock.AsyncMock()):
+        p1, p2, p3, p4 = self.patches(mock.MagicMock(side_effect=[after, after, after]))
+        with p1, p2, p3, p4, mock.patch.object(bot, "_show_premium_page", mock.AsyncMock()):
             await bot.process_redeem_points_premium(cb)
         self.assertEqual(premium_label(cb.message.answer.await_args.kwargs["reply_markup"]), "👑 Premium Ultra")
+        self.assertIn("Premium Ultra muddati uzaytirildi — tugash: 25.11.2026", cb.answer.await_args.args[0])
 
     async def test_redeem_with_unlimited_premium_is_refused_and_points_stay(self):
         cb = self.callback()
         unlimited = database.admin_premium_view(1, "ultra", None, NOW)
-        grant = mock.MagicMock()
-        with mock.patch.object(database, "check_and_grant_premium", grant), \
-                mock.patch.object(database, "get_premium_view", mock.MagicMock(return_value=unlimited)):
+        p1, p2, p3, p4 = self.patches(mock.MagicMock(return_value=unlimited))
+        with p1, p2, p3 as grant, p4:
             await bot.process_redeem_points_premium(cb)
         grant.assert_not_called()                               # ballar yechilmaydi, muddatsiz Premium buzilmaydi
         self.assertIn("muddatsiz Premium", cb.answer.await_args.args[0])
@@ -269,13 +276,12 @@ class RedeemTest(PaymentBase):
 
     async def test_failed_redeem_changes_nothing(self):
         cb = self.callback()
-        with mock.patch.object(database, "check_and_grant_premium", return_value=False), \
-                mock.patch.object(database, "get_premium_view", mock.MagicMock(return_value=free())), \
-                mock.patch.object(database, "get_score", return_value=40):
+        p1, p2, p3, p4 = self.patches(mock.MagicMock(return_value=free()), granted=False, score=40)
+        with p1, p2, p3, p4:
             await bot.process_redeem_points_premium(cb)
         cb.message.answer.assert_not_awaited()
         self.sync.assert_not_called()
-        self.assertIn("yetarli emas", cb.answer.await_args.args[0])
+        self.assertEqual(cb.answer.await_args.args[0], "⚠️ Ballaringiz yetarli emas (hozirda 40 ball bor).")
 
 
 class WheelProDayTest(PaymentBase):

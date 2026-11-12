@@ -148,7 +148,7 @@ class SalesPageTextTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(bot, "get_web_app_url", mock.AsyncMock(return_value="https://x/app")):
             await bot._show_premium_sales(target, self.free_view())
         text = target.answer.await_args.args[0]
-        for part in ("100 Ball → 3 kun Premium Plus", "50 ⭐ → 7 kun Premium Plus",
+        for part in ("100 ball → Premium Plus", "50 ⭐ → 7 kun Premium Plus",
                      "150 ⭐ → 30 kun Premium Pro", "300 ⭐ → 30 kun Premium Ultra",
                      "PREMIUM PLUS", "PREMIUM PRO", "PREMIUM ULTRA", "Barcha Premium Plus imkoniyatlari"):
             self.assertIn(part, text)
@@ -157,7 +157,7 @@ class SalesPageTextTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("⭐ 50 Stars → 7 kun Premium Plus", "buy_pro_7"), buttons)
         self.assertIn(("💎 150 Stars → 30 kun Premium Pro", "buy_plus_30"), buttons)
         self.assertIn(("👑 300 Stars → 30 kun Premium Ultra", "buy_ultra_30"), buttons)
-        self.assertIn(("🎁 100 ball → 3 kun Plus (Yana 60 ball kerak)", "redeem_points_info"), buttons)
+        self.assertIn(("🎁 100 ball → Premium Plus (Yana 60 ball kerak)", "redeem_points_info"), buttons)
 
     async def test_redeem_alerts_say_premium_plus(self):
         cb = mock.MagicMock()
@@ -165,7 +165,8 @@ class SalesPageTextTest(unittest.IsolatedAsyncioTestCase):
         cb.answer = mock.AsyncMock()
         with mock.patch.object(database, "get_score", return_value=40):
             await bot.process_redeem_points_info(cb)
-        self.assertIn("3 kunlik Premium Plus", cb.answer.await_args.args[0])
+        self.assertEqual(cb.answer.await_args.args[0],
+                         "⚠️ Sizda 40 ball bor. Premium Plus uchun yana 60 ball to'plashingiz kerak!")
 
     async def test_upsell_texts_use_visible_names(self):
         text, _ = bot.premium_upsell_text(False, None)
@@ -227,11 +228,11 @@ class MiniAppNamesTest(unittest.TestCase):
     def test_html_plan_cards_use_visible_names_and_keep_internal_values(self):
         html_text = read("app", "index.html")
         names = re.findall(r'<span class="plan-name" data-tier="(\w+)">Premium (\w+)', html_text)
-        self.assertEqual(len(names), 6)                                   # AI taklif kartasi + Premium oynasi
+        self.assertEqual(len(names), 3)                                   # tariflar BITTA Premium oynasida
         for tier, name in names:
             self.assertEqual(name, database.TIER_DISPLAY[tier], tier)
         for plan in bot.PREMIUM_TIER_ACTIONS.values():                     # value (buy_pro_7...) o'zgarmagan
-            self.assertEqual(html_text.count(f'value="{plan}"'), 2, plan)
+            self.assertEqual(html_text.count(f'value="{plan}"'), 1, plan)
         self.assertIn("1 kunlik Premium Plus va SUPER priz", html_text)
 
     def test_css_keeps_internal_tier_classes(self):
