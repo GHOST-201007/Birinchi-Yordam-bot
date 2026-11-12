@@ -51,11 +51,12 @@ class TierNamesE2ETest(PremiumE2EBase):
         self.assertEqual(sorted(set(map(tuple, tiers))),
                          sorted((tier, plan) for tier, plan in PLAN_BY_TIER.items()))
 
-    def test_ai_offer_card_uses_new_names(self):
+    def test_ai_offer_has_no_plans_of_its_own(self):
+        """AI limit taklifi o'zining tarif kartalarini ko'rsatmaydi: BITTA Premium oynasini ochadi (nomlar o'sha yerda)."""
         page, _ = self.open_state(state())
-        names = page.evaluate("""() => [...document.querySelectorAll('#ai-premium-offer .plan-name')]
-            .map(e => e.childNodes[0].textContent)""")
-        self.assertEqual(names, ["Premium Plus", "Premium Pro", "Premium Ultra"])
+        self.assertEqual(page.locator("#ai-premium-offer .plan-name").count(), 0)
+        self.assertEqual(page.locator('input[name="ai-offer-plan"]').count(), 0)
+        self.assertEqual(page.locator("#premium-modal").count(), 1)
 
     def test_header_card_and_color_follow_the_tier_not_the_name(self):
         for tier, name in database.TIER_DISPLAY.items():

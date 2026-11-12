@@ -1103,7 +1103,10 @@ def process_paid_premium(charge_id: str, user_id: int, product_id: str, stars_am
         _safe_close(c, conn)
 
 def check_and_grant_premium(user_id: int) -> bool:
-    """If user has at least 100 points, grant 3-day premium and subtract 100 score atomically."""
+    """If user has at least 100 points, grant 3-day premium (ichki pro) and subtract 100 score atomically.
+    False — ball yetarli emas YOKI muddatsiz Premium bor: muddatsiz (is_premium=1, muddat bo'sh) Premiumga 3 kunlik muddat
+    qo'shib bo'lmaydi (u muddatsizni buzib yuborardi), ballar ham yechilmaydi. Tekshiruv ballni yechish bilan BIR
+    tranzaksiyada, qator qulflangan holda (kunlik bonus / referal / baraban avto-berishi ham shu funksiyadan o'tadi)."""
     conn = None
     c = None
     try:
@@ -1118,16 +1121,19 @@ def check_and_grant_premium(user_id: int) -> bool:
             return False
 
         now = get_uz_now()
-        c.execute("SELECT premium_expires_at, premium_type FROM users WHERE user_id = %s FOR UPDATE", (user_id,))
+        c.execute("SELECT is_premium, premium_expires_at, premium_type FROM users WHERE user_id = %s FOR UPDATE", (user_id,))
         row = c.fetchone()
+        if row and row[0] and not row[1]:
+            conn.rollback()                    # muddatsiz Premium: ball yechilmaydi, Premium o'zgarmaydi
+            return False
         base = now
         current_type = "free"
-        if row and row[0]:
+        if row and row[1]:
             try:
-                existing = _to_uz_datetime(row[0])
+                existing = _to_uz_datetime(row[1])
                 if existing > now:
                     base = existing
-                    current_type = row[1] or "pro"
+                    current_type = row[2] or "pro"
             except (ValueError, TypeError):
                 pass
 

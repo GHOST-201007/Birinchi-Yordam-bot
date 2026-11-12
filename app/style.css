@@ -1989,7 +1989,7 @@ body.dark-mode .pm-crown { color: var(--warning); }
     cursor: pointer;
     transition: border-color .15s ease, background-color .15s ease;
 }
-.plan-card[hidden] { display: none; }        /* sotib olib bo'lmaydigan (pastroq) tarif — yashirin */
+.plan-card[hidden], .plan-list[hidden], .btn-primary.inpage-main[hidden] { display: none; }        /* sotib olib bo'lmaydigan (pastroq) tarif — yashirin */
 .plan-card input { position: absolute; opacity: 0; pointer-events: none; }
 .plan-radio {
     flex-shrink: 0;
@@ -2006,6 +2006,60 @@ body.dark-mode .pm-crown { color: var(--warning); }
 .plan-chip { padding: 2px 8px; font-size: 12px; }
 .plan-days { font-size: 14px; color: var(--text-2); }
 .plan-price { font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; }
+
+/* Muddatsiz Premium: sotib olinadigan narsa yo'q */
+.pm-unlimited {
+    margin: 0 0 var(--s-4);
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-md);
+    background: var(--primary-soft);
+    color: var(--text);
+    font: 700 15px/1.4 var(--font);
+}
+.pm-unlimited[hidden] { display: none; }
+
+/* 100 ball -> Premium Plus (progress + Almashtirish) */
+.pm-points {
+    margin: 0 0 var(--s-4);
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+}
+.pm-points[hidden], .pm-points-btn[hidden], .pm-points-msg[hidden],
+.pm-points-hint[hidden], .pm-points-how[hidden] { display: none; }
+.pm-points-title { margin: 0 0 var(--s-2); font: 800 var(--fs-title) var(--font); color: var(--text); }
+.pm-points-bar { height: 8px; border-radius: var(--r-pill); background: var(--primary-soft); overflow: hidden; }
+.pm-points-fill {
+    display: block;
+    height: 100%;
+    width: calc(var(--pm-pct, 0) * 1%);
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width .5s var(--ease);
+}
+.pm-points-count { margin: var(--s-2) 0 0; font: 800 15px var(--font); color: var(--text); }
+.pm-points-hint { margin: var(--s-1) 0 0; font: 700 14px var(--font); color: var(--text); }
+.pm-points-how { margin: var(--s-1) 0 0; font: 600 13px/1.4 var(--font); color: var(--text-2); }
+.pm-points-btn {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin-top: var(--s-3);
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--primary);
+    color: var(--on-primary);
+    font: 800 16px var(--font);
+    cursor: pointer;
+}
+.pm-points-btn:disabled { background: var(--line); color: var(--text-2); cursor: default; }
+.pm-points-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pm-points-msg { margin: var(--s-2) 0 0; font: 700 14px/1.4 var(--font); color: var(--text); }
+.pm-points-msg.is-error { color: var(--danger, var(--text)); }
+@media (prefers-reduced-motion: reduce) {
+    .pm-points-fill { transition: none; }
+}
 
 .pm-features { list-style: none; margin: 0 0 var(--s-4); padding: 0; }
 .pm-features li { display: flex; align-items: center; gap: var(--s-3); min-height: 40px; font-size: 16px; color: var(--text); }
@@ -2201,6 +2255,22 @@ body.dark-mode .fig-views button[aria-pressed="true"] { background: var(--surfac
 .today-btn .icon { width: 16px; height: 16px; stroke-width: 2.5; }
 .today-btn:disabled, .today-btn.is-done { background: var(--seg-bg); color: var(--text-2); cursor: default; }
 .today-btn.is-waiting { background: var(--seg-bg); color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* "Bugun": Premium kartasi — 2+1 joylashuv. Telefonda (360 px) ikki ustunli qatorning ostida to'liq kenglikda:
+   chapda ikonka + sarlavha + yozuv, o'ngda tugma. Rang tarifga ergashadi (body.tier-* --primary / --primary-soft ni almashtiradi). */
+.today-card--wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: var(--s-3); }
+.today-card--wide .today-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: var(--s-3);
+    align-items: center;
+}
+.today-card--wide .today-icon { grid-row: 1 / span 2; margin-bottom: 0; }
+.today-card--wide .today-title, .today-card--wide .today-sub { grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
+.today-card--wide .today-btn { flex: none; min-width: 112px; min-height: 44px; padding: 0 var(--s-4); }
 
 /* Test qatori */
 .home-test-row { border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-card); margin-bottom: var(--s-4); }
