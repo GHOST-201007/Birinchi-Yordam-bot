@@ -1,6 +1,6 @@
 """
 test_miniapp_premium_redesign_e2e.py — redesign 4.4-K: Premium.
-Bottom sheet, crown doirada, 3 ta tanlanadigan tarif (radio), "Eng ko'p tanlanadi" — Plus,
+Bottom sheet, crown doirada, 3 ta tanlanadigan tarif (radio), "Eng ko'p tanlanadi" — Pro (ichki plus),
 ✓ imkoniyatlar (AI limitlari database.py bilan mos), MainButton "★ 150 — Davom etish" -> buyPremium(plan).
 To'lov oqimi (/api/invoice -> tg.openInvoice) test_miniapp_invoice_e2e.py da tekshiriladi.
 """
@@ -52,11 +52,11 @@ class PremiumRedesignE2ETest(MiniAppE2EBase):
         box = page.locator("#premium-modal .pm-sheet").bounding_box()
         self.assertAlmostEqual(box["y"] + box["height"], 844, delta=1)
         names = page.evaluate("[...document.querySelectorAll('#premium-modal .plan-name')].map(e => e.childNodes[0].textContent)")
-        self.assertEqual(names, ["Premium Pro", "Premium Plus", "Premium Ultra"])
+        self.assertEqual(names, ["Premium Plus", "Premium Pro", "Premium Ultra"])   # ichki pro / plus / ultra
         prices = page.evaluate("[...document.querySelectorAll('#premium-modal .plan-price')].map(e => e.textContent)")
         self.assertEqual(prices, ["★ 50", "★ 150", "★ 300"])
         self.assertEqual(page.get_attribute("#premium-modal .plan-list", "role"), "radiogroup")
-        self.assertTrue(page.is_checked(RADIO.format("buy_plus_30")))                # standart — Plus
+        self.assertTrue(page.is_checked(RADIO.format("buy_plus_30")))                # standart — Pro (ichki plus)
         chip = page.locator("#premium-modal .plan-chip")
         self.assertEqual(chip.count(), 1)
         self.assertEqual(chip.inner_text(), "Eng ko'p tanlanadi")

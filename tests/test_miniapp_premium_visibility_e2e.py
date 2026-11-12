@@ -21,9 +21,9 @@ EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿]")
 # Tarif tokenlari (style.css: :root va body.dark-mode). Har juftlik kontrasti >= 4.5:1
 TOKENS = {
     "pro": {"light": ("#00717F", "#FFFFFF", "#D3EEF2"), "dark": ("#4DD0E1", "#04232A", "#123A40"),
-            "icon": "#i-star", "name": "Pro"},
+            "icon": "#i-star", "name": "Plus"},       # ichki pro = ko'rinadigan Plus
     "plus": {"light": ("#6A3DB8", "#FFFFFF", "#E7DDF7"), "dark": ("#B79CFF", "#170C3A", "#2B2352"),
-             "icon": "#i-gem", "name": "Plus"},
+             "icon": "#i-gem", "name": "Pro"},         # ichki plus = ko'rinadigan Pro
     "ultra": {"light": ("#8A5A00", "#FFFFFF", "#FBECC9"), "dark": ("#F5B544", "#231600", "#3B2C10"),
               "icon": "#i-crown", "name": "Ultra"},
 }
@@ -162,7 +162,7 @@ class HeaderBadgeE2ETest(PremiumE2EBase):
             (state("ultra", unlimited=True), "Ultra · ♾"),
             (state("ultra", hours=3), "Ultra · bugun"),
             (state("ultra", hours=25), "Ultra · 2 kun"),
-            (state("plus", days=1), "Plus · bugun"),                                      # 1 kun = 24 soatdan oshmagan
+            (state("plus", days=1), "Pro · bugun"),                                      # 1 kun = 24 soatdan oshmagan
             ({**STATE_OK, "is_premium": True, "premium_type": "ultra"}, "Ultra"),         # eski server: muddat maydonlari yo'q
         ]
         for st, expected in cases:
@@ -237,7 +237,7 @@ class MyPremiumCardE2ETest(PremiumE2EBase):
         self.assertEqual(page.inner_text("#mp-left"), "Muddatsiz")
         self.assertFalse(page.is_visible("#mp-bar"))
         self.assertFalse(page.is_visible("#mp-extend"))
-        self.assertEqual(page.inner_text("#mp-tier"), "Premium Pro")
+        self.assertEqual(page.inner_text("#mp-tier"), "Premium Plus")                  # ichki pro
 
     def test_last_day(self):
         page, _ = self.open_health(state("ultra", hours=3))

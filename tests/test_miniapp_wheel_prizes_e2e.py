@@ -1,7 +1,7 @@
 """
 test_miniapp_wheel_prizes_e2e.py — Omad baraboni: 8 bo'lak va yangi sovrin turlari (brauzerda, Playwright).
 
-  1, 2, 3, 5 ball | -2 kun maslahati | -1 +1 bepul AI savol | -3 1 kunlik Premium Pro | 0 SUPER
+  1, 2, 3, 5 ball | -2 kun maslahati | -1 +1 bepul AI savol | -3 1 kunlik Premium Plus (ichki pro) | 0 SUPER
 Har tur uchun: bo'lak (kod bo'yicha), tasdiqlash kartasi, natija kartasi, konfetti, yopilganda claim, qayta tiklash,
 zaxira deep link; AI tabidagi "+ N bonus" hisoblagichi. Asos: tests/e2e_base.py
 """
@@ -32,7 +32,7 @@ CLAIM_TIP = claim(-2, message="💡 Kun maslahati\n\n" + TIP, tip=TIP)
 CLAIM_AI = claim(-1, message="🤖 +1 bepul AI savol yutdingiz!", is_premium=False, premium_type="free",
                  ai_remaining=2, ai_limit=1, ai_bonus=2)
 PRO_EXPIRES = (dt.datetime.now(dt.timezone(dt.timedelta(hours=5))) + dt.timedelta(hours=23)).isoformat()
-CLAIM_PRO = claim(-3, message="⭐ Tabriklaymiz! Siz Omad barabanidan 1 kunlik Premium Pro yutib oldingiz — u hozir faollashdi! 🎉",
+CLAIM_PRO = claim(-3, message="⭐ Tabriklaymiz! Siz Omad barabanidan 1 kunlik Premium Plus yutib oldingiz — u hozir faollashdi! 🎉",
                   is_premium=True, premium_type="pro", premium_expires_at=PRO_EXPIRES, premium_unlimited=False,
                   premium_days_left=1, ai_remaining=15, ai_limit=15, ai_bonus=0)
 CLAIM_SUPER = claim(0, message="SUPER PRIZ")
@@ -131,7 +131,7 @@ class WheelPrizesE2ETest(MiniAppE2EBase):
             2: ("+2 ball yutdingiz!", "Ballarni hisobingizga", "#i-sparkles"),
             -2: ("Kun maslahati", "maslahatni ochish", "#i-lightbulb"),
             -1: ("+1 bepul AI savol", "AI tabida ishlatishingiz mumkin", "#i-bot"),
-            -3: ("1 kunlik Premium Pro yutdingiz!", "Faollashtirish", "#i-star"),
+            -3: ("1 kunlik Premium Plus yutdingiz!", "Faollashtirish", "#i-star"),
             0: ("SUPER PRIZ!", "50% chegirma", "#i-crown"),
         }
         for prize, (title, desc, icon) in expected.items():
@@ -192,10 +192,10 @@ class WheelPrizesE2ETest(MiniAppE2EBase):
         page, calls = self.open_ready(-3)
         self.assertFalse(page.is_visible("#hdr-premium"))
         self.spin_and_confirm(page)
-        page.wait_for_selector("#wheel-result-msg .result-title:has-text('1 kunlik Premium Pro faollashdi!')")
-        self.assertIn("1 kunlik Premium Pro", self.desc(page))                  # server xabari (oddiy matn)
+        page.wait_for_selector("#wheel-result-msg .result-title:has-text('1 kunlik Premium Plus faollashdi!')")
+        self.assertIn("1 kunlik Premium Plus", self.desc(page))                  # server xabari (oddiy matn)
         self.assertEqual(self.icon_href(page), "#i-star")
-        page.wait_for_function("document.getElementById('hdr-premium-name').textContent === 'Pro · bugun'")
+        page.wait_for_function("document.getElementById('hdr-premium-name').textContent === 'Plus · bugun'")
         self.assertTrue(page.is_visible("#hdr-premium"))
         self.assertEqual([c[0] for c in calls], ["state", "spin/claim"])
 
@@ -222,8 +222,8 @@ class WheelPrizesE2ETest(MiniAppE2EBase):
         toasts = {
             -2: "Kun maslahati: " + TIP,
             -1: "+1 bepul AI savol hisobingizga qo'shildi",
-            -3: "1 kunlik Premium Pro faollashdi",
-            0: "SUPER PRIZ: Premium Plus uchun 50% chegirma faollashtirildi",
+            -3: "1 kunlik Premium Plus faollashdi",
+            0: "SUPER PRIZ: Premium Pro uchun 50% chegirma faollashtirildi",
             5: "+5 ball hisobingizga qo'shildi",
         }
         for prize, toast in toasts.items():
@@ -245,7 +245,7 @@ class WheelPrizesE2ETest(MiniAppE2EBase):
         expected = {
             -2: ("Kun maslahati", "matnni ko'rsatib bo'lmadi"),
             -1: ("+1 bepul AI savol", "AI tabida ishlatishingiz mumkin"),
-            -3: ("1 kunlik Premium Pro faollashdi!", ""),
+            -3: ("1 kunlik Premium Plus faollashdi!", ""),
             0: ("SUPER PRIZ!", "50% chegirma faollashtirildi"),
             5: ("Ball hisobingizga qo'shilgan", ""),
         }

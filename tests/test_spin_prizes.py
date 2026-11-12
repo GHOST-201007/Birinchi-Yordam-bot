@@ -362,7 +362,7 @@ class ProDayTest(DbTestCase):
     def test_free_user_gets_one_day_of_pro(self):
         self.user(pending_spin_prize=-3, medicine_score=7)
         r = self.claim()
-        self.assertIn("1 kunlik Premium Pro", r["message"])
+        self.assertIn("1 kunlik Premium Plus", r["message"])            # ichki pro = ko'rinadigan Plus
         row = self.row()
         self.assertEqual((row["is_premium"], row["premium_type"]), (1, "pro"))
         self.assertAlmostEqual((parse(row["premium_expires_at"]) - now()).total_seconds(), 86400, delta=60)
@@ -377,10 +377,10 @@ class ProDayTest(DbTestCase):
                 self.user(pending_spin_prize=-3, is_premium=1, premium_type=tier,
                           premium_expires_at=expires.isoformat(), premium_until=expires.isoformat())
                 r = self.claim()
-                self.assertIn(tier.capitalize(), r["message"])
+                self.assertIn(database.TIER_DISPLAY[tier], r["message"])          # ko'rinadigan nom (plus -> Pro)
                 self.assertIn("o'zgarmadi", r["message"])
                 row = self.row()
-                self.assertEqual((row["is_premium"], row["premium_type"]), (1, tier))        # Pro ga TUSHMADI
+                self.assertEqual((row["is_premium"], row["premium_type"]), (1, tier))        # pastroq tarifga TUSHMADI
                 self.assertAlmostEqual((parse(row["premium_expires_at"]) - expires).total_seconds(), 86400, delta=2)
 
     def test_active_pro_extends_by_one_day(self):

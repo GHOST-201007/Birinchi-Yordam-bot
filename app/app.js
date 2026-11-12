@@ -274,12 +274,19 @@ function setGlobalScore(value) {
 // premium_unlimited, premium_days_left (muddatsizda null), ai_remaining / ai_limit / ai_bonus.
 // Matnlar textContent bilan qo'yiladi; ikonkalar sprite'dan (emoji emas). Bepul foydalanuvchida hech narsa ko'rinmaydi.
 // ═══════════════════════════════════════════════════════════════════
-const PREMIUM_TIER_KEYS = ['pro', 'plus', 'ultra'];
+// ⚠️ ICHKI KOD pro = KO'RINADIGAN "Plus" (eng arzon: 7 kun, 50 ★, 15 AI/kun), ichki plus = ko'rinadigan "Pro"
+// (30 kun, 150 ★, 30 AI/kun); ultra o'zgarmagan. Pastdan yuqoriga: Plus -> Pro -> Ultra.
+// premium_type, plan (buy_pro_7...), CSS klasslari (tier-pro, hdr-premium--plus...) ICHKI kod bo'yicha QOLADI.
+// Ko'rinadigan nom BITTA joyda: shu konstanta (Python tomonida — database.TIER_DISPLAY; tests/ ikkalasini solishtiradi).
+const PREMIUM_TIER_KEYS = ['pro', 'plus', 'ultra'];        // ichki kodlar, pastdan yuqoriga
 const PREMIUM_TIERS = {
-    pro: { name: 'Pro', icon: 'star' },
-    plus: { name: 'Plus', icon: 'gem' },
-    ultra: { name: 'Ultra', icon: 'crown' }
+    pro: { name: 'Plus', icon: 'star', plan: 'buy_pro_7', days: 7 },
+    plus: { name: 'Pro', icon: 'gem', plan: 'buy_plus_30', days: 30 },
+    ultra: { name: 'Ultra', icon: 'crown', plan: 'buy_ultra_30', days: 30 }
 };
+function premiumTierTitle(tier) {            // "Premium Plus" (tier — ICHKI kod)
+    return 'Premium ' + PREMIUM_TIERS[tier].name;
+}
 const PREMIUM_BANNER_KEY = 'premium_banner_dismissed';       // yopilgan banner: shu premium_expires_at qiymati uchun
 const PREMIUM_BANNER_DAYS = 2;                                 // 2 kun yoki undan kam qolganda
 
@@ -416,6 +423,7 @@ function renderPremiumUi(s) {
     renderPremiumCard(s);
     renderPremiumBanner(s);
     applyPremiumTier(s);
+    renderPremiumPlans(s, false);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3381,7 +3389,7 @@ function initWheelOfFortune() {
     };
 
     // Segmentlar — server bilan bir xil sovrin KODLARI (database.SPIN_PRIZES): 1, 2, 3, 5 ball; -2 kun maslahati;
-    // -1 +1 bepul AI savol; -3 1 kunlik Premium Pro; 0 = SUPER. Bo'lak sovrin KODI bo'yicha topiladi
+    // -1 +1 bepul AI savol; -3 1 kunlik Premium (ichki pro); 0 = SUPER. Bo'lak sovrin KODI bo'yicha topiladi
     // (ball bo'yicha emas: manfiy kodlar bor). Ikonkalar emoji emas, sprite'dan (icon) chiziladi.
     const segments = [
         { code: 1, text: "+1", label: "ball", tone: 'primary' },
@@ -3390,7 +3398,7 @@ function initWheelOfFortune() {
         { code: 5, text: "+5", label: "ball", tone: 'primary2' },
         { code: -2, icon: 'lightbulb', label: "Maslahat", tone: 'violet' },
         { code: -1, icon: 'bot', label: "AI savol", tone: 'mint' },
-        { code: -3, icon: 'star', label: "1 kun Pro", tone: 'indigo' },
+        { code: -3, icon: 'star', label: `1 kun ${PREMIUM_TIERS.pro.name}`, tone: 'indigo' },
         { code: 0, text: "SUPER", label: "priz", tone: 'warning' }
     ];
 
@@ -3534,10 +3542,10 @@ function initWheelOfFortune() {
             points: { icon: '🎉', title: `+${code} ball yutdingiz!`, desc: "Ballarni hisobingizga qo'shish va saqlash uchun tasdiqlang." },
             tip: { icon: '💡', title: "Kun maslahati", desc: "Bugungi maslahatni ochish uchun tasdiqlang." },
             ai: { icon: '🤖', title: "+1 bepul AI savol", desc: "AI tabida ishlatishingiz mumkin. Hisobingizga qo'shish uchun tasdiqlang." },
-            pro_day: { icon: '⭐', title: "1 kunlik Premium Pro yutdingiz!", desc: "Faollashtirish uchun tasdiqlang.", accent: true },
+            pro_day: { icon: '⭐', title: `1 kunlik ${premiumTierTitle('pro')} yutdingiz!`, desc: "Faollashtirish uchun tasdiqlang.", accent: true },
             super: {
                 icon: '🏆', title: "SUPER PRIZ!", accent: true,
-                desc: ["Siz ", { b: "Super Priz" }, " — 30 kunlik Premium Plus uchun ", { b: "50% chegirma" }, " yutib oldingiz!"]
+                desc: ["Siz ", { b: "Super Priz" }, ` — 30 kunlik ${premiumTierTitle('plus')} uchun `, { b: "50% chegirma" }, " yutib oldingiz!"]
             }
         };
         const card = cards[prizeTypeOfCode(code)];
@@ -3614,7 +3622,7 @@ function initWheelOfFortune() {
     }
 
     function renderProDayCard(text) {
-        renderWheelCard("⭐", "1 kunlik Premium Pro faollashdi!", text || "", null, null, { accent: true });
+        renderWheelCard("⭐", `1 kunlik ${premiumTierTitle('pro')} faollashdi!`, text || "", null, null, { accent: true });
     }
 
     // Claim javobidagi Premium holati va AI hisoblagichi (faqat ai / pro_day turlarida keladi) — keshga
@@ -3695,7 +3703,7 @@ function initWheelOfFortune() {
         const type = claimedPrizeType(r);
         if (type === 'super') {
             renderSuperPrizeCard();
-            toast("SUPER PRIZ: Premium Plus uchun 50% chegirma faollashtirildi");
+            toast(`SUPER PRIZ: ${premiumTierTitle('plus')} uchun 50% chegirma faollashtirildi`);
         } else if (type === 'tip') {
             const tip = (typeof r.tip === 'string' && r.tip) ? r.tip : (r.message || '');
             renderWheelCard("💡", "Kun maslahati", tip);
@@ -3705,7 +3713,7 @@ function initWheelOfFortune() {
             toast("+1 bepul AI savol hisobingizga qo'shildi");
         } else if (type === 'pro_day') {
             renderProDayCard(r.message);
-            toast("1 kunlik Premium Pro faollashdi");
+            toast(`1 kunlik ${premiumTierTitle('pro')} faollashdi`);
         } else {
             // Ball soni SERVERDAN: javobdagi points, bo'lmasa oldingi/yangi score farqi; matnda server xabari
             // (r.message — server uni allaqachon oddiy matnga aylantirgan). Klientdagi sovrin kodi ko'rsatilmaydi.
@@ -3791,7 +3799,7 @@ function initWheelOfFortune() {
 
             if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-            // Konfetti — faqat SUPER va 1 kunlik Pro'da
+            // Konfetti — faqat SUPER va 1 kunlik Premium'da
             if (winningCode === 0 || winningCode === -3) fireConfetti();
 
             unclaimedPrize = winningCode;
@@ -4127,8 +4135,65 @@ const PREMIUM_FEATURES = {
 
 function selectedPremiumPlan() {
     const r = document.querySelector('#premium-modal input[name="premium-plan"]:checked');
-    return r ? { plan: r.value, price: r.getAttribute('data-price') } : { plan: 'buy_plus_30', price: '150' };
+    return r ? { plan: r.value, price: r.getAttribute('data-price'), extension: r.dataset.extension === '1' }
+             : { plan: 'buy_plus_30', price: '150', extension: false };
 }
+
+// Qaysi tariflarni sotib olish MUMKIN. Qoida serverdagi bilan bir xil (bot.py premium_purchase_decision; oxirgi hakam —
+// /api/invoice): joriy tarif (UZAYTIRISH) va undan yuqorilari; pastroqlar va muddatsiz Premium — yo'q.
+// Holat noma'lum yoki Premium yo'q bo'lsa — uchalasi ham.
+function premiumPlanOptions(s) {
+    const p = premiumInfo(s);
+    return PREMIUM_TIER_KEYS.map((tier) => {
+        const plan = PREMIUM_TIERS[tier].plan;
+        if (!p) return { tier: tier, plan: plan, allowed: true, extension: false };
+        if (p.unlimited) return { tier: tier, plan: plan, allowed: false, extension: false };
+        const diff = PREMIUM_TIER_KEYS.indexOf(tier) - PREMIUM_TIER_KEYS.indexOf(p.tier);
+        return { tier: tier, plan: plan, allowed: diff >= 0, extension: diff === 0 };
+    });
+}
+
+// #premium-modal: pastroq tarif kartalari yashiriladi; joriy tarif "yana N kun" (uzaytirish) deb yoziladi.
+// preselect — oyna ochilganda: faol userda joriy tarif (uzaytirish) tanlangan bo'ladi.
+function renderPremiumPlans(s, preselect) {
+    const modal = document.getElementById('premium-modal');
+    if (!modal) return;
+    const p = premiumInfo(s);
+    const title = document.getElementById('premium-title');
+    if (title) title.textContent = p ? 'Premiumni uzaytirish' : 'Premium';
+    const opts = premiumPlanOptions(s);
+    opts.forEach((o) => {
+        const input = modal.querySelector(`input[name="premium-plan"][value="${o.plan}"]`);
+        if (!input) return;
+        const card = input.closest('.plan-card');
+        if (card) card.hidden = !o.allowed;
+        input.disabled = !o.allowed;
+        input.dataset.extension = o.extension ? '1' : '0';
+        const days = card && card.querySelector('.plan-days');
+        if (days) days.textContent = o.extension ? `yana ${PREMIUM_TIERS[o.tier].days} kun` : `${PREMIUM_TIERS[o.tier].days} kun`;
+    });
+    const checked = modal.querySelector('input[name="premium-plan"]:checked');
+    const wantExtension = !!preselect && opts.some((o) => o.extension);
+    if (!checked || checked.disabled || (wantExtension && checked.dataset.extension !== '1')) {
+        const pick = opts.find((o) => o.extension) || opts.find((o) => o.allowed && o.plan === 'buy_plus_30') ||
+            opts.find((o) => o.allowed);
+        const input = pick && modal.querySelector(`input[name="premium-plan"][value="${pick.plan}"]`);
+        if (input) input.checked = true;
+    }
+    renderPremiumFeatures();
+    syncPremiumMainButton();
+}
+
+// Tarif kartalaridagi nom (index.html: .plan-name[data-tier]) PREMIUM_TIERS dan — HTML dagi matn ham shu nom bilan
+// yozilgan, bu — ikkalasi hech qachon ajralib ketmasligi uchun kafolat.
+function syncPremiumPlanNames() {
+    document.querySelectorAll('.plan-name[data-tier]').forEach((el) => {
+        const meta = PREMIUM_TIERS[el.dataset.tier];
+        const node = el.firstChild;
+        if (meta && node && node.nodeType === 3) node.nodeValue = 'Premium ' + meta.name;
+    });
+}
+document.addEventListener('DOMContentLoaded', syncPremiumPlanNames);
 
 function renderPremiumFeatures() {
     const list = document.getElementById('premium-features');
@@ -4151,8 +4216,8 @@ function syncPremiumMainButton() {
         if (MainButtonCtl.owner === 'premium') MainButtonCtl.clear();
         return;
     }
-    const { plan, price } = selectedPremiumPlan();
-    MainButtonCtl.set({ text: `★ ${price} — Davom etish`, owner: 'premium', onClick: () => buyPremium(plan) },
+    const { plan, price, extension } = selectedPremiumPlan();
+    MainButtonCtl.set({ text: `★ ${price} — ${extension ? 'Uzaytirish' : 'Davom etish'}`, owner: 'premium', onClick: () => buyPremium(plan) },
                       document.getElementById('premium-continue'));
 }
 
@@ -4172,6 +4237,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderPremiumFeatures();
 
         btnOpenPremium.addEventListener('click', () => {
+            renderPremiumPlans(AppState.data, true);          // faqat sotib olish mumkin bo'lgan tariflar (uzaytirish)
             premiumModal.classList.remove('hidden');
             premiumModal.style.display = 'flex';
             document.body.style.overflow = 'hidden';

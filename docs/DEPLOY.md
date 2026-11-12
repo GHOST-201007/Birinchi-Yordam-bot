@@ -60,8 +60,8 @@ Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/s
 Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u yerda URL-parametr zaxira yo'lida ishlaydi.
 
 ### Admin Premium paneli (`/premium`, faqat `ADMIN_ID`)
-`/premium` (admin) → userlar ro'yxati (10 tadan, ◀️ ▶️, 🔍 ID yoki @username bilan qidirish) → user kartasi → **tarif** (Pro/Plus/Ultra) → **muddat** (1/3/7/30/90 kun yoki ♾ muddatsiz) → **rejim** (📣 Xabar bilan / 🤫 Sirli) → sabab (faqat "Xabar bilan") → tasdiqlash. Olib tashlash ham shu rejimlar bilan. Oddiy userlar uchun `/premium` o'zgarmagan.
-- Kunlik muddat `grant_premium_days` orqali: faol muddatga qo'shadi, yuqori tarifni saqlaydi (Ultra + 3 kun Pro → Ultra, muddat +3 kun).
+`/premium` (admin) → userlar ro'yxati (10 tadan, ◀️ ▶️, 🔍 ID yoki @username bilan qidirish) → user kartasi → **tarif** (⭐ Plus / 💎 Pro / 👑 Ultra) → **muddat** (1/3/7/30/90 kun yoki ♾ muddatsiz) → **rejim** (📣 Xabar bilan / 🤫 Sirli) → sabab (faqat "Xabar bilan") → tasdiqlash. Olib tashlash ham shu rejimlar bilan. Oddiy userlar uchun `/premium` o'zgarmagan.
+- Kunlik muddat `grant_premium_days` orqali: faol muddatga qo'shadi, yuqori tarifni saqlaydi (Ultra + 3 kun Plus → Ultra, muddat +3 kun).
 - Muddatsiz: `database.set_premium_unlimited` (`premium_expires_at = NULL`); tarif limiti `premium_type` bo'yicha. **Muddatsiz Premiumli userga kunlik muddat berilmaydi** — avval olib tashlash kerak.
 - Har bir o'zgarish logda: `journalctl -u birinchi-yordam-bot | grep "ADMIN PREMIUM"` (admin, user, tarif, muddat, rejim). Bazaga tarix yozilmaydi. Yangi env o'zgaruvchi va migratsiya yo'q.
 - "Xabar bilan" rejimida user botni bloklagan bo'lsa Premium baribir beriladi/olinadi, adminga ogohlantirish chiqadi.
@@ -70,12 +70,37 @@ Lokal (`run_dev.py`, cloudflare tunnel) `/api/` proksilanmaydi — Mini App u ye
 Premiumi bor foydalanuvchi buni mini appda ham, botda ham doim ko'radi; bepul foydalanuvchida hech narsa o'zgarmaydi.
 - **Holat bitta joydan:** `database.admin_premium_view` / `get_premium_view(user_id)` (muddati o'tgan flag — oddiy, muddatsiz ham to'g'ri; `days_left` = `ceil((tugash - hozir) / 1 kun)`, Toshkent vaqti). Bot ham, API ham shundan foydalanadi.
 - **Mini app:** `/api/state` (va ai/pro_day sovrinli `/api/spin/claim`) ga `premium_expires_at` (muddatsizda `null`), `premium_unlimited`, `premium_days_left` qo'shildi. Header belgisi (`Ultra · 5 kun` / `· ♾` / `· bugun`), Sog'liq tabida "Mening Premiumim" kartasi, tugashiga ≤ 2 kun qolganda bosh ekran banneri (yopilgani `premium_expires_at` bo'yicha eslab qolinadi), tarif rangidagi aksent (`body.tier-pro|plus|ultra`).
-- **Bot:** reply menyudagi `💎 Premium` tugmasi tarifga mos (`⭐ Premium Pro` / `💎 Premium Plus` / `👑 Premium Ultra`; kun soni yozilmaydi); `/start` salomiga bitta qator; Premiumi borga "Mening obunam" sahifasi (muddatsiz endi sotuv sahifasiga tushmaydi).
+- **Bot:** reply menyudagi `💎 Premium` tugmasi tarifga mos (`⭐ Premium Plus` / `💎 Premium Pro` / `👑 Premium Ultra`; kun soni yozilmaydi); `/start` salomiga bitta qator; Premiumi borga "Mening obunam" sahifasi (muddatsiz endi sotuv sahifasiga tushmaydi).
 - **Tugash eslatmasi:** fon vazifasi (`premium_expiry_loop`, polling va webhook rejimida ham) soatiga bir marta tekshiradi: faol, muddatli Premium va qolgan vaqt ≤ 24 soat bo'lsa bitta xabar (`🔄 Uzaytirish` tugmasi bilan). Takrorlanmasligi uchun **yangi ustun `users.premium_expiry_notified_for TEXT`** — `init_db()` o'zi qo'shadi (`ADD COLUMN IF NOT EXISTS`), qo'lda hech narsa kerak emas. Muddatsiz, bepul va ban qilinganlarga yuborilmaydi; bir tekshiruvda ko'pi bilan 200 ta. Muddati o'tganlar shu vazifada yopiladi (xabarsiz). Yangi env o'zgaruvchi yo'q.
 - **Chap pastdagi shaxsiy tugma:** `/start` da Premium faol bo'lsa `👑 Ilova` (faqat joriy `MINI_APP_URL`, query parametrsiz), aks holda eski shaxsiy tugma tozalanadi (mavjud mexanizm saqlangan). Admin Premium bersa — tugma qo'yiladi, olib tashlasa yoki muddat tugasa — Default ga qaytadi. Hammasi fonda, timeout bilan.
   - `MINI_APP_URL` o'zgarsa: Premium userlarning shaxsiy tugmasi bot restartdan keyin ular `/start` bosganda yangilanadi.
   - ⚠️ `scripts/reset_menu_buttons.py` ni qayta ishga tushirsangiz, Premium userlarning `👑 Ilova` tugmasi ham tozalanadi (ular `/start` bossa qaytadi).
-- "🔄 Uzaytirish" mavjud xarid tugmalarini ko'rsatadi; mavjud siyosat bo'yicha faol Premiumda joriy tarifga teng yoki past tarif sotib olinmaydi (`check_premium_purchase_eligibility`) — bu o'zgartirilmagan.
+- "🔄 Uzaytirish" FAQAT sotib olish mumkin bo'lgan tariflarni ko'rsatadi (qoida: pastdagi "Tarif nomlari va uzaytirish").
+
+### Tarif nomlari va uzaytirish
+**Ko'rinadigan nomlar** (narx, muddat, AI limit, tartib o'zgarmagan; pastdan yuqoriga: Plus → Pro → Ultra):
+
+| Ichki kod (`premium_type`, payload, `callback_data`) | Muddat | Narx (env) | AI/kun | Ko'rinadigan nom |
+|---|---|---|---|---|
+| `pro` (`PRO_7_DAYS`, `buy_pro_7`) | 7 kun | 50 ⭐ (`PRO_TRIAL_STARS`) | 15 | ⭐ Premium **Plus** |
+| `plus` (`PLUS_30_DAYS`, `buy_plus_30`) | 30 kun | 150 ⭐ (`PRO_MONTHLY_STARS`) | 30 | 💎 Premium **Pro** |
+| `ultra` (`ULTRA_30_DAYS`, `buy_ultra_30`) | 30 kun | 300 ⭐ (`ULTRA_MONTHLY_STARS`) | 100 | 👑 Premium Ultra |
+
+- ⚠️ **Ichki kod ≠ ko'rinadigan nom.** Bazadagi `premium_type`, payloadlar, `callback_data`, env nomlari, `tier_rank` va CSS klasslari (`tier-pro`, `tier-plus`) o'zgarmagan, **migratsiya yo'q**. Faqat foydalanuvchi va admin ko'radigan matn almashgan. Kodni o'qiyotganda: `pro` = "Plus" (eng arzon), `plus` = "Pro".
+- **Nom bitta joyda:** Python — `database.TIER_DISPLAY` / `TIER_ICON` (`bot.py` shundan oladi, matnlar `tier_title()` orqali); Mini App — `app.js` dagi `PREMIUM_TIERS`. `tests/test_tier_names.py` ikkalasi mos ekanini va bot hamda Mini App matnlarida eski nom–muddat juftliklari (masalan, 7 kunlik tarif eski nomi bilan) qolmaganini tekshiradi.
+- **Rang va ikonka darajaga bog'liq:** eng arzon — teal ⭐, o'rta — binafsha 💎, eng yuqori — oltin 👑.
+- Baraban: "1 kunlik Premium **Plus**" (ichki `pro`); SUPER sovrin — Premium **Pro** (30 kun, ichki `plus`) uchun 50% chegirma. 100 ball → 3 kunlik Premium **Plus**.
+
+**Bir xil tarifni qayta sotib olish = uzaytirish.** Qoida YAGONA (`bot.premium_purchase_decision` / `check_premium_purchase_eligibility`), holat `database.get_premium_view` dan (muddati o'tgan flag bloklamaydi). Bot tugmalari, `?start=buy_*` deep link, Mini App `/api/invoice` va `pre_checkout_query` hammasi shundan foydalanadi:
+- Joriy tarif bilan **bir xil** tarif — ruxsat: tugash sanasi + tarif muddati (Plus +7 kun, Pro/Ultra +30 kun). "2 oy" kabi yangi variantlar yo'q.
+- **Yuqoriroq** tarif — ruxsat (hozirgidek); **pastroq** — taqiq: "Sizda yuqoriroq tarif (Premium Ultra) bor — pastroq tarif sotib olinmaydi".
+- **Muddatsiz** Premium — taqiq ("Sizda muddatsiz Premium bor"): unga muddat qo'shib bo'lmaydi. Shu sababli muddatsiz userga "100 ball → Premium" ham berilmaydi.
+- SUPER PRIZ chegirmasi (`PLUS_30_DAYS_DISCOUNT`): faol `plus` (Pro) userga uzaytirish sifatida ishlaydi, `ultra` userga taqiq.
+- Tugmalar: "Mening obunam", sotuv/uzaytirish sahifasi, Mini App Premium oynasi (Telegram'da `⭐ 300 — Uzaytirish`) faqat sotib olish mumkin bo'lgan tariflarni ko'rsatadi; joriy tarif tugmasi `🔄 Premium Ultra — yana 30 kun (300 ⭐)`.
+- Uzaytirilganda to'lov tasdig'i: "✅ Premium Ultra 30 kunga uzaytirildi — yangi tugash sanasi: 11.01.2027".
+- `database.process_paid_premium` / `grant_premium_days` faol muddatga qo'shadi va yuqori tarifni saqlaydi (testlar bilan tasdiqlangan). Eslatma: ular muddatsiz Premiumni muddatli qilib yuboradi — shuning uchun xarid qoidasi muddatsizni oldindan rad etadi.
+
+**To'lovdan keyin menyu darhol yangilanadi:** `successful_payment` (va 100 ball → Premium) javobiga `get_start_keyboard(<yangi holat>)` qo'shiladi (pastdagi tugma darhol `👑 Premium Ultra` kabi bo'ladi), menyu keshi yangilanadi va shaxsiy `👑 Ilova` tugmasi fonda qo'yiladi (`refresh_premium_menu`). Baraban 1 kunlik sovrini `/start spin_*` yo'lida shunday, Mini App yo'lida (`/api/spin/claim`) bot xabar yubormaydi — kesh va shaxsiy tugma yangilanadi. To'lov mantig'i (summa, payload, takroriy to'lov himoyasi, reconcile) o'zgarmagan. Yangi env o'zgaruvchi va migratsiya yo'q.
 
 ### Omad baraboni (8 sovrin)
 Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.
@@ -85,8 +110,8 @@ Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segm
 | 1 / 2 / 3 / 5 | shuncha ball | 35% / 20% / 12% / 5% |
 | -2 | 💡 kun maslahati (ball yo'q, `data/spin_tips.json` dan) | 15% |
 | -1 | 🤖 +1 bepul AI savol (`users.spin_ai_bonus`) | 10% |
-| -3 | ⭐ 1 kunlik Premium Pro (faol Plus/Ultra tarifi pasaymaydi, muddati +1 kun) | 2% |
-| 0 | 🏆 SUPER: Premium Plus (30 kun) uchun 50% chegirma | 1% |
+| -3 | ⭐ 1 kunlik Premium Plus (ichki `pro`; faol Pro/Ultra tarifi pasaymaydi, muddati +1 kun) | 2% |
+| 0 | 🏆 SUPER: Premium Pro (30 kun, ichki `plus`) uchun 50% chegirma | 1% |
 
 - **Migratsiya:** `users.spin_ai_bonus INTEGER DEFAULT 0` — `init_db()` bot ishga tushganda o'zi qo'shadi (`ADD COLUMN IF NOT EXISTS`), qo'lda hech narsa qilinmaydi. `pending_spin_prize` turi o'zgarmagan (INTEGER). Yangi env o'zgaruvchi yo'q.
 - **Eski holat:** deploy paytida bazada `pending_spin_prize = 10` turgan bo'lsa u o'zgartirilmay +10 ball beriladi; noma'lum qiymat — +1 ball.
@@ -167,8 +192,8 @@ DATABASE_URL=postgresql://...   # Neon
 ADMIN_ID=...
 ADMIN_USERNAME=...
 MINI_APP_URL=...                # serverda doimiy domen; lokalda run_dev.py yangilaydi
-PRO_TRIAL_STARS=50              # Pro 7 kun
-PRO_MONTHLY_STARS=150           # Plus 30 kun (SUPER PRIZ chegirmasi = yarmi)
+PRO_TRIAL_STARS=50              # Plus 7 kun (ichki kod: pro)
+PRO_MONTHLY_STARS=150           # Pro 30 kun (ichki kod: plus; SUPER PRIZ chegirmasi = yarmi)
 ULTRA_MONTHLY_STARS=300         # Ultra 30 kun
 PREMIUM_STARS_PRICE=50          # xabarlardagi "... Stars dan boshlab" matni uchun
 # Ixtiyoriy: ikkalasi ham bo'lsa webhook rejimi, bo'lmasa polling (batafsil: yuqoridagi "Telegram webhook")

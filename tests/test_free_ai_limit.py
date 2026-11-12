@@ -79,11 +79,11 @@ class BotLimitOfferTest(unittest.IsolatedAsyncioTestCase):
     async def test_free_upsell_lists_tier_limits_not_unlimited(self):
         text, _ = await self.upsell((False, None, "free"))
         self.assertNotIn("cheksiz", text.lower())
-        for line in ("Pro — kuniga 15 ta", "Plus — kuniga 30 ta", "Ultra — kuniga 100 ta"):
+        for line in ("Plus — kuniga 15 ta", "Pro — kuniga 30 ta", "Ultra — kuniga 100 ta"):    # ichki pro/plus/ultra
             self.assertIn(line, text)
 
     async def test_premium_user_sees_daily_limit_not_free_message(self):
-        for tier, limit, higher in (("pro", 15, "Plus — kuniga 30 ta"), ("plus", 30, "Ultra — kuniga 100 ta")):
+        for tier, limit, higher in (("pro", 15, "Pro — kuniga 30 ta"), ("plus", 30, "Ultra — kuniga 100 ta")):
             with self.subTest(tier=tier):
                 text, kwargs = await self.upsell((True, None, tier))
                 self.assertNotIn("Bepul", text)
@@ -107,7 +107,7 @@ class BotLimitOfferTest(unittest.IsolatedAsyncioTestCase):
         callback.message.edit_text = mock.AsyncMock()
         with mock.patch.object(bot.database, "get_premium_info", return_value=(True, None, "pro")):
             await bot.premium_upsell(callback)
-        self.assertIn("Premium Pro", callback.message.edit_text.call_args.args[0])
+        self.assertIn("Premium Plus", callback.message.edit_text.call_args.args[0])       # ichki pro = ko'rinadigan Plus
 
     def test_no_unlimited_word_in_bot_ai_texts(self):
         src = inspect.getsource(bot.premium_upsell_text)
