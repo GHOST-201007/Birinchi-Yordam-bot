@@ -307,6 +307,115 @@ function premiumInfo(s) {
     };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// SUPER PRIZ CHEGIRMASI: Pro (ichki plus, 30 kun) -50%, 24 soat, bir martalik.
+// Manba — /api/state dagi `discount` {active, price, old_price, expires_at, seconds_left}. Server — YAGONA hakam (invoice
+// narxini ham, muddatni ham o'sha belgilaydi); mijoz soati faqat ko'rsatish uchun: tugash vaqti serverdagi
+// `seconds_left` dan BIR MARTA hisoblanadi (qurilma soati noto'g'ri bo'lsa ham qolgan vaqt to'g'ri chiqadi).
+// Taymer 0 ga yetsa, sahifani yangilamasdan oddiy narx qaytadi (mahalliy holat o'zgaradi). To'lovdan keyin ham shunday.
+// Matnlar textContent bilan, tugunlar DOM orqali (innerHTML yo'q); ikonkalar sprite'dan.
+// ═══════════════════════════════════════════════════════════════════
+const DISCOUNT_PLAN = 'buy_plus_30';                      // chegirma FAQAT shu tarifga (ichki plus = ko'rinadigan Pro)
+const DiscountClock = { key: null, endAt: 0 };            // expires_at o'zgarmasa tugash vaqti qayta hisoblanmaydi
+const DiscountTimer = { id: null };
+
+// Server bilan bir xil format: "23 soat 40 daqiqa", "5 soat", 1 soatdan kam bo'lsa "40 daqiqa" (daqiqaga yuqoriga yaxlitlanadi)
+function formatDiscountLeft(ms) {
+    const total = Math.max(0, Math.ceil(ms / 60000));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    if (h) return h + ' soat' + (m ? ' ' + m + ' daqiqa' : '');
+    return m + ' daqiqa';
+}
+
+// Faol chegirma yoki null (yo'q / muddati o'tgan / maydon yo'q). Tarifga bog'liq emas — qarang discountOffer.
+function discountInfo(s) {
+    const d = s && s.discount;
+    if (!d || d.active !== true || typeof d.seconds_left !== 'number' || d.seconds_left <= 0) return null;
+    const key = String(d.expires_at || '');
+    if (DiscountClock.key !== key) {
+        DiscountClock.key = key;
+        DiscountClock.endAt = Date.now() + d.seconds_left * 1000;
+    }
+    if (Date.now() >= DiscountClock.endAt) return null;
+    return { price: d.price, oldPrice: d.old_price, endAt: DiscountClock.endAt };
+}
+
+// Hozir KO'RSATILISHI kerak bo'lgan taklif: chegirma faol VA Pro sotib olish mumkin (Ultra / muddatsiz Premiumda — yo'q;
+// serverdagi premium_purchase_decision bilan bir xil qoida). extension — joriy Pro uzaytiriladimi.
+function discountOffer(s) {
+    const info = discountInfo(s);
+    if (!info) return null;
+    const pro = premiumPlanOptions(s).find((o) => o.tier === 'plus');
+    if (!pro || !pro.allowed) return null;
+    return Object.assign({ extension: pro.extension }, info);
+}
+
+// Taklif bloki (super kartasi va AI limit taklifida): tarif nomi + ikonka, -50% belgisi, eski narx (chizilgan), yangi narx, qolgan vaqt
+function buildDealBlock(offer) {
+    const box = aiEl('div', 'deal');
+    const head = aiEl('div', 'deal-head');
+    head.append(aiIcon(PREMIUM_TIERS.plus.icon),
+        aiEl('span', 'deal-name', premiumTierTitle('plus') + ' — ' + (offer.extension ? 'yana ' : '') + PREMIUM_TIERS.plus.days + ' kun'),
+        aiEl('span', 'deal-badge', '−50%'));
+    const prices = aiEl('div', 'deal-prices tabular');
+    prices.append(aiEl('span', 'sr-only', 'Eski narx: '), aiEl('s', 'deal-old', '★ ' + offer.oldPrice),
+        aiEl('span', 'sr-only', 'Yangi narx: '), aiEl('span', 'deal-new', '★ ' + offer.price));
+    const left = aiEl('p', 'deal-left tabular');
+    const text = aiEl('span', '');
+    text.dataset.discountLeft = '1';
+    left.append(aiIcon('clock'), text);
+    box.append(head, prices, left);
+    return box;
+}
+
+// Hamma "qolgan vaqt" joylari ([data-discount-left]) bir vaqtda yangilanadi; faqat matn o'zgarganda yoziladi.
+// data-discount-prefix — matn oldiga qo'shiladigan qism (masalan, bosh ekran kartasida "−50% · ").
+function refreshDiscountTexts() {
+    const offer = discountOffer(AppState.data);
+    if (!offer) return;
+    const left = formatDiscountLeft(offer.endAt - Date.now()) + ' qoldi';
+    document.querySelectorAll('[data-discount-left]').forEach((el) => {
+        const next = (el.dataset.discountPrefix || '') + left;
+        if (el.textContent !== next) el.textContent = next;
+    });
+}
+
+function stopDiscountTimer() {
+    if (DiscountTimer.id !== null) {
+        clearInterval(DiscountTimer.id);
+        DiscountTimer.id = null;
+    }
+}
+
+// Mahalliy holatni "chegirma yo'q"ga o'tkazadi (taymer tugadi / to'lov bo'ldi): tinglovchilar orqali hamma joy oddiy narxga qaytadi
+function expireDiscountLocally() {
+    const d = AppState.data && AppState.data.discount;
+    if (d && d.active) {
+        patchAppState({ discount: Object.assign({}, d, { active: false, expires_at: null, seconds_left: 0 }) });
+    }
+}
+
+function discountTick() {
+    if (discountOffer(AppState.data)) {
+        refreshDiscountTexts();
+        return;
+    }
+    stopDiscountTimer();
+    expireDiscountLocally();
+}
+
+// Holat o'zgarganda: taklif bor — matnlar yangilanadi va taymer yuradi; yo'q — taymer to'xtaydi.
+// Taymer 1 soniyada tekshiradi, matn esa faqat daqiqa o'zgarganda yoziladi (ekran o'qigichlarni bezovta qilmaydi).
+function syncDiscountUi(s) {
+    if (!discountOffer(s)) {
+        stopDiscountTimer();
+        return;
+    }
+    refreshDiscountTexts();
+    if (DiscountTimer.id === null) DiscountTimer.id = setInterval(discountTick, 1000);
+}
+
 // Header: "Ultra · 5 kun" | "Ultra · ♾" | "Ultra · bugun" | "Ultra" (muddat noma'lum)
 function premiumShortText(p) {
     if (p.unlimited) return `${p.name} · ♾`;
@@ -427,6 +536,20 @@ function renderTodayPremium(s) {
     const main = document.getElementById('today-premium-card');
     if (!title || !sub || !btn) return;
     const p = premiumInfo(s);
+    // SUPER PRIZ chegirmasi (24 soat): pastki yozuv "−50% · 5 soat qoldi" (taymer [data-discount-left] orqali yangilanadi)
+    const offer = discountOffer(s);
+    if (offer) {
+        title.textContent = p ? p.name : 'Premium';
+        const leftText = formatDiscountLeft(offer.endAt - Date.now()) + ' qoldi';
+        sub.dataset.discountLeft = '1';
+        sub.dataset.discountPrefix = '−50% · ';
+        sub.textContent = sub.dataset.discountPrefix + leftText;
+        btn.textContent = p ? 'Uzaytirish' : 'Ochish';
+        if (main) main.setAttribute('aria-label', `${p ? premiumTierTitle(p.tier) : 'Premium'}: ${premiumTierTitle('plus')} uchun −50% chegirma, ${leftText}`);
+        return;
+    }
+    delete sub.dataset.discountLeft;
+    delete sub.dataset.discountPrefix;
     if (!p) {
         title.textContent = 'Premium';
         sub.textContent = 'Tariflar va bonuslar';
@@ -1262,7 +1385,10 @@ function todayStateFromUrl() {
     };
 }
 
-onAppStateChange((s) => { renderPremiumUi(s); renderTodayCard(s); renderAiOffer(s); renderAiQuota(s); });
+onAppStateChange((s) => {
+    renderPremiumUi(s); renderTodayCard(s); renderAiOffer(s); renderAiQuota(s);
+    syncDiscountUi(s);                       // SUPER PRIZ chegirmasi: taymer yuradi yoki to'xtaydi (oxirida: matnlar chizilgach)
+});
 document.addEventListener('DOMContentLoaded', () => {
     getAppState(60000).then((s) => renderTodayCard(s || todayStateFromUrl()));
 });
@@ -3366,6 +3492,8 @@ function initWheelOfFortune() {
     // serverdan BIR MARTA olinadi. Ikkinchi marta yopish yoki qayta ochish hech narsa qilmaydi (qiymat null).
     // Server ham idempotent: claim faqat pending_spin_prize bo'lsa va 24 soatlik limit ichida bo'lmasa beriladi.
     let unclaimedPrize = null;
+    // Hozir ko'rinib turgan SUPER PRIZ kartasi rejimi ('offer' | 'ended' | 'plain') yoki false (boshqa karta/hech narsa)
+    let superCardShown = false;
 
     function claimUnclaimedOnClose() {
         if (unclaimedPrize === null) return;
@@ -3609,6 +3737,7 @@ function initWheelOfFortune() {
     // desc — satr yoki [satr, {b: "qalin matn"}, ...] ro'yxati. opts: { btnId, accent (oltin ikonka) }.
     function renderWheelCard(icon, title, desc, btnText, onBtn, opts) {
         const o = opts || {};
+        superCardShown = false;                                   // boshqa karta chizildi: SUPER taklifi endi ko'rinmaydi
         resultMsg.replaceChildren();
         const iconEl = document.createElement('div');
         iconEl.className = o.accent ? 'result-icon result-icon--super' : 'result-icon';
@@ -3628,6 +3757,7 @@ function initWheelOfFortune() {
             }
         });
         resultMsg.append(iconEl, titleEl, descEl);
+        if (o.extra) resultMsg.appendChild(o.extra);              // masalan, SUPER PRIZ taklif bloki (DOM tuguni)
         if (btnText && onBtn) {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -3640,13 +3770,45 @@ function initWheelOfFortune() {
         resultMsg.classList.remove('hidden');
     }
 
-    function renderSuperPrizeCard() {
-        renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
-            "Premium olish", () => {
-                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
-                buyPremium('buy_plus_30');      // chegirma server tomonida avtomatik (has_discount)
-            }, { accent: true });
+    // SUPER PRIZ kartasi. Server `discount` maydonini bergan bo'lsa (yangi server):
+    //   - taklif faol (Pro olish mumkin) -> Pro taklif bloki: nom + ikonka, eski narx chizilgan, yangi narx, "−50%",
+    //     qolgan vaqt (har daqiqada yangilanadi) va "Sotib olish" -> buyPremium('buy_plus_30') (narxni server o'zi qo'llaydi);
+    //   - taklif tugagan / to'langan -> tugma yo'q, "muddati tugadi" kartasi (taymer 0 ga yetganda shu karta almashadi).
+    // `discount` maydoni yo'q (eski server) yoki Pro olish mumkin emas -> avvalgi oddiy karta.
+    function superCardModeNow() {
+        const state = AppState.data;
+        if (discountOffer(state)) return 'offer';
+        return (state && state.discount && !state.discount.active) ? 'ended' : 'plain';
     }
+
+    function renderSuperPrizeCard() {
+        const state = AppState.data;
+        const mode = superCardModeNow();
+        const offer = discountOffer(state);
+        if (mode === 'offer') {
+            renderWheelCard("🏆", "SUPER PRIZ!", ["Siz ", { b: "Super Priz" }, " yutib oldingiz — ", premiumTierTitle('plus') + " uchun ", { b: "50% chegirma" }, "!"],
+                "Sotib olish", () => {
+                    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+                    buyPremium(DISCOUNT_PLAN);      // chegirma server tomonida avtomatik
+                }, { accent: true, btnId: 'btn-super-buy', extra: buildDealBlock(offer) });
+            refreshDiscountTexts();
+        } else if (mode === 'ended') {
+            renderWheelCard("🏆", "SUPER PRIZ!", "Chegirma taklifi muddati tugadi yoki ishlatildi.", null, null, { accent: true });
+        } else {
+            renderWheelCard("🏆", "SUPER PRIZ!", "50% chegirma faollashtirildi.",
+                "Premium olish", () => {
+                    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+                    buyPremium(DISCOUNT_PLAN);      // chegirma server tomonida avtomatik (has_discount)
+                }, { accent: true });
+        }
+        superCardShown = mode;                      // renderWheelCard bayrog'ni tushirgan edi: SUPER kartasi hozir ko'rinib turibdi
+    }
+
+    // Taymer 0 ga yetsa yoki to'lov bo'lsa (holat o'zgarsa) ko'rinib turgan SUPER kartasi o'zi almashadi — sahifani yangilash shart emas.
+    // Faqat rejim o'zgarganda qayta chiziladi (har holat yangilanishida emas: tugma fokusi yo'qolmasin).
+    onAppStateChange(() => {
+        if (superCardShown && superCardShown !== superCardModeNow()) renderSuperPrizeCard();
+    });
 
     function renderAiPrizeCard() {
         renderWheelCard("🤖", "+1 bepul AI savol", "AI tabida ishlatishingiz mumkin");
@@ -3661,7 +3823,7 @@ function initWheelOfFortune() {
     function applyClaimedState(r) {
         const patch = {};
         ['is_premium', 'premium_type', 'premium_expires_at', 'premium_unlimited', 'premium_days_left',
-         'ai_remaining', 'ai_limit', 'ai_bonus'].forEach((k) => {
+         'ai_remaining', 'ai_limit', 'ai_bonus', 'discount'].forEach((k) => {
             if (r[k] !== undefined) patch[k] = r[k];
         });
         if (Object.keys(patch).length) patchAppState(patch);
@@ -4184,6 +4346,29 @@ function premiumPlanOptions(s) {
     });
 }
 
+// Pro kartasi (SUPER PRIZ): taklif bor — narx ★ 75, tepada chizilgan ★ 150, "−50%" va qolgan vaqt; yo'q — oddiy narx.
+// To'lovda narx FAQAT serverdan (/api/invoice), bu yerdagi narx faqat ko'rsatish va tugma matni uchun.
+function renderPlanDiscount(input, card, option, offer) {
+    if (option.plan !== DISCOUNT_PLAN || !card) return;
+    if (!input.dataset.basePrice) input.dataset.basePrice = input.getAttribute('data-price');
+    const priceEl = card.querySelector('.plan-price');
+    const deal = card.querySelector('.plan-deal');
+    const on = !!(offer && option.allowed);
+    input.setAttribute('data-price', on ? String(offer.price) : input.dataset.basePrice);
+    if (priceEl) priceEl.textContent = '★ ' + (on ? offer.price : input.dataset.basePrice);
+    if (!deal) return;
+    const left = deal.querySelector('.plan-left');
+    deal.hidden = !on;
+    if (!on) {                                                 // taklif yo'q: taymer matni ham, belgisi ham qolmaydi
+        delete left.dataset.discountLeft;
+        left.textContent = '';
+        return;
+    }
+    deal.querySelector('.plan-old').textContent = '★ ' + offer.oldPrice;
+    left.dataset.discountLeft = '1';
+    left.textContent = formatDiscountLeft(offer.endAt - Date.now()) + ' qoldi';
+}
+
 // #premium-modal: pastroq tarif kartalari yashiriladi; joriy tarif "yana N kun" (uzaytirish) deb yoziladi.
 // preselect — oyna ochilganda: faol userda joriy tarif (uzaytirish) tanlangan bo'ladi.
 function renderPremiumPlans(s, preselect) {
@@ -4201,6 +4386,7 @@ function renderPremiumPlans(s, preselect) {
     const note = document.getElementById('pm-unlimited');
     if (note) note.hidden = !unlimited;
     const opts = premiumPlanOptions(s);
+    const offer = discountOffer(s);                                // SUPER PRIZ: Pro kartasida chegirmali narx (24 soat)
     opts.forEach((o) => {
         const input = modal.querySelector(`input[name="premium-plan"][value="${o.plan}"]`);
         if (!input) return;
@@ -4210,6 +4396,7 @@ function renderPremiumPlans(s, preselect) {
         input.dataset.extension = o.extension ? '1' : '0';
         const days = card && card.querySelector('.plan-days');
         if (days) days.textContent = o.extension ? `yana ${PREMIUM_TIERS[o.tier].days} kun` : `${PREMIUM_TIERS[o.tier].days} kun`;
+        renderPlanDiscount(input, card, o, offer);
     });
     const checked = modal.querySelector('input[name="premium-plan"]:checked');
     const wantExtension = !!preselect && opts.some((o) => o.extension);
@@ -4882,12 +5069,30 @@ function renderAiOffer(s) {
     if (!card) return;
     const show = !!s && !s.is_premium && s.ai_remaining === 0 && !(s.ai_limit > 1);    // limit > 1 — Premium tarif
     card.hidden = !show;
+    renderAiDeal(show ? s : null);
     aiChat.offerShown = show;
     aiSync();
 }
 
+// SUPER PRIZ chegirmasi (24 soat) AI limit taklifida: chizilgan eski narx, yangi narx, "−50%" va qolgan vaqt.
+// Taklif yo'q (yoki muddati tugagan) bo'lsa blok yashiriladi va oddiy taklif qoladi.
+function renderAiDeal(s) {
+    const box = document.getElementById('ai-offer-deal');
+    if (!box) return;
+    const offer = s ? discountOffer(s) : null;
+    if (!offer) {
+        box.hidden = true;
+        box.replaceChildren();
+        return;
+    }
+    box.replaceChildren(buildDealBlock(offer));
+    box.hidden = false;
+    refreshDiscountTexts();
+}
+
 function showAiPremiumOffer() {       // /api/ai/chat "limit" javobida (holat yuklanmagan bo'lsa ham) shu karta
-    renderAiOffer({ is_premium: false, ai_remaining: 0 });
+    // Chegirma maydoni holatdan olinadi; kartaning o'zi avvalgidek (is_premium: false, ai_remaining: 0, tarif limiti yo'q)
+    renderAiOffer({ is_premium: false, ai_remaining: 0, discount: AppState.data ? AppState.data.discount : undefined });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -4924,11 +5129,14 @@ function setPremiumBuying(on) {
 }
 
 // tg.openInvoice natijasi. 'cancelled' — jim yopiladi. tg.close() CHAQIRILMAYDI.
-function handleInvoiceStatus(status) {
+function handleInvoiceStatus(status, plan) {
     if (status === 'paid') {
         // successful_payment botga biroz kechikib kelishi mumkin
         notify("To'lov qabul qilindi! Premium bir necha soniyada faollashadi.");
         invalidateAppState();
+        // Pro to'landi: SUPER PRIZ chegirmasi bir martalik va serverda sarflanadi — bu yerda ham DARHOL yo'qoladi
+        // (hamma joy oddiy holatga qaytadi; server holati keyingi /api/state da tasdiqlanadi)
+        if (plan === DISCOUNT_PLAN) expireDiscountLocally();
     } else if (status === 'failed') {
         notify("To'lov amalga oshmadi. Qayta urinib ko'ring.");
     } else if (status === 'pending') {
@@ -4969,7 +5177,7 @@ async function buyPremium(plan) {
     try {
         tg.openInvoice(url, (status) => {
             setPremiumBuying(false);
-            handleInvoiceStatus(status);
+            handleInvoiceStatus(status, plan);
         });
     } catch (err) {
         console.warn("[premium] tg.openInvoice ishlamadi, deep link ishlatiladi:", err);

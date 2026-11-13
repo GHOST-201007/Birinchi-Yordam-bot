@@ -143,6 +143,7 @@ def init_db():
                 referred_by BIGINT,
                 last_spin_date TEXT,
                 has_discount INTEGER DEFAULT 0,
+                discount_expires_at TIMESTAMP,
                 pending_spin_prize INTEGER,
                 spin_ai_bonus INTEGER DEFAULT 0,
                 premium_expiry_notified_for TEXT
@@ -229,6 +230,11 @@ def init_db():
 
         # Migratsiya: tugashidan oldingi eslatma qaysi premium_expires_at uchun yuborilgani (takrorlanmasligi uchun)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expiry_notified_for TEXT")
+
+        # Migratsiya: SUPER PRIZ chegirmasi endi 24 soat amal qiladi (discount_expires_at). Muddatsiz saqlangan eski
+        # chegirmalarga (has_discount = 1, muddat yo'q) deploy paytidan boshlab 24 soat beriladi — bir marta (idempotent).
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS discount_expires_at TIMESTAMP")
+        migrate_discount_expiry(c)
 
         conn.commit()
 
@@ -1089,7 +1095,7 @@ def process_paid_premium(charge_id: str, user_id: int, product_id: str, stars_am
             raise RuntimeError(f"Premium UPDATE kutilmagan rowcount={c.rowcount} user_id={user_id}")
         if consume_discount:
             # SUPER PRIZ chegirmasi premium bilan bir tranzaksiyada sarflanadi (P1-5)
-            c.execute("UPDATE users SET has_discount = 0 WHERE user_id = %s", (user_id,))
+            c.execute("UPDATE users SET has_discount = 0, discount_expires_at = NULL WHERE user_id = %s", (user_id,))
         conn.commit()
         return True, until
     except Exception:
@@ -1912,16 +1918,19 @@ def claim_spin_prize(user_id: int) -> dict:
         tip = pick_spin_tip() if prize_type == "tip" else None
 
         if prize_type == "super":
-            # Super Prize: ichki plus (ko'rinadigan Pro) 30 kun uchun 50% chegirma (narx bot.plus_discount_price bilan bir xil)
-            plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
-            discount_price = max(1, (plus_price + 1) // 2)
-            sql = ("UPDATE users SET last_spin_date = %s, has_discount = 1, pending_spin_prize = NULL "
-                   "WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
-            params = (now_str, user_id)
+            # Super Prize: ichki plus (ko'rinadigan Pro) 30 kun uchun 50% chegirma, DISCOUNT_HOURS (24 soat) amal qiladi.
+            # Chegirma allaqachon bor bo'lsa — muddat yangi 24 soatga suriladi. Narx — yagona plus_discount_price().
+            plus_price_now = plus_price()
+            discount_price = plus_discount_price(plus_price_now)
+            discount_until = now + timedelta(hours=DISCOUNT_HOURS)
+            sql = ("UPDATE users SET last_spin_date = %s, has_discount = 1, discount_expires_at = %s, "
+                   "pending_spin_prize = NULL WHERE user_id = %s AND pending_spin_prize IS NOT NULL")
+            params = (now_str, discount_until.isoformat(), user_id)
             msg = (
                 "🎉 <b>Tabriklaymiz! Omad barabanidan SUPER PRIZ yutib oldingiz!</b> 🏆\n\n"
-                f"🎁 Siz 30 kunlik <b>Premium {TIER_DISPLAY['plus']}</b> obunani {plus_price} Stars o'rniga "
+                f"🎁 Siz 30 kunlik <b>Premium {TIER_DISPLAY['plus']}</b> obunani {plus_price_now} Stars o'rniga "
                 f"<b>atigi {discount_price} Stars</b> (50% chegirma) evaziga xarid qilish imkoniyatiga ega bo'ldingiz!\n\n"
+                f"⏳ Taklif {DISCOUNT_HOURS} soat amal qiladi: {discount_until:%d.%m.%Y %H:%M} gacha.\n"
                 "Chegirma bir martalik. Faollashtirish uchun:\n"
                 "➡️ /premium (yoki quyidagi tugmani bosing)"
             )
@@ -1964,7 +1973,11 @@ def claim_spin_prize(user_id: int) -> dict:
     if points > 0:
         check_and_grant_premium(user_id)
 
-    return _spin_result(True, msg, code, prize_type, points, tip)
+    result = _spin_result(True, msg, code, prize_type, points, tip)
+    if prize_type == "super":
+        # Yangi chegirma (qo'shimcha so'rovsiz): bot yutgan zahoti invoice tugmasini, Mini App taklif kartasini shundan chizadi
+        result["discount"] = _discount_view(1, discount_until, now)
+    return result
 
 
 def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
@@ -1976,23 +1989,80 @@ def check_and_grant_spin_bonus(user_id: int, client_points: int = 0) -> tuple:
     return result["ok"], result["message"]
 
 
-def has_discount(user_id: int) -> bool:
-    """Checks if the user has an active super prize discount"""
+# ═══════════════════════════════════════════════════════════════════
+# SUPER PRIZ CHEGIRMASI: Pro (ichki plus, 30 kun) -50%, DISCOUNT_HOURS (24 soat) amal qiladi, bir martalik.
+# Yagona manba — get_discount_info; has_discount unga tayanadi. Muddati o'tgan chegirma o'qishda "faol emas"
+# (bazaga yozilmaydi). Narx FAQAT plus_price() / plus_discount_price() dan (ikkinchi formula yo'q).
+# ═══════════════════════════════════════════════════════════════════
+DISCOUNT_HOURS = 24
+
+
+def plus_price() -> int:
+    """Ichki plus (ko'rinadigan Pro) 30 kunlik oddiy narxi (Stars). env: PRO_MONTHLY_STARS (standart 150)."""
+    return int(os.getenv("PRO_MONTHLY_STARS", "150"))
+
+
+def plus_discount_price(price: int = None) -> int:
+    """Chegirmali narx: oddiy narxning 50% i (yuqoriga yaxlitlanadi, kamida 1 Stars). YAGONA formula: bot.py ham,
+    to'lov tekshiruvi ham, SUPER PRIZ xabari ham, API ham shuni ishlatadi."""
+    price = plus_price() if price is None else price
+    return max(1, (price + 1) // 2)
+
+
+def migrate_discount_expiry(c, now=None) -> int:
+    """Bir martalik migratsiya (init_db ichida, idempotent): has_discount = 1 va muddat yo'q bo'lgan userlarga shu
+    paytdan 24 soat beriladi. Ikkinchi marta ishlaganda hech narsani o'zgartirmaydi (muddat allaqachon qo'yilgan).
+    Qaytaradi: o'zgargan qatorlar soni."""
+    until = ((now or get_uz_now()) + datetime.timedelta(hours=DISCOUNT_HOURS)).isoformat()
+    c.execute("UPDATE users SET discount_expires_at = %s WHERE has_discount = 1 AND discount_expires_at IS NULL", (until,))
+    count = c.rowcount
+    return count if isinstance(count, int) and count > 0 else 0
+
+
+def _discount_view(has_flag, expires_raw, now=None) -> dict:
+    """Bazadagi ustunlardan chegirma holati. active = has_discount = 1 VA discount_expires_at > hozir.
+    {"active", "expires_at" (aware datetime | None — faqat faol bo'lsa), "seconds_left" (int), "price", "old_price"}."""
+    old_price = plus_price()
+    info = {"active": False, "expires_at": None, "seconds_left": 0, "price": plus_discount_price(old_price),
+            "old_price": old_price}
+    if not has_flag or not expires_raw:
+        return info
+    try:
+        expires = _to_uz_datetime(expires_raw)
+    except (ValueError, TypeError):
+        return info
+    now = now or get_uz_now()
+    if expires <= now:
+        return info
+    info.update(active=True, expires_at=expires, seconds_left=int((expires - now).total_seconds()))
+    return info
+
+
+def get_discount_info(user_id: int, now=None) -> dict:
+    """SUPER PRIZ chegirmasi holati — YAGONA o'qish funksiyasi: {"active", "expires_at", "seconds_left", "price",
+    "old_price"}. Muddati o'tgan chegirma "active": False (bazaga yozilmaydi). Foydalanuvchi yo'q — faol emas."""
     with _managed_cursor() as (conn, c):
-        try:
-            c.execute("SELECT has_discount FROM users WHERE user_id = %s", (user_id,))
-            row = c.fetchone()
-            val = bool(row[0]) if row else False
-        except Exception:
-            val = False
-    return val
+        c.execute("SELECT has_discount, discount_expires_at FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+    if not row:
+        return _discount_view(0, None, now)
+    return _discount_view(row[0], row[1], now)
+
+
+def has_discount(user_id: int) -> bool:
+    """Foydalanuvchida FAOL (muddati o'tmagan) SUPER PRIZ chegirmasi bormi (get_discount_info ga tayanadi)."""
+    try:
+        return bool(get_discount_info(user_id)["active"])
+    except Exception:
+        logging.error("has_discount: chegirma holatini o'qib bo'lmadi (user=%s)", user_id, exc_info=True)
+        return False
 
 
 def consume_discount(user_id: int) -> None:
     """Consumes the super prize discount"""
     with _managed_cursor() as (conn, c):
         try:
-            c.execute("UPDATE users SET has_discount = 0 WHERE user_id = %s", (user_id,))
+            c.execute("UPDATE users SET has_discount = 0, discount_expires_at = NULL WHERE user_id = %s", (user_id,))
             conn.commit()
         except Exception as e:
             logging.error(f"Error consuming discount: {e}")

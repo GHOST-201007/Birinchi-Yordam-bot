@@ -70,6 +70,8 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
             "premium": mock.MagicMock(return_value=(0, None, "free")),
             "view": mock.MagicMock(return_value=premium_view()),
             "ai_quota": mock.MagicMock(return_value=(1, 2, 0)),
+            # SUPER PRIZ chegirmasi (/api/state `discount` maydoni): standart — faol emas; testlar self.m["discount"] ni almashtiradi
+            "discount": mock.MagicMock(side_effect=lambda uid: db._discount_view(0, None)),
         }
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
         stack.enter_context(mock.patch.object(bot, "api_rate_limiter", bot.ApiRateLimiter()))
@@ -83,6 +85,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(db, "get_premium_info", self.m["premium"]))
         stack.enter_context(mock.patch.object(db, "get_premium_view", self.m["view"]))
         stack.enter_context(mock.patch.object(db, "get_ai_quota_detail", self.m["ai_quota"]))
+        stack.enter_context(mock.patch.object(db, "get_discount_info", self.m["discount"]))
 
         self.client = TestClient(TestServer(bot.create_web_app()))
         await self.client.start_server()
@@ -240,7 +243,9 @@ class StateTest(ApiTestBase):
                                 "prize": 5, "prize_type": "points", "cooldown_seconds": 0,
                                 "is_premium": False, "premium_type": "free",
                                 "premium_expires_at": None, "premium_unlimited": False, "premium_days_left": None,
-                                "ai_remaining": 1, "ai_limit": 2, "ai_bonus": 0})
+                                "ai_remaining": 1, "ai_limit": 2, "ai_bonus": 0,
+                                "discount": {"active": False, "price": 75, "old_price": 150,
+                                             "expires_at": None, "seconds_left": 0}})
 
     async def test_state_reports_active_premium_tier(self):
         self.m["view"].return_value = premium_view("plus", days=5)

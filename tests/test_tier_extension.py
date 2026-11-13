@@ -129,8 +129,8 @@ class DecisionTest(unittest.TestCase):
             self.assertEqual(bot.premium_buy_button_text("pro", True), "🔄 Premium Plus — yana 7 kun (50 ⭐)")
             self.assertEqual(bot.premium_buy_button_text("plus", True), "🔄 Premium Pro — yana 30 kun (150 ⭐)")
             self.assertEqual(bot.premium_buy_button_text("plus", False), "💎 150 Stars → 30 kun Premium Pro")
-            self.assertEqual(bot.premium_discount_button_text(True), "🎁 Premium Pro — yana 30 kun (75 ⭐, -50%)")
-            self.assertEqual(bot.premium_discount_button_text(False), "🎁 75 Stars → 30 kun Premium Pro (-50%)")
+            self.assertEqual(bot.premium_discount_button_text(True), "🔄 Pro — yana 30 kun — 75⭐ (−50%)")
+            self.assertEqual(bot.premium_discount_button_text(False), "💎 Pro — 75⭐ (−50%)")
 
 
 # ───────────────────── bot tugmasi, /api/invoice va pre_checkout BIR XIL natija ─────────────────────

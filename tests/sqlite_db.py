@@ -38,6 +38,7 @@ CREATE TABLE users (
     free_ai_used INTEGER DEFAULT 0,
     last_spin_date TEXT,
     has_discount INTEGER DEFAULT 0,
+    discount_expires_at TEXT,
     pending_spin_prize INTEGER,
     spin_ai_bonus INTEGER DEFAULT 0,
     premium_expiry_notified_for TEXT,

@@ -716,6 +716,8 @@
                             <p class="ai-offer-text">AI maslahatni davom ettirish uchun Premium tarifini tanlang</p>
                         </div>
                         <div class="ai-offer-body">
+                            <!-- SUPER PRIZ chegirmasi (24 soat): app.js renderAiOffer taklif blokini shu yerga qo'yadi -->
+                            <div class="ai-offer-deal" id="ai-offer-deal" hidden></div>
                             <button type="button" class="btn-primary ai-offer-buy" id="ai-offer-buy">★ Premium tariflari</button>
                             <p class="ai-offer-note">To'lov — Telegram Stars orqali yoki 100 ball evaziga</p>
                         </div>
@@ -890,6 +892,12 @@
                     <span class="plan-info">
                         <span class="plan-name" data-tier="plus">Premium Pro<span class="chip chip--primary plan-chip">Eng ko'p tanlanadi</span></span>
                         <span class="plan-days">30 kun</span>
+                        <!-- SUPER PRIZ chegirmasi (24 soat): app.js renderPlanDiscount. Taklif bo'lmasa yashirin -->
+                        <span class="plan-deal" hidden>
+                            <span class="sr-only">Chegirma, eski narx: </span><s class="plan-old tabular"></s>
+                            <span class="plan-off">−50%</span>
+                            <span class="plan-left tabular"></span>
+                        </span>
                     </span>
                     <span class="plan-price tabular">★ 150</span>
                 </label>
