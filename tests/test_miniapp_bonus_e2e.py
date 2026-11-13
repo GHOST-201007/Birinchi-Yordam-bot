@@ -125,7 +125,8 @@ class StateAndBonusE2ETest(MiniAppE2EBase):
 
     # ---- ZAXIRA yo'l --------------------------------------------------------------
     def test_fallback_when_state_fails_uses_url_params_and_deep_link(self):
-        page, calls = self.open_app({"state": (500, {"ok": False, "error": "server_error"})},
+        # API ishlamayapti: nginx 502 (JSON'siz). Server o'zi "server_error" desa — xato ekrani (tests/test_miniapp_ban_screen_e2e.py)
+        page, calls = self.open_app({"state": (502, {"ok": False})},
                                     query="?streak=2&daily_claimed=0&score=4")
         page.wait_for_function("document.querySelector('#global-score-val').textContent === '4'")
         self.open_bonus(page)

@@ -22,6 +22,7 @@ os.environ.setdefault("BOT_TOKEN", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz12345678
 os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot  # noqa: E402
+from tests.ban_shim import ban_info_patch  # noqa: E402
 from tests.test_init_data import TOKEN as TEST_TOKEN, make as make_init_data  # noqa: E402
 
 USER_ID = 424242            # test_init_data.USER["id"]
@@ -74,6 +75,7 @@ class ApiTestBase(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(mock.patch.object(bot, "TOKEN", TEST_TOKEN))
         stack.enter_context(mock.patch.object(bot, "api_rate_limiter", bot.ApiRateLimiter()))
         stack.enter_context(mock.patch.object(db, "is_user_banned", self.m["banned"]))
+        stack.enter_context(ban_info_patch(self.m["banned"]))         # get_ban_info ham shu mock'ga bog'langan
         stack.enter_context(mock.patch.object(db, "get_score", self.m["score"]))
         stack.enter_context(mock.patch.object(db, "get_daily_bonus_info", self.m["bonus_info"]))
         stack.enter_context(mock.patch.object(db, "generate_or_get_spin_prize", self.m["prize"]))
@@ -151,7 +153,9 @@ class AuthTest(ApiTestBase):
         for path in self.PATHS:
             resp, data = await self.post(path)
             self.assertEqual(resp.status, 403, path)
-            self.assertEqual(data, {"ok": False, "error": "banned"})
+            # Ochiq ban: 403 + muddat / sabab / murojaat (tafsilotlar — tests/test_ban_system.py)
+            self.assertEqual({k: data[k] for k in ("ok", "error", "until", "reason")},
+                             {"ok": False, "error": "banned", "until": None, "reason": None})
         self.m["spin"].assert_not_called()
         self.m["daily"].assert_not_called()
 

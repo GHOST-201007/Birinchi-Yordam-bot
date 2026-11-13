@@ -365,7 +365,7 @@ class RedeemEndpointTest(ApiTestBase):
     async def test_banned_user_403_and_nothing_is_spent(self):
         self.m["banned"].return_value = (True, "ban")
         resp, data = await self.post("/api/points/redeem")
-        self.assertEqual((resp.status, data), (403, {"ok": False, "error": "banned"}))
+        self.assertEqual((resp.status, data["ok"], data["error"]), (403, False, "banned"))
         self.assertEqual(self.grant_calls, [])
 
     async def test_forged_init_data_403_and_no_db_calls(self):

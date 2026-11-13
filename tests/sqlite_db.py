@@ -42,7 +42,11 @@ CREATE TABLE users (
     spin_ai_bonus INTEGER DEFAULT 0,
     premium_expiry_notified_for TEXT,
     is_banned INTEGER DEFAULT 0,
-    banned_until TEXT
+    banned_until TEXT,
+    ban_mode TEXT,
+    ban_reason TEXT,
+    banned_at TEXT,
+    daily_tips_subscribed INTEGER DEFAULT 0
 )
 """
 
