@@ -58,9 +58,27 @@ class HtmlEscapeTest(unittest.TestCase):
         evil_username = dict(user, full_name="Ali", username=EVIL)
         self.assert_safe(bot._pm_card_view(evil_username, 0)[0])
 
-    def test_admin_ban_list(self):
-        rows = [(1, 0, None, EVIL, "user")]
-        self.assert_safe(bot._build_ban_list_text(rows, 1, 0))
+    def test_admin_ban_panel(self):
+        """Yangi ban paneli: ism, username va SABAB / izoh ekranlanadi (ro'yxat, karta, tasdiq, natija, userga xabarlar)."""
+        import datetime as dt
+        now = dt.datetime.now(dt.timezone(dt.timedelta(hours=5)))
+        for mode in ("open", "silent"):
+            ban = {"banned": True, "mode": mode, "until": now + dt.timedelta(days=1), "reason": EVIL, "banned_at": now}
+            user = {"user_id": 1, "full_name": EVIL, "username": "user", "active": False, "tier": "free",
+                    "unlimited": False, "expires": None, "score": 0, "ban": ban}
+            data = {"users": [user], "page": 0, "pages": 1, "total": 1, "banned_count": 1, "listed": 1, "premium_count": 0}
+            list_text, list_markup = bot._bn_list_view(data, False)
+            for tag, attrs in tags_in(list_text):                              # ro'yxat matnida ism yo'q (tugmalarda oddiy matn)
+                self.assertIn(tag, TELEGRAM_TAGS)
+            self.assert_safe(bot._bn_card_view(user, "a0")[0])
+            self.assert_safe(bot._bn_confirm_view(user, "a0", "7", "n" if mode == "open" else "s",
+                                                  "4" if mode == "open" else "t", EVIL)[0])
+            self.assert_safe(bot._bn_ban_result_text(user, "n" if mode == "open" else "s", "7", True))
+            self.assert_safe(bot._bn_unban_mode_view(user, "a0")[0])
+            self.assert_safe(bot._pm_card_view(user, 0)[0])                    # Premium kartasidagi ban qatorlari
+        info = {"banned": True, "mode": "open", "until": None, "reason": EVIL}
+        self.assert_safe(bot.ban_notice_text(info))
+        self.assert_safe(bot.ban_user_notification(info))
 
     def test_medical_profile(self):
         msg = mock.MagicMock()

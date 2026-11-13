@@ -135,6 +135,9 @@ def init_db():
                 daily_tips_subscribed INTEGER DEFAULT 0,
                 is_banned INTEGER DEFAULT 0,
                 banned_until TIMESTAMP,
+                ban_mode TEXT,
+                ban_reason TEXT,
+                banned_at TIMESTAMP,
                 full_name TEXT,
                 username TEXT,
                 free_ai_used INTEGER DEFAULT 0,
@@ -229,6 +232,12 @@ def init_db():
 
         # Migratsiya: tugashidan oldingi eslatma qaysi premium_expires_at uchun yuborilgani (takrorlanmasligi uchun)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expiry_notified_for TEXT")
+
+        # Migratsiya: ban rejimi ('open' — ochiq, 'silent' — sirli), sabab (sirlida — admin izohi) va qo'yilgan vaqt.
+        # Eski banlar (is_banned = 1, ban_mode IS NULL) OCHIQ ban hisoblanadi.
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_mode TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TIMESTAMP")
 
         conn.commit()
 
@@ -690,40 +699,65 @@ def get_premium_view(user_id: int) -> dict:
     return admin_premium_view(is_premium, premium_type, expires_at)
 
 
+_ADMIN_USER_COLUMNS = (
+    "user_id, is_premium, premium_type, premium_expires_at, full_name, username, COALESCE(medicine_score, 0), "
+    "is_banned, banned_until, ban_mode, ban_reason, banned_at"
+)
+
+
 def _admin_user_record(row) -> dict:
-    user_id, is_premium, premium_type, expires_at, full_name, username, score = row
+    """Admin panellari (Premium va Ban) uchun yozuv: Premium holati (admin_premium_view) + ban holati ("ban":
+    get_ban_info bilan BIR XIL qoida, qo'shimcha "banned_at")."""
+    (user_id, is_premium, premium_type, expires_at, full_name, username, score,
+     is_banned, banned_until, ban_mode, ban_reason, banned_at) = row
     record = {"user_id": user_id, "full_name": full_name, "username": username, "score": int(score or 0)}
     record.update(admin_premium_view(is_premium, premium_type, expires_at))
+    ban, _ttl = _ban_view(is_banned, banned_until, ban_mode, ban_reason)
+    try:
+        ban["banned_at"] = _to_uz_datetime(banned_at) if (ban["banned"] and banned_at) else None
+    except (ValueError, TypeError):
+        ban["banned_at"] = None
+    record["ban"] = ban
     return record
 
 
-def admin_users_page(page: int = 0, page_size: int = ADMIN_PAGE_SIZE) -> dict:
-    """Bazadagi foydalanuvchilar (yangi ro'yxatdan o'tganlar birinchi), sahifalab.
-    {"users": [...], "page", "pages", "total", "premium_count"}. Sahifa chegaradan chiqsa — chegaraga keltiriladi."""
+def admin_users_page(page: int = 0, page_size: int = ADMIN_PAGE_SIZE, banned_only: bool = False) -> dict:
+    """Bazadagi foydalanuvchilar (yangi ro'yxatdan o'tganlar birinchi), sahifalab. banned_only=True — faqat HOZIR banda
+    bo'lganlar (muddati o'tgan, lekin hali tozalanmagan ban hisobga olinmaydi). Natija: {"users", "page", "pages",
+    "total" (jami foydalanuvchilar), "premium_count", "banned_count", "listed" (ro'yxatdagi jami)}.
+    Sahifa chegaradan chiqsa — chegaraga keltiriladi."""
+    now_param = not_banned_params()
     with _managed_cursor() as (conn, c):
         c.execute("SELECT COUNT(*) FROM users")
         total = int(c.fetchone()[0] or 0)
         c.execute("SELECT is_premium, premium_type, premium_expires_at FROM users WHERE is_premium = 1")
         premium_count = sum(1 for r in c.fetchall() if admin_premium_view(r[0], r[1], r[2])["active"])
-        pages = max(1, -(-total // page_size))
+        c.execute("SELECT COUNT(*) FROM users WHERE " + BANNED_SQL, now_param)
+        banned_count = int(c.fetchone()[0] or 0)
+        listed = banned_count if banned_only else total
+        pages = max(1, -(-listed // page_size))
         page = min(max(int(page), 0), pages - 1)
-        c.execute(
-            "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
-            "COALESCE(medicine_score, 0) FROM users "
-            "ORDER BY registered_at DESC NULLS LAST, user_id DESC LIMIT %s OFFSET %s",
-            (page_size, page * page_size)
-        )
+        if banned_only:
+            c.execute(
+                "SELECT " + _ADMIN_USER_COLUMNS + " FROM users WHERE " + BANNED_SQL +
+                " ORDER BY banned_at DESC NULLS LAST, user_id DESC LIMIT %s OFFSET %s",
+                (*now_param, page_size, page * page_size)
+            )
+        else:
+            c.execute(
+                "SELECT " + _ADMIN_USER_COLUMNS + " FROM users "
+                "ORDER BY registered_at DESC NULLS LAST, user_id DESC LIMIT %s OFFSET %s",
+                (page_size, page * page_size)
+            )
         users = [_admin_user_record(r) for r in c.fetchall()]
-    return {"users": users, "page": page, "pages": pages, "total": total, "premium_count": premium_count}
+    return {"users": users, "page": page, "pages": pages, "total": total, "premium_count": premium_count,
+            "banned_count": banned_count, "listed": listed}
 
 
 def admin_get_user(user_id: int):
     """Bitta foydalanuvchi yozuvi (dict) yoki None."""
     with _managed_cursor() as (conn, c):
-        c.execute(
-            "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
-            "COALESCE(medicine_score, 0) FROM users WHERE user_id = %s", (user_id,)
-        )
+        c.execute("SELECT " + _ADMIN_USER_COLUMNS + " FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
     return _admin_user_record(row) if row else None
 
@@ -739,17 +773,48 @@ def admin_find_user(query: str):
         if q.isascii() and q.isdigit():
             if int(q) > 2 ** 63 - 1:                      # BIGINT dan katta ID bazada bo'lishi mumkin emas
                 return None
-            c.execute(
-                "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
-                "COALESCE(medicine_score, 0) FROM users WHERE user_id = %s", (int(q),)
-            )
+            c.execute("SELECT " + _ADMIN_USER_COLUMNS + " FROM users WHERE user_id = %s", (int(q),))
         else:
-            c.execute(
-                "SELECT user_id, is_premium, premium_type, premium_expires_at, full_name, username, "
-                "COALESCE(medicine_score, 0) FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 1", (q,)
-            )
+            c.execute("SELECT " + _ADMIN_USER_COLUMNS + " FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 1", (q,))
         row = c.fetchone()
     return _admin_user_record(row) if row else None
+
+
+def _like_pattern(text: str) -> str:
+    """LIKE uchun qidiruv matni: foiz, pastki chiziq va teskari chiziq belgilari oddiy harf sifatida (ESCAPE)."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def admin_search_users(query: str, limit: int = 10) -> list:
+    """Admin qidiruvi: ID, @username yoki ISM bo'yicha (kichik/katta harf farqsiz). ID va @username — admin_find_user
+    (Premium panelidagi qidiruv) bilan BIR XIL; "@" siz matn bo'lsa avval aniq username, keyin ism/username bo'laklari.
+    Natija — dict'lar ro'yxati (ko'pi bilan `limit` ta, yangi ro'yxatdan o'tganlar birinchi); topilmasa []."""
+    q = (query or "").strip()
+    if not q or len(q) > 64:
+        return []
+    if q.startswith("@") or (q.isascii() and q.isdigit()):
+        user = admin_find_user(q)
+        return [user] if user else []
+    found = []
+    exact = admin_find_user(q)                                  # "ali" — aniq username bo'lishi mumkin
+    if exact:
+        found.append(exact)
+    pattern = _like_pattern(q.lower())
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "SELECT " + _ADMIN_USER_COLUMNS + " FROM users "
+            "WHERE LOWER(full_name) LIKE %s ESCAPE '\\' OR LOWER(username) LIKE %s ESCAPE '\\' "
+            "ORDER BY registered_at DESC NULLS LAST, user_id DESC LIMIT %s",
+            (pattern, pattern, int(limit))
+        )
+        rows = c.fetchall()
+    seen = {u["user_id"] for u in found}
+    for row in rows:
+        record = _admin_user_record(row)
+        if record["user_id"] not in seen:
+            seen.add(record["user_id"])
+            found.append(record)
+    return found[:limit]
 
 
 def set_premium_unlimited(user_id: int, tier: str, _cursor=None) -> bool:
@@ -1231,11 +1296,43 @@ def is_waiting_receipt(user_id) -> bool:
     return bool(get_waiting_receipt(user_id))
 
 def get_all_users():
-    """Barcha foydalanuvchilar ro'yxatini olish"""
+    """BARCHA foydalanuvchilar (banlangan ham) — ma'muriy skriptlar uchun (masalan scripts/reset_menu_buttons.py).
+    Xabar yuborish uchun BUNI ishlatmang: get_active_user_ids() / get_broadcast_targets()."""
     with _managed_cursor() as (conn, c):
         c.execute("SELECT user_id FROM users")
         rows = c.fetchall()
     return [r[0] for r in rows]
+
+
+def get_active_user_ids() -> list:
+    """HOZIR banda bo'lmagan barcha foydalanuvchilar (ommaviy va rejali yuborishlar uchun). Muddati o'tgan, lekin hali
+    fon vazifasi tozalamagan ban hisobga olinmaydi (NOT_BANNED_SQL)."""
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT user_id FROM users WHERE " + NOT_BANNED_SQL, not_banned_params())
+        rows = c.fetchall()
+    return [r[0] for r in rows]
+
+
+def get_broadcast_targets() -> dict:
+    """Admin /broadcast uchun: {"users": [banda bo'lmaganlar], "banned": o'tkazib yuboriladigan banlanganlar soni}."""
+    now_param = not_banned_params()
+    with _managed_cursor() as (conn, c):
+        c.execute("SELECT user_id FROM users WHERE " + NOT_BANNED_SQL, now_param)
+        users = [r[0] for r in c.fetchall()]
+        c.execute("SELECT COUNT(*) FROM users WHERE " + BANNED_SQL, now_param)
+        banned = int(c.fetchone()[0] or 0)
+    return {"users": users, "banned": banned}
+
+
+def get_premium_checkin_targets() -> list:
+    """Premium check-in (20:30) uchun: banda bo'lmagan Premium foydalanuvchilar [(user_id, premium_expires_at, premium_type)]."""
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "SELECT user_id, premium_expires_at, premium_type FROM users WHERE " + NOT_BANNED_SQL + " AND is_premium = 1",
+            not_banned_params()
+        )
+        rows = c.fetchall()
+    return rows
 
 def get_all_users_info(limit=20):
     """Foydalanuvchilar ro'yxatini id, premium holati, ism va username bilan olish"""
@@ -1246,17 +1343,6 @@ def get_all_users_info(limit=20):
         )
         rows = c.fetchall()
     return rows  # [(user_id, is_premium, registered_at, full_name, username), ...]
-
-def get_all_users_info_ban(limit=20):
-    """Foydalanuvchilar ro'yxatini id, ban holati, ism va username bilan olish"""
-    with _managed_cursor() as (conn, c):
-        c.execute(
-            "SELECT user_id, is_banned, registered_at, full_name, username FROM users ORDER BY registered_at DESC LIMIT %s",
-            (limit,)
-        )
-        rows = c.fetchall()
-    return rows
-
 
 def get_users_count():
     """Jami foydalanuvchilar soni"""
@@ -1273,9 +1359,9 @@ def get_premium_count():
     return row[0] if row else 0
 
 def get_banned_count():
-    """Jami banlangan foydalanuvchilar soni"""
+    """HOZIR banda bo'lgan foydalanuvchilar soni (muddati o'tgan ban hisobga olinmaydi)"""
     with _managed_cursor() as (conn, c):
-        c.execute("SELECT COUNT(*) FROM users WHERE is_banned = 1")
+        c.execute("SELECT COUNT(*) FROM users WHERE " + BANNED_SQL, not_banned_params())
         row = c.fetchone()
     return row[0] if row else 0
 
@@ -1388,9 +1474,14 @@ def delete_reminder(reminder_id: int, user_id: int):
         conn.commit()
 
 def get_all_active_reminders():
-    """Barcha faol eslatmalar (scheduler uchun)"""
+    """Faol eslatmalar (scheduler uchun). Banlangan foydalanuvchilarning eslatmalari qaytarilmaydi (ularga hech qanday
+    avtomatik xabar bormaydi); muddati o'tgan ban hisobga olinmaydi."""
     with _managed_cursor() as (conn, c):
-        c.execute("SELECT id, user_id, medicine_name, times, days FROM reminders WHERE is_active = 1")
+        c.execute(
+            "SELECT id, user_id, medicine_name, times, days FROM reminders WHERE is_active = 1 "
+            "AND user_id NOT IN (SELECT user_id FROM users WHERE " + BANNED_SQL + ")",
+            not_banned_params()
+        )
         rows = c.fetchall()
     return rows  # [(id, user_id, medicine_name, times, days), ...]
 
@@ -1406,9 +1497,9 @@ def set_daily_tips_subscription(user_id, status: int):
         conn.commit()
 
 def get_daily_tips_subscribers():
-    """Kunlik tavsiyalarga obuna bo'lgan barcha foydalanuvchilar"""
+    """Kunlik tavsiyalarga obuna bo'lgan foydalanuvchilar (banda bo'lmaganlar: NOT_BANNED_SQL)"""
     with _managed_cursor() as (conn, c):
-        c.execute("SELECT user_id FROM users WHERE daily_tips_subscribed = 1")
+        c.execute("SELECT user_id FROM users WHERE daily_tips_subscribed = 1 AND " + NOT_BANNED_SQL, not_banned_params())
         rows = c.fetchall()
     return [r[0] for r in rows]
 
@@ -1471,7 +1562,36 @@ def _managed_cursor():
         _safe_release(conn)
 
 
-# --- Ban keshi: thread-safe, FIFO, maks 2000 yozuv, maks 30 s TTL, monotonic soat ---
+# ═══════════════════════════════════════════════════════════════════
+# BAN TIZIMI: 📣 ochiq (userga xabar, mini app "Siz bloklangansiz") va 🤫 sirli (bot butunlay jim, mini app oddiy xato).
+# Yagona o'qish joyi — get_ban_info; is_user_banned unga tayanadi. Muddati o'tgan ban o'qishda "ban yo'q" hisoblanadi,
+# lekin bazaga YOZILMAYDI: tozalash va "Blok muddati tugadi" xabari faqat fon vazifasida (expire_finished_bans).
+# ═══════════════════════════════════════════════════════════════════
+BAN_MODE_OPEN = "open"
+BAN_MODE_SILENT = "silent"
+BAN_MODES = (BAN_MODE_OPEN, BAN_MODE_SILENT)
+BAN_REASON_MAX = 200
+
+# YAGONA SQL shartlari ("hozir banda emas" / "hozir banda"). Parametr — Toshkent devor soati (not_banned_params()).
+# Barcha ommaviy yuborishlar shundan foydalanadi: oddiy `is_banned = 0` muddati o'tgan, lekin hali tozalanmagan
+# userlarni noto'g'ri chiqarib tashlardi.
+NOT_BANNED_SQL = "(COALESCE(is_banned, 0) = 0 OR (banned_until IS NOT NULL AND banned_until <= %s))"
+BANNED_SQL = "(COALESCE(is_banned, 0) = 1 AND (banned_until IS NULL OR banned_until > %s))"
+
+
+def _wall_iso(value=None) -> str:
+    """Toshkent devor soati (zonasiz) ISO matni — TIMESTAMP ustunlari (banned_until, banned_at) shu ko'rinishda saqlanadi
+    va solishtiriladi (PostgreSQL TIMESTAMP zona qismini baribir tashlab yuboradi)."""
+    value = value or get_uz_now()
+    if value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone(datetime.timedelta(hours=5)))
+    return value.replace(tzinfo=None).isoformat()
+
+
+def not_banned_params(now=None) -> tuple:
+    """NOT_BANNED_SQL / BANNED_SQL uchun parametrlar (bitta: hozirgi Toshkent devor soati)."""
+    return (_wall_iso(now),)
+
 
 class _BanCache:
     MAX_ENTRIES = 2000
@@ -1480,7 +1600,7 @@ class _BanCache:
     def __init__(self, clock=_time.monotonic):
         self._clock = clock          # testlarda lokal soat beriladi
         self._lock = threading.Lock()
-        self._data = OrderedDict()   # user_id -> (expires_at, (bool, str))
+        self._data = OrderedDict()   # user_id -> (expires_at, ban_info)
         self._epoch = 0
 
     def get(self, user_id):
@@ -1519,26 +1639,40 @@ class _BanCache:
 _ban_cache = _BanCache()
 
 
-def ban_user(user_id: int, duration_minutes: int = None):
-    """Foydalanuvchini ban qilish. duration_minutes berilsa - vaqtinchalik, aks holda - doimiy."""
+def _clean_ban_reason(reason):
+    """Sabab / admin izohi: bo'sh -> None, ortiqcha bo'shliqlar olinadi, BAN_REASON_MAX belgigacha."""
+    if reason is None:
+        return None
+    text = " ".join(str(reason).split())
+    return text[:BAN_REASON_MAX] or None
+
+
+def ban_user(user_id: int, duration_minutes: int = None, mode: str = BAN_MODE_OPEN, reason: str = None):
+    """Foydalanuvchini ban qilish (faqat admin chaqiradi). duration_minutes berilsa — vaqtinchalik, aks holda — muddatsiz.
+    mode: 'open' (📣 userga xabar boradi, bot va mini app "bloklangansiz" deydi) yoki 'silent' (🤫 hech narsa sezdirilmaydi).
+    reason: ochiqda userga ko'rsatiladigan sabab; sirlida — faqat admin uchun izoh (userga ko'rsatilmaydi).
+    Mavjud banni qayta qo'ysa — yangi muddat / rejim / sabab bilan almashtiriladi."""
+    if mode not in BAN_MODES:
+        raise ValueError(f"Noto'g'ri ban rejimi: {mode!r}. Faqat {BAN_MODES} qabul qilinadi.")
+    if duration_minutes is not None and (isinstance(duration_minutes, bool) or not isinstance(duration_minutes, int)
+                                         or duration_minutes < 0):
+        raise ValueError(f"duration_minutes manfiy bo'lmagan butun son yoki None bo'lishi shart: {duration_minutes!r}")
+    reason = _clean_ban_reason(reason)
     register_user(user_id)
+    now = get_uz_now()
+    until = _wall_iso(now + datetime.timedelta(minutes=duration_minutes)) if duration_minutes else None
     with _managed_cursor() as (conn, c):
-        if duration_minutes:
-            banned_until = (get_uz_now() + datetime.timedelta(minutes=duration_minutes)).isoformat()
-            c.execute(
-                "UPDATE users SET is_banned = 1, banned_until = %s WHERE user_id = %s",
-                (banned_until, user_id)
-            )
-        else:
-            c.execute(
-                "UPDATE users SET is_banned = 1, banned_until = NULL WHERE user_id = %s",
-                (user_id,)
-            )
+        c.execute(
+            "UPDATE users SET is_banned = 1, banned_until = %s, ban_mode = %s, ban_reason = %s, banned_at = %s "
+            "WHERE user_id = %s",
+            (until, mode, reason, _wall_iso(now), user_id)
+        )
         conn.commit()
         _ban_cache.invalidate(user_id)   # faqat muvaffaqiyatli commitdan keyin
 
+
 def unban_user(user_id: int):
-    """Foydalanuvchini bandan chiqarish."""
+    """Foydalanuvchini bandan chiqarish. Premium, ballar va boshqa ma'lumotlarga TEGILMAYDI."""
     register_user(user_id)
     with _managed_cursor() as (conn, c):
         c.execute(
@@ -1548,57 +1682,107 @@ def unban_user(user_id: int):
         conn.commit()
         _ban_cache.invalidate(user_id)   # faqat muvaffaqiyatli commitdan keyin
 
-def is_user_banned(user_id: int) -> tuple:
-    """
-    Foydalanuvchi banlanganligini tekshirish.
-    Qaytaradi: (is_banned: bool, message: str)
-    """
-    hit = _ban_cache.get(user_id)
-    if hit is not None:
-        # Yozuv faqat register_user() va DB o'qish muvaffaqiyatli bo'lgandan keyin yaratiladi.
-        return hit
 
-    epoch = _ban_cache.epoch()   # o'qishdan OLDIN olinadi (poyga himoyasi)
-    register_user(user_id)
-    result, ttl = _read_ban_state(user_id)
-    if ttl:
-        _ban_cache.put(user_id, result, ttl, epoch)   # DB xatosida bu yerga yetib kelinmaydi
-    return result
+def change_ban_duration(user_id: int, duration_minutes: int = None) -> bool:
+    """HOZIR faol banning muddatini o'zgartiradi (rejim, sabab va qo'yilgan vaqt saqlanadi). duration_minutes=None —
+    muddatsiz. True — o'zgardi; user banda emas (yoki muddati o'tgan) bo'lsa False."""
+    if duration_minutes is not None and (isinstance(duration_minutes, bool) or not isinstance(duration_minutes, int)
+                                         or duration_minutes <= 0):
+        raise ValueError(f"duration_minutes musbat butun son yoki None bo'lishi shart: {duration_minutes!r}")
+    until = _wall_iso(get_uz_now() + datetime.timedelta(minutes=duration_minutes)) if duration_minutes else None
+    with _managed_cursor() as (conn, c):
+        c.execute("UPDATE users SET banned_until = %s WHERE user_id = %s AND " + BANNED_SQL,
+                  (until, user_id, *not_banned_params()))
+        changed = c.rowcount == 1
+        conn.commit()
+        _ban_cache.invalidate(user_id)
+    return changed
+
+
+def expire_finished_bans(now=None) -> list:
+    """FON VAZIFASI: muddati o'tgan banlarni ATOMAR tozalaydi (bitta UPDATE ... RETURNING: parallel chaqiruvda har user
+    faqat bitta chaqiruvga tushadi, shuning uchun xabar ikki marta ketmaydi). Qaytaradi: [(user_id, ban_mode)], ban_mode —
+    'open' yoki 'silent' (NULL — eski ban — 'open'). ban_mode / ban_reason / banned_at tarix sifatida qoladi."""
+    with _managed_cursor() as (conn, c):
+        c.execute(
+            "UPDATE users SET is_banned = 0, banned_until = NULL "
+            "WHERE COALESCE(is_banned, 0) = 1 AND banned_until IS NOT NULL AND banned_until <= %s "
+            "RETURNING user_id, ban_mode",
+            not_banned_params(now)
+        )
+        rows = c.fetchall()
+        conn.commit()
+    for user_id, _mode in rows:
+        _ban_cache.invalidate(user_id)
+    return [(user_id, mode if mode in BAN_MODES else BAN_MODE_OPEN) for user_id, mode in rows]
+
+
+def _ban_view(is_banned, banned_until, ban_mode, ban_reason, now=None):
+    """Bazadagi ustunlardan ban holati: (info, ttl_sekund yoki None). info = {"banned", "mode", "until" (aware datetime |
+    None — muddatsiz), "reason"}. Muddati o'tgan ban — "ban yo'q" (bazaga yozilmaydi). ban_mode NULL (eski ban) — 'open'.
+    Muddat o'qilmasa — fail-closed: banda, lekin keshlanmaydi (ttl=None)."""
+    free = {"banned": False, "mode": None, "until": None, "reason": None}
+    if not is_banned:
+        return free, _BanCache.MAX_TTL
+    mode = ban_mode if ban_mode in BAN_MODES else BAN_MODE_OPEN
+    reason = (ban_reason or None)
+    if not banned_until:
+        return {"banned": True, "mode": mode, "until": None, "reason": reason}, _BanCache.MAX_TTL
+    try:
+        # Bazadagi TIMESTAMP (zonasiz) qiymati Toshkent (UTC+5) devor soati; _to_uz_datetime shuni aware qiladi.
+        until = _to_uz_datetime(banned_until)
+        now = now or get_uz_now()
+    except Exception:
+        return {"banned": True, "mode": mode, "until": None, "reason": reason}, None
+    if until <= now:
+        return free, _BanCache.MAX_TTL
+    return ({"banned": True, "mode": mode, "until": until, "reason": reason},
+            min(_BanCache.MAX_TTL, (until - now).total_seconds()))
 
 
 def _read_ban_state(user_id: int):
-    """Qaytaradi: ((is_banned, message), ttl_sekund yoki None). ttl=None - keshlanmaydi."""
+    """Qaytaradi: (ban_info, ttl_sekund yoki None). ttl=None - keshlanmaydi. FAQAT o'qiydi (hech narsa yozmaydi)."""
     with _managed_cursor() as (conn, c):
-        c.execute("SELECT is_banned, banned_until FROM users WHERE user_id = %s", (user_id,))
+        c.execute("SELECT is_banned, banned_until, ban_mode, ban_reason FROM users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
+    if not row:
+        return {"banned": False, "mode": None, "until": None, "reason": None}, None
+    return _ban_view(*row)
 
-        if not row:
-            return (False, ""), None
 
-        is_banned, banned_until_val = row
-        if not is_banned:
-            return (False, ""), _BanCache.MAX_TTL
+def get_ban_info(user_id: int) -> dict:
+    """YAGONA ban o'qish funksiyasi (middleware, API, fon vazifalari, is_user_banned): {"banned": bool, "mode": None |
+    'open' | 'silent', "until": aware datetime | None (muddatsiz), "reason": str | None}. Keshlanadi (<= 30 s, ban
+    muddatidan oshmaydi); ban_user / unban_user keshni darhol bekor qiladi."""
+    hit = _ban_cache.get(user_id)
+    if hit is not None:
+        # Yozuv faqat register_user() va DB o'qish muvaffaqiyatli bo'lgandan keyin yaratiladi.
+        return dict(hit)
 
-        if banned_until_val:
-            # Bazadagi TIMESTAMP (zonasiz) qiymati Toshkent (UTC+5) devor soati; _to_uz_datetime shuni aware qiladi.
-            try:
-                banned_until = _to_uz_datetime(banned_until_val)
-                now = get_uz_now()
-                expired = now > banned_until
-            except Exception:
-                return (True, "🚫 Vaqtinchalik ban faol."), None   # tahlil xatosi keshlanmaydi
+    epoch = _ban_cache.epoch()   # o'qishdan OLDIN olinadi (poyga himoyasi)
+    register_user(user_id)
+    info, ttl = _read_ban_state(user_id)
+    if ttl:
+        _ban_cache.put(user_id, info, ttl, epoch)   # DB xatosida bu yerga yetib kelinmaydi
+    return dict(info)
 
-            if expired:
-                # Ban muddati tugagan — avtomatik o'chiramiz (shu connection'da)
-                c.execute("UPDATE users SET is_banned = 0, banned_until = NULL WHERE user_id = %s", (user_id,))
-                conn.commit()
-                return (False, ""), _BanCache.MAX_TTL
 
-            formatted_time = banned_until.strftime("%d.%m.%Y %H:%M")
-            remaining = (banned_until - now).total_seconds()
-            return (True, f"🚫 Vaqtinchalik ban muddati: {formatted_time} gacha."), min(_BanCache.MAX_TTL, remaining)
+def ban_message_text(info: dict) -> str:
+    """is_user_banned uchun qisqa matn (eski chaqiruvchilar bilan mos)."""
+    if not info["banned"]:
+        return ""
+    if info["until"]:
+        return f"🚫 Vaqtinchalik ban muddati: {info['until'].strftime('%d.%m.%Y %H:%M')} gacha."
+    return "🚫 Doimiy (muddatsiz) ban faol."
 
-        return (True, "🚫 Doimiy (muddatsiz) ban faol."), _BanCache.MAX_TTL
+
+def is_user_banned(user_id: int) -> tuple:
+    """
+    Foydalanuvchi banlanganligini tekshirish (eski chaqiruvchilar uchun; mantiq get_ban_info da).
+    Qaytaradi: (is_banned: bool, message: str)
+    """
+    info = get_ban_info(user_id)
+    return info["banned"], ban_message_text(info)
 
 
 def check_and_grant_daily_bonus(user_id: int) -> tuple:

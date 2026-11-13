@@ -92,7 +92,7 @@ else:
 # ---- fake DB ---------------------------------------------------------------
 class FakeDB:
     def __init__(self):
-        self.users = {}            # uid -> (is_banned, banned_until_naive)
+        self.users = {}            # uid -> (is_banned, banned_until_naive[, ban_mode, ban_reason])
         self.registered = []
         self.connections = []
         self.fail_get_connection = False
@@ -133,7 +133,8 @@ class FakeCursor:
             raise ValueError("orig-exec-error")
         s = " ".join(sql.split())
         if s.startswith("SELECT is_banned, banned_until"):
-            self.row = db.users.get(params[0])
+            row = db.users.get(params[0])
+            self.row = None if row is None else tuple(list(row) + [None] * (4 - len(row)))[:4]
         elif s.startswith("UPDATE users SET"):
             self.conn.pending.append((s, params))
         else:
@@ -170,9 +171,9 @@ class FakeConn:
             uid = params[-1]
             if "is_banned = 1" in s:
                 until = None
-                if len(params) == 2:
+                if params[0]:
                     until = datetime.datetime.fromisoformat(params[0]).replace(tzinfo=None)  # PG TIMESTAMP tashlab yuboradi
-                self.db.users[uid] = (1, until)
+                self.db.users[uid] = (1, until, params[1], params[2])
             elif "is_banned = 0" in s:
                 self.db.users[uid] = (0, None)
         self.pending = []
@@ -248,7 +249,7 @@ class TestTupleContract(DBTestCase):
     def test_unparsable_until(self):
         self.db.users[5] = (1, "garbage")
         r = database.is_user_banned(5)
-        self.assertEqual(r, (True, "🚫 Vaqtinchalik ban faol."))
+        self.assertTrue(r[0])                    # fail-closed: muddat o'qilmasa — banda
         self.assertIsNone(self.cache.get(5))   # tahlil xatosi keshlanmaydi
 
     def test_hit_returns_same_tuple_type(self):
@@ -417,15 +418,17 @@ class TestTempBanExpiry(DBTestCase):
         self.assertTrue(database.is_user_banned(1)[0])        # TypeError -> "faol" fallback emas
         self.assertNotEqual(database.is_user_banned(1)[1], "🚫 Vaqtinchalik ban faol.")
 
-    def test_expired_auto_unban_single_connection_and_committed(self):
+    def test_expired_ban_reads_as_free_but_is_not_cleaned(self):
+        """Muddati o'tgan ban o'qishda "ban yo'q" deb qaytadi, lekin bazada TOZALANMAYDI (tozalash va "Blok muddati tugadi"
+        xabari faqat fon vazifasida: database.expire_finished_bans)."""
         self.db.users[1] = (1, FakeDB.naive_wall(-30))
         database._ban_cache.invalidate(1)
         before = len(self.db.connections)
         r = database.is_user_banned(1)
         self.assertEqual(r, (False, ""))
-        self.assertEqual(self.db.users[1], (0, None))
-        self.assertEqual(len(self.db.connections) - before, 1)   # conn2 yo'q
-        self.assertEqual(self.db.connections[-1].commit_calls, 1)
+        self.assertEqual(self.db.users[1][0], 1)                              # bazada hali is_banned = 1
+        self.assertEqual(len(self.db.connections) - before, 1)
+        self.assertEqual(sum(c.commit_calls for c in self.db.connections[before:]), 0)   # o'qish hech narsa yozmadi
 
     def test_message_wall_time_matches_stored(self):
         when = FakeDB.naive_wall(600).replace(second=0, microsecond=0)
@@ -437,20 +440,19 @@ class TestTempBanExpiry(DBTestCase):
         self.db.users[1] = (1, database.get_uz_now() + datetime.timedelta(minutes=5))
         self.assertTrue(database.is_user_banned(1)[0])
 
-    def test_autounban_db_error_propagates_not_cached(self):
+    def test_reading_an_expired_ban_never_commits(self):
+        """O'qish yozmaydi: commit buzilgan bo'lsa ham muddati o'tgan ban xatosiz "ban yo'q" qaytaradi."""
         self.db.users[1] = (1, FakeDB.naive_wall(-30))
         orig_commit = FakeConn.commit
 
         def bad_commit(self_):
-            raise RuntimeError("autounban-commit-failed")
+            raise RuntimeError("commit-failed")
 
         FakeConn.commit = bad_commit
         try:
-            with self.assertRaises(RuntimeError):
-                database.is_user_banned(1)
+            self.assertEqual(database.is_user_banned(1), (False, ""))
         finally:
             FakeConn.commit = orig_commit
-        self.assertIsNone(self.cache.get(1))
 
 
 # =============================================================================
@@ -526,6 +528,9 @@ class TestCleanup(DBTestCase):
 # =============================================================================
 # 6b + 8. Middleware (bot.py dan AST orqali ajratilgan, fake aiogram muhitida)
 # =============================================================================
+FREE_INFO = {"banned": False, "mode": None, "until": None, "reason": None}
+
+
 class FakeBaseMiddleware:
     def __init__(self, *a, **k):
         pass
@@ -552,16 +557,20 @@ def load_middlewares(fake_database):
         src = f.read()
     tree = ast.parse(src)
     wanted = {"ThrottlingMiddleware", "BanMiddleware"}
+    helpers = {"ban_contact_line", "ban_term_text", "ban_notice_text"}
     parts = [ast.get_source_segment(src, n) for n in tree.body
-             if isinstance(n, ast.ClassDef) and n.name in wanted]
-    assert len(parts) == 2, "middleware classes not found in bot.py"
+             if (isinstance(n, ast.ClassDef) and n.name in wanted)
+             or (isinstance(n, ast.FunctionDef) and n.name in helpers)]
+    assert len(parts) == 2 + len(helpers), "middleware classes / ban helpers not found in bot.py"
+    import html as real_html
     import time as real_time
     ns = {
         "BaseMiddleware": FakeBaseMiddleware,
         "TelegramObject": object,
         "types": pytypes.SimpleNamespace(Message=FakeMessage, CallbackQuery=FakeCallback),
         "Callable": Callable, "Dict": Dict, "Any": Any, "Awaitable": Awaitable,
-        "asyncio": asyncio, "logging": logging, "time": real_time,
+        "asyncio": asyncio, "logging": logging, "time": real_time, "html": real_html,
+        "timezone": datetime.timezone, "timedelta": datetime.timedelta,
         "database": fake_database, "ADMIN_USERNAME": "admin",
     }
     exec(compile("\n\n".join(parts), "bot.py(extracted)", "exec"), ns)
@@ -570,7 +579,8 @@ def load_middlewares(fake_database):
 
 class TestMiddlewares(unittest.TestCase):
     def setUp(self):
-        self.fake_db = pytypes.SimpleNamespace(is_user_banned=lambda uid: (False, ""))
+        self.fake_db = pytypes.SimpleNamespace(
+            get_ban_info=lambda uid: dict(FREE_INFO), BAN_MODE_OPEN="open", BAN_MODE_SILENT="silent")
         self.Throttle, self.Ban = load_middlewares(self.fake_db)
         self.user = pytypes.SimpleNamespace(id=42)
         self.calls = 0
@@ -588,7 +598,7 @@ class TestMiddlewares(unittest.TestCase):
     def test_db_failure_fail_closed_callback_answered_once(self):
         def boom(uid):
             raise ConnectionError("db down")
-        self.fake_db.is_user_banned = boom
+        self.fake_db.get_ban_info = boom
         mw = self.Ban()
         ev = FakeCallback()
         with self.assertLogs(level="ERROR"):
@@ -600,7 +610,7 @@ class TestMiddlewares(unittest.TestCase):
     def test_db_failure_repeat_within_cooldown_silent_answer_once(self):
         def boom(uid):
             raise ConnectionError("db down")
-        self.fake_db.is_user_banned = boom
+        self.fake_db.get_ban_info = boom
         mw = self.Ban()
         with self.assertLogs(level="ERROR"):
             self.run_mw(mw, FakeCallback())
@@ -613,7 +623,7 @@ class TestMiddlewares(unittest.TestCase):
     def test_db_failure_message_alert_throttled(self):
         def boom(uid):
             raise ConnectionError("db down")
-        self.fake_db.is_user_banned = boom
+        self.fake_db.get_ban_info = boom
         mw = self.Ban()
         m1, m2 = FakeMessage(), FakeMessage()
         with self.assertLogs(level="ERROR"):
@@ -624,7 +634,7 @@ class TestMiddlewares(unittest.TestCase):
         self.assertEqual(self.calls, 0)
 
     def test_banned_callback_answered_once_handler_not_called(self):
-        self.fake_db.is_user_banned = lambda uid: (True, "🚫 test")
+        self.fake_db.get_ban_info = lambda uid: {"banned": True, "mode": "open", "until": None, "reason": None}
         ev = FakeCallback()
         self.assertIsNone(self.run_mw(self.Ban(), ev))
         self.assertEqual(len(ev.answers), 1)
@@ -639,7 +649,7 @@ class TestMiddlewares(unittest.TestCase):
     def test_answer_failure_during_error_notification_is_logged_not_raised(self):
         def boom(uid):
             raise ConnectionError("db down")
-        self.fake_db.is_user_banned = boom
+        self.fake_db.get_ban_info = boom
 
         class BadCb(FakeCallback):
             async def answer(self, *a, **k):

@@ -722,9 +722,13 @@ class TestPaymentFixes(unittest.TestCase):
                 self.answers.append({"ok": ok, "error_message": error_message})
 
         orig_is_banned = self.db.is_user_banned
+        orig_ban_info = self.db.get_ban_info
         try:
-            # 1. Banned user simulyatsiyasi
+            # 1. Banned user simulyatsiyasi (ochiq ban: pre_checkout sabab bilan rad etadi)
             self.db.is_user_banned = lambda uid: (True, "Spam", None) if uid == 999111 else (False, None, None)
+            self.db.get_ban_info = lambda uid: (
+                {"banned": True, "mode": "open", "until": None, "reason": "Spam"} if uid == 999111
+                else {"banned": False, "mode": None, "until": None, "reason": None})
 
             banned_query = FakePreCheckout(999111, "PRO_7_DAYS", "XTR", 50)
             asyncio.run(bot.process_pre_checkout(banned_query))
@@ -745,6 +749,7 @@ class TestPaymentFixes(unittest.TestCase):
             self.assertFalse(wrong_query.answers[0]["ok"])
         finally:
             self.db.is_user_banned = orig_is_banned
+            self.db.get_ban_info = orig_ban_info
 
     def test_legacy_stars_payload_validation(self):
         # 24. stars_premium_1month: faqat XTR va musbat summa qabul qilinishi

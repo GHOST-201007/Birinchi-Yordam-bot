@@ -326,7 +326,8 @@ class BodyLimitTest(ApiTestBase):
         async def parts():
             for i in range(0, len(body), 2048):
                 yield body[i:i + 2048]
-        with mock.patch.object(bot_mod.database, "is_user_banned", return_value=(True, "")):
+        with mock.patch.object(bot_mod.database, "is_user_banned", return_value=(True, "")),                 mock.patch.object(bot_mod.database, "get_ban_info",
+                                  return_value={"banned": True, "mode": "open", "until": None, "reason": None}):
             resp = await self.client.post("/api/ai/chat", data=parts(), headers={"Content-Type": "application/json"})
         # Hajm o'tdi (initData tekshirildi) — keyingi bosqichda (ban) to'xtadi; 413/400 bo'lmasligi shart
         self.assertEqual(resp.status, 403)

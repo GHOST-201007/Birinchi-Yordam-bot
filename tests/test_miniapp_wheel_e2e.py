@@ -154,7 +154,8 @@ class WheelApiE2ETest(MiniAppE2EBase):
 
     # ---- ZAXIRA yo'l (eski URL-parametr + deep link mantig'i) --------------------
     def test_fallback_when_state_api_fails_uses_url_prize_and_deep_link(self):
-        page, calls = self.open_app({"state": (500, {"ok": False, "error": "server_error"})},
+        # API ishlamayapti: nginx 502 (JSON'siz). Server o'zi "server_error" desa — xato ekrani (tests/test_miniapp_ban_screen_e2e.py)
+        page, calls = self.open_app({"state": (502, {"ok": False})},
                                     query="?prize=5&score=3")
         self.open_wheel(page)
         page.wait_for_function("!document.querySelector('#btn-spin-wheel').disabled")

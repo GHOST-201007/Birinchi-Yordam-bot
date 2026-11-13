@@ -10,6 +10,7 @@ import hmac
 import urllib.parse
 import math
 import signal
+import weakref
 from datetime import datetime, time as dtime, timedelta, timezone  # dtime: pastdagi `import time` moduli bilan to'qnashmasin (P2-2)
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
@@ -116,7 +117,78 @@ class ThrottlingMiddleware(BaseMiddleware):
             self._maybe_cleanup(now)
         return await handler(event, data)
 
+# ─── BAN: userga ko'rsatiladigan matnlar va yagona tekshiruv yordamchilari ────────────────────────────────
+# 📣 Ochiq ban (database.BAN_MODE_OPEN): bot har safar ban matni bilan javob beradi, mini app "Siz bloklangansiz" ekrani.
+# 🤫 Sirli ban (BAN_MODE_SILENT): bot BUTUNLAY jim, mini app oddiy "Xatolik yuz berdi" ekrani. Hamma joy
+# database.get_ban_info dan o'qiydi (mantiq bitta).
+BAN_EXPIRED_TEXT = "✅ Blok muddati tugadi. Botdan yana foydalanishingiz mumkin."
+BAN_LIFTED_TEXT = "✅ Siz blokdan chiqarildingiz. Botdan yana foydalanishingiz mumkin."
+BAN_GENERIC_PAYMENT_ERROR = "Xatolik yuz berdi. Keyinroq urinib ko'ring."
+
+
+def ban_contact_line() -> str:
+    """Ochiq ban xabarlari oxiridagi qator: "Murojaat uchun: @admin"."""
+    if ADMIN_USERNAME and ADMIN_USERNAME != "YOUR_ADMIN_USERNAME":
+        return f"Murojaat uchun: @{ADMIN_USERNAME}"
+    return "Murojaat uchun administratorga yozing."
+
+
+def ban_contact_handle() -> str | None:
+    """Mini app uchun: "@admin" yoki None."""
+    if ADMIN_USERNAME and ADMIN_USERNAME != "YOUR_ADMIN_USERNAME":
+        return f"@{ADMIN_USERNAME}"
+    return None
+
+
+def ban_term_text(info: dict) -> str:
+    """"20.11.2026 14:00 gacha" yoki "♾ muddatsiz" (Toshkent vaqti)."""
+    if info.get("until"):
+        return f"{info['until'].astimezone(timezone(timedelta(hours=5))):%d.%m.%Y %H:%M} gacha"
+    return "♾ muddatsiz"
+
+
+def ban_notice_text(info: dict, *, alert: bool = False) -> str:
+    """OCHIQ ban: banlangan user botga yozsa / tugma bossa HAR SAFAR ko'rsatiladigan matn:
+    "🚫 Siz bloklangansiz. 20.11.2026 14:00 gacha. Sabab: Spam" + murojaat uchun admin.
+    alert=True — callback uchun qisqa oddiy matn (show_alert, <= 200 belgi); aks holda HTML xabar."""
+    reason = info.get("reason")
+    if alert:
+        tail = ban_contact_line()
+        line = f"🚫 Siz bloklangansiz. {ban_term_text(info)}."
+        if reason:
+            room = max(0, 200 - len(line) - len(tail) - len(" Sabab: ") - 2)
+            line += f" Sabab: {reason[:room]}"
+        return f"{line}\n{tail}"
+    line = f"🚫 <b>Siz bloklangansiz.</b> {ban_term_text(info)}."
+    if reason:
+        line += f" Sabab: {html.escape(reason)}"
+    return f"{line}\n\n{ban_contact_line()}"
+
+
+def ban_user_notification(info: dict) -> str:
+    """Ban QO'YILGANDA userga yuboriladigan xabar (faqat 📣 ochiq ban)."""
+    lines = ["🚫 <b>Siz botdan foydalanishdan chetlashtirildingiz.</b>", f"⏳ Muddat: {ban_term_text(info)}"]
+    if info.get("reason"):
+        lines.append(f"📝 Sabab: {html.escape(info['reason'])}")
+    return "\n".join(lines) + f"\n\n{ban_contact_line()}"
+
+
+async def user_is_banned(user_id: int) -> bool:
+    """Foydalanuvchiga AVTOMATIK / admin tomonidan xabar yuborishdan oldin: banda bo'lsa True (ikkala rejim). DB xatosida
+    ham True (fail-closed: xabar yuborilmaydi, xato loglanadi)."""
+    try:
+        info = await asyncio.to_thread(database.get_ban_info, user_id)
+    except Exception:
+        logging.warning("Ban holatini o'qib bo'lmadi (user=%s): xabar yuborilmaydi", user_id, exc_info=True)
+        return True
+    return bool(info["banned"])
+
+
 class BanMiddleware(BaseMiddleware):
+    """Banlangan userning HAR BIR xabari / tugmasi shu yerda to'xtaydi (handler chaqirilmaydi).
+    📣 ochiq: xabarga ban matni, callback'ga show_alert. 🤫 sirli: HECH NARSA (message.answer ham, callback.answer ham yo'q —
+    tugma "yuklanmoqda" bo'lib qoladi). Dispatcherda ThrottlingMiddleware'DAN OLDIN turadi (setup_middlewares): aks holda
+    banlangan user tez yozsa "sekinroq" ogohlantirishi chiqib, bot tirikligini sezdirardi."""
     ERROR_ALERT_COOLDOWN = 30.0
     ERROR_MAP_MAX = 2000
 
@@ -145,6 +217,16 @@ class BanMiddleware(BaseMiddleware):
         except Exception:
             logging.warning("Failed to notify user about ban-check DB error", exc_info=True)
 
+    async def _tell_banned(self, event: TelegramObject, info: dict):
+        """FAQAT ochiq ban: userga ban matni (sabab va muddat bilan)."""
+        try:
+            if isinstance(event, types.Message):
+                await event.answer(ban_notice_text(info), parse_mode="HTML")
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer(ban_notice_text(info, alert=True), show_alert=True)
+        except Exception:
+            logging.warning("Failed to tell the user about the ban", exc_info=True)
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
@@ -154,27 +236,32 @@ class BanMiddleware(BaseMiddleware):
         user = data.get("event_from_user")
         if user:
             try:
-                is_banned, ban_msg = await asyncio.to_thread(database.is_user_banned, user.id)
+                info = await asyncio.to_thread(database.get_ban_info, user.id)
             except Exception:
                 logging.exception("Ban check failed for user %s; blocking update (fail-closed)", user.id)
                 await self._notify_db_error(event, user.id)
                 return  # handler chaqirilmaydi
-            if is_banned:
-                contact_info = f"Murojaat uchun: @{ADMIN_USERNAME}" if (ADMIN_USERNAME and ADMIN_USERNAME != "YOUR_ADMIN_USERNAME") else "Murojaat uchun administratorga yozing."
-                if isinstance(event, types.Message):
-                    await event.answer(
-                        f"❌ <b>Siz botdan foydalanishdan chetlashtirilgansiz (Banned)!</b>\n\n"
-                        f"{ban_msg}\n\n"
-                        f"⚠️ {contact_info}",
-                        parse_mode="HTML"
-                    )
-                elif isinstance(event, types.CallbackQuery):
-                    await event.answer(
-                        f"Siz bloklangansiz.\n{ban_msg}",
-                        show_alert=True
-                    )
-                return
+            if info["banned"]:
+                # Pul xavfsizligi: Telegram allaqachon yechgan to'lov (successful_payment) yo'qolmasin — ban shundan KEYIN
+                # qo'yilgan bo'lishi mumkin (pre_checkout ban'dan oldin o'tgan). Handler to'lovni yozadi va Premium beradi.
+                if isinstance(event, types.Message) and getattr(event, "successful_payment", None):
+                    return await handler(event, data)
+                if info["mode"] != database.BAN_MODE_SILENT:
+                    await self._tell_banned(event, info)
+                return                                      # sirli ban: butunlay jim
         return await handler(event, data)
+
+
+def setup_middlewares(dispatcher) -> None:
+    """Middleware'larni TARTIB bilan ulaydi: Ban -> Throttling -> (callback) AnswerCallback -> FsmReset. Ban birinchi: banlangan
+    user throttling / AnswerCallback / handler'larga umuman yetib bormaydi, shuning uchun sirli banda hech qanday javob chiqmaydi."""
+    dispatcher.message.outer_middleware(BanMiddleware())
+    dispatcher.callback_query.outer_middleware(BanMiddleware())
+    dispatcher.message.outer_middleware(ThrottlingMiddleware())
+    dispatcher.callback_query.outer_middleware(ThrottlingMiddleware())
+    dispatcher.callback_query.outer_middleware(AnswerCallbackMiddleware())
+    dispatcher.message.outer_middleware(FsmResetMiddleware())
+
 
 class AnswerCallbackMiddleware(BaseMiddleware):
     async def __call__(
@@ -1492,8 +1579,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
             # "rost", shuning uchun faqat birinchi elementni tekshiramiz
             referral_success, _, _ = await asyncio.to_thread(database.handle_referral, user.id, referrer_id)
 
-            # Notify the referrer only if referral was successful
-            if referral_success:
+            # Notify the referrer only if referral was successful (banlangan referrerga xabar yuborilmaydi)
+            if referral_success and not await user_is_banned(referrer_id):
                 try:
                     referrer_score = await asyncio.to_thread(database.get_score, referrer_id)
                     ref_count = await asyncio.to_thread(database.get_referral_count, referrer_id)
@@ -3324,13 +3411,16 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
     """To'lovni tasdiqlash (10 soniya ichida javob berish shart)"""
     try:
         user_id = pre_checkout_query.from_user.id
-        is_banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
-        if is_banned:
+        ban = await asyncio.to_thread(database.get_ban_info, user_id)
+        if ban["banned"]:
             logging.warning(f"Pre-checkout rad etildi (bloklangan user): user={user_id}")
-            await pre_checkout_query.answer(
-                ok=False,
-                error_message="Hisobingiz bloklanganligi sababli to'lov qabul qilinmaydi."
-            )
+            if ban["mode"] == database.BAN_MODE_SILENT:
+                message = BAN_GENERIC_PAYMENT_ERROR              # sirli ban: umumiy xato, ban haqida hech narsa yo'q
+            else:
+                message = "Hisobingiz bloklanganligi sababli to'lov qabul qilinmaydi."
+                if ban.get("reason"):
+                    message += f" Sabab: {ban['reason'][:120]}"
+            await pre_checkout_query.answer(ok=False, error_message=message)
             return
 
         ok, reason = validate_payment(
@@ -3729,6 +3819,8 @@ async def cmd_reconcile_payment(message: types.Message):
             parse_mode="HTML"
         )
         try:
+            if await user_is_banned(target_uid):                   # banlangan userga xabar yuborilmaydi
+                return
             await message.bot.send_message(
                 chat_id=target_uid,
                 text=(
@@ -3807,7 +3899,7 @@ async def handle_receipt_photo(message: types.Message, state: FSMContext):
         async def receipt_timeout(uid: int, chat_id: int):
             await asyncio.sleep(300)  # 5 minutes
             waiting = await asyncio.to_thread(database.is_waiting_receipt, uid)
-            if waiting:
+            if waiting and not await user_is_banned(uid):
                 try:
                     await bot.send_message(chat_id, f"⚠️ {username}, karta to'lovingiz hali admin tomonidan tasdiqlanmagan. Iltimos admin bilan bog'laning.")
                 except Exception as ex:
@@ -4004,6 +4096,9 @@ async def process_admin_approve(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
     try:
+        if await user_is_banned(user_id):                         # banlangan userga xabar yuborilmaydi
+            await callback.answer("Premium berildi! (User banlangan — xabar yuborilmadi)", show_alert=True)
+            return
         await callback.bot.send_message(
             chat_id=user_id,
             text=(
@@ -4226,8 +4321,7 @@ async def run_premium_expiry_check(now=None) -> dict:
     for user in found["notify"]:
         uid = user["user_id"]
         try:
-            banned, *_ = await asyncio.to_thread(database.is_user_banned, uid)
-            if banned:
+            if await user_is_banned(uid):                  # banlanganlarga (ikkala rejim) eslatma yuborilmaydi
                 continue
             if not await asyncio.to_thread(database.claim_premium_expiry_notice, uid, user["expires"].isoformat()):
                 continue                                    # boshqa jarayon allaqachon belgilagan
@@ -4255,6 +4349,56 @@ async def run_premium_expiry_check(now=None) -> dict:
     if stats["notified"] or stats["failed"] or stats["closed"]:
         logging.info("[PREMIUM EXPIRY] eslatma=%s xato=%s yopildi=%s", stats["notified"], stats["failed"], stats["closed"])
     return stats
+
+
+# ─── Muddati tugagan banlar: fon vazifasi (ochiq ban — "Blok muddati tugadi" xabari, sirli — xabarsiz) ───
+BAN_EXPIRY_CHECK_INTERVAL = 120.0          # har 2 daqiqada
+BAN_EXPIRY_SEND_PAUSE = 0.1
+_ban_expiry_locks = weakref.WeakKeyDictionary()          # event loop -> Lock (bitta jarayonda parallel chaqiruvlarni ketma-ket qiladi)
+
+
+def _ban_expiry_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _ban_expiry_locks.get(loop)
+    if lock is None:
+        lock = _ban_expiry_locks[loop] = asyncio.Lock()
+    return lock
+
+
+async def run_ban_expiry_check(now=None) -> dict:
+    """BITTA tekshiruv: muddati o'tgan banlarni ATOMAR tozalaydi (database.expire_finished_bans: bitta UPDATE ... RETURNING —
+    parallel chaqiruvda ham har user faqat bitta chaqiruvga tushadi, shuning uchun xabar ikki marta ketmaydi). Ochiq ban
+    edi -> "Blok muddati tugadi" xabari; sirli -> xabarsiz. Yuborish xatosi (user botni bloklagan) faqat loglanadi.
+    Qaytaradi: {"cleared", "notified", "failed"}."""
+    stats = {"cleared": 0, "notified": 0, "failed": 0}
+    async with _ban_expiry_lock():
+        finished = await asyncio.to_thread(database.expire_finished_bans, now)
+        stats["cleared"] = len(finished)
+        for uid, mode in finished:
+            if mode != database.BAN_MODE_OPEN:
+                continue
+            try:
+                await bot.send_message(uid, BAN_EXPIRED_TEXT)
+                stats["notified"] += 1
+            except Exception as exc:
+                stats["failed"] += 1
+                logging.warning("[BAN EXPIRY] xabar yetmadi (user=%s): %s", uid, type(exc).__name__)
+            await asyncio.sleep(BAN_EXPIRY_SEND_PAUSE)
+    if stats["cleared"]:
+        logging.info("[BAN EXPIRY] tozalandi=%s xabar=%s xato=%s", stats["cleared"], stats["notified"], stats["failed"])
+    return stats
+
+
+async def ban_expiry_loop():
+    """Fon vazifasi (polling va webhook rejimida ham): har BAN_EXPIRY_CHECK_INTERVAL soniyada; istisnolar loglanadi,
+    vazifa to'xtab qolmaydi."""
+    logging.info("[BAN EXPIRY] vazifa ishga tushdi")
+    while True:
+        try:
+            await run_ban_expiry_check()
+        except Exception:
+            logging.exception("[BAN EXPIRY] tekshiruvda xato")
+        await asyncio.sleep(BAN_EXPIRY_CHECK_INTERVAL)
 
 
 async def premium_expiry_loop():
@@ -4453,6 +4597,7 @@ PM_NO_REASON = 5
 PM_RECENT_TTL = 60.0
 PM_UNLIMITED_BLOCK_MSG = "⚠️ Userda muddatsiz Premium bor — avval olib tashlang."
 PM_NOT_DELIVERED_MSG = "⚠️ Xabar yetkazilmadi (user botni bloklagan bo'lishi mumkin)"
+PM_BANNED_SKIP_MSG = "ℹ️ User banlangan — xabar yuborilmadi"
 _pm_recent: dict = {}
 
 
@@ -4460,11 +4605,16 @@ def _is_admin(user_id) -> bool:
     return bool(ADMIN_ID) and str(user_id) == str(ADMIN_ID)
 
 
-def _pm_cb(*parts) -> str:
-    data = "pm:" + ":".join(str(p) for p in parts)
+def _panel_cb(prefix: str, *parts) -> str:
+    """Admin panellari (Premium: "pm", Ban: "bn") uchun callback_data: "<prefix>:<maydonlar>" (<= 64 bayt)."""
+    data = prefix + ":" + ":".join(str(p) for p in parts)
     if len(data.encode("utf-8")) > 64:
         raise ValueError(f"callback_data 64 baytdan oshdi: {data}")
     return data
+
+
+def _pm_cb(*parts) -> str:
+    return _panel_cb("pm", *parts)
 
 
 def _pm_btn(text: str, *parts) -> types.InlineKeyboardButton:
@@ -4533,8 +4683,8 @@ async def _pm_fill_names(users: list) -> None:
         user["full_name"], user["username"] = row[3], row[4] or user.get("username")
 
 
-async def _pm_load_list(page: int):
-    data = await asyncio.to_thread(database.admin_users_page, page)
+async def _pm_load_list(page: int, banned_only: bool = False):
+    data = await asyncio.to_thread(database.admin_users_page, page, database.ADMIN_PAGE_SIZE, banned_only)
     await _pm_fill_names(data["users"])
     return data
 
@@ -4580,6 +4730,9 @@ def _pm_card_view(user: dict, pg: int):
         f"⏳ Tugash sanasi: <b>{_pm_expiry_text(user)}</b>\n"
         f"🏆 Ballar: <b>{user['score']}</b>"
     )
+    ban_lines = _ban_card_lines(user)
+    if ban_lines:                                              # banlangan user: rejim, muddat, sabab ham ko'rinadi
+        text += "\n" + "\n".join(ban_lines)
     uid = user["user_id"]
     rows = [[_pm_btn("🎁 Premium berish", "g", uid, pg)]]
     if user["active"]:
@@ -4680,6 +4833,8 @@ def _pm_grant_result_text(user: dict, result: dict, days, mode: str, notified) -
     lines.append(f"Rejim: <b>{PM_MODES[mode]}</b>")
     if mode == "n" and notified is False:
         lines += ["", PM_NOT_DELIVERED_MSG]
+    elif mode == "n" and notified == "banned":
+        lines += ["", PM_BANNED_SKIP_MSG]
     return "\n".join(lines)
 
 
@@ -4687,6 +4842,8 @@ def _pm_remove_result_text(user: dict, mode: str, notified) -> str:
     lines = ["✅ <b>Premium olib tashlandi</b>", "", _pm_user_line(user), "", f"Rejim: <b>{PM_MODES[mode]}</b>"]
     if mode == "n" and notified is False:
         lines += ["", PM_NOT_DELIVERED_MSG]
+    elif mode == "n" and notified == "banned":
+        lines += ["", PM_BANNED_SKIP_MSG]
     return "\n".join(lines)
 
 
@@ -4715,14 +4872,19 @@ def _pm_open_app_markup():
     ]])
 
 
-async def _pm_notify(user_id: int, text: str, markup=None) -> bool:
-    """Userga xabar. Yetkazilmasa (bloklagan bo'lishi mumkin) False — Premium baribir berilgan/olingan."""
+async def _admin_notify(user_id: int, text: str, markup=None, tag: str = "ADMIN PREMIUM") -> bool:
+    """Admin amali haqida userga xabar. Yetkazilmasa (bloklagan bo'lishi mumkin) False — amal baribir bajarilgan."""
     try:
         await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=markup)
         return True
     except Exception as e:
-        logging.warning("[ADMIN PREMIUM] userga xabar yetmadi (user=%s): %s", user_id, type(e).__name__)
+        logging.warning("[%s] userga xabar yetmadi (user=%s): %s", tag, user_id, type(e).__name__)
         return False
+
+
+async def _pm_notify(user_id: int, text: str, markup=None) -> bool:
+    """Premium paneli: userga xabar (qarang: _admin_notify)."""
+    return await _admin_notify(user_id, text, markup, "ADMIN PREMIUM")
 
 
 async def _pm_edit(callback: types.CallbackQuery, text: str, markup) -> None:
@@ -4760,7 +4922,10 @@ async def _pm_do_grant(callback, uid, pg, tier, dur, mode, reason):
     schedule_personal_menu_sync(bot, uid, True)                 # B9: shaxsiy "👑 Ilova" tugmasi (fonda)
     notified = None
     if mode == "n":
-        notified = await _pm_notify(uid, _pm_user_grant_text(tier, days, result, reason), _pm_open_app_markup())
+        if await user_is_banned(uid):                           # banlangan userga (ikkala rejim) xabar yuborilmaydi
+            notified = "banned"
+        else:
+            notified = await _pm_notify(uid, _pm_user_grant_text(tier, days, result, reason), _pm_open_app_markup())
     user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
     await _pm_edit(callback, _pm_grant_result_text(user, result, days, mode, notified), _pm_result_markup(uid, pg))
 
@@ -4781,7 +4946,9 @@ async def _pm_do_remove(callback, uid, pg, mode):
     logging.info("[ADMIN PREMIUM] admin=%s user=%s amal=olib tashlash rejim=%s", admin_id, uid, mode)
     remember_premium_state(uid, {"active": False, "tier": "free"})
     schedule_personal_menu_sync(bot, uid, False, force=True)    # B9: shaxsiy tugma Default ga qaytadi (fonda)
-    notified = await _pm_notify(uid, PM_USER_REMOVED_TEXT) if mode == "n" else None
+    notified = None
+    if mode == "n":
+        notified = "banned" if await user_is_banned(uid) else await _pm_notify(uid, PM_USER_REMOVED_TEXT)
     user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
     await _pm_edit(callback, _pm_remove_result_text(user, mode, notified), _pm_result_markup(uid, pg))
 
@@ -4933,110 +5100,602 @@ async def pm_search_input(message: types.Message, state: FSMContext):
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 
-def _build_ban_list_keyboard(users_info):
-    """Ban boshqaruv uchun keyboard quradi"""
-    builder = InlineKeyboardBuilder()
-    for row in users_info:
-        user_id, is_banned = row[0], row[1]
-        full_name = row[3] if len(row) > 3 else None
-        display = full_name or f"ID:{user_id}"
-        status_icon = "🚫" if is_banned else "👤"
-        action = "✅ Unban" if is_banned else "🚫 Ban qilish"
-        builder.button(
-            text=f"{status_icon} {display} — {action}",
-            callback_data=f"ban_toggle_{user_id}"
-        )
-    builder.button(text="🔄 Yangilash", callback_data="ban_refresh")
-    builder.adjust(1)
-    return builder.as_markup()
+# ═══════════════════════════════════════════════════════════════════
+# ADMIN: BAN BOSHQARUV PANELI (/ban, faqat ADMIN_ID) — Premium paneli uslubida (yordamchilar qayta ishlatiladi:
+# _pm_load_list / _pm_load_user / _pm_fill_names / _pm_user_line / _pm_edit / _pm_claim_once / _pm_markup).
+# Ro'yxat (yoki qidiruv: ID, @username, ism) -> user kartasi -> muddat -> rejim (📣 / 🤫) -> sabab (faqat 📣) -> tasdiq.
+# Bandagi userda: ✅ Unban (📣 / 🤫) va ✏️ Muddatni o'zgartirish. Oraliq tanlovlar callback_data da (stateless):
+# "bn:<amal>:<maydonlar>"; faqat erkin matn (sabab / izoh) FSM da turadi. Matnli /ban va /unban buyruqlari ham bor.
+# ═══════════════════════════════════════════════════════════════════
+class AdminBanStates(StatesGroup):
+    waiting_search = State()
+    waiting_text = State()
 
 
-def _build_ban_list_text(users_info, total, banned_count):
-    """Ban ro'yxat matni"""
+BN_DURATIONS = {"h": 60, "1": 24 * 60, "7": 7 * 24 * 60, "30": 30 * 24 * 60, "u": None}       # daqiqa; "u" — muddatsiz
+BN_DURATION_LABELS = {"h": "1 soat", "1": "1 kun", "7": "7 kun", "30": "30 kun", "u": "♾ Muddatsiz"}
+BN_TERM_PHRASES = {"h": "1 soatga", "1": "1 kunga", "7": "7 kunga", "30": "30 kunga", "u": "muddatsiz"}
+BN_MODES = {"n": "📣 Xabar bilan", "s": "🤫 Sirli"}
+BN_DB_MODES = {"n": database.BAN_MODE_OPEN, "s": database.BAN_MODE_SILENT}
+BN_REASONS = ("Spam", "Haqorat", "Qoidabuzarlik", "Reklama")         # 0..3; 4 — "✍️ Boshqa (yozaman)"; 5 — "Sababsiz"
+BN_REASON_CUSTOM = 4
+BN_REASON_NONE = 5
+BN_ACTION_ARGS = {"u": 2, "g": 2, "e": 2, "x": 2, "d": 3, "f": 3, "h": 3, "y": 3, "z": 3, "m": 4, "r": 4, "w": 4, "c": 5}
+
+
+def _bn_cb(*parts) -> str:
+    return _panel_cb("bn", *parts)
+
+
+def _bn_btn(text: str, *parts) -> types.InlineKeyboardButton:
+    return types.InlineKeyboardButton(text=text, callback_data=_bn_cb(*parts))
+
+
+def _bn_ctx(ctx: str):
+    """Ro'yxat konteksti: "a3" — hammasi, 3-sahifa; "b0" — faqat banlanganlar; "q" — qidiruv natijasi. -> (banned_only, sahifa)."""
+    if ctx == "q":
+        return False, 0
+    if len(ctx) < 2 or ctx[0] not in "ab" or not ctx[1:].isdigit():
+        raise ValueError("kontekst")
+    return ctx[0] == "b", int(ctx[1:])
+
+
+def _bn_list_ctx(ctx: str) -> str:
+    """"Ro'yxatga" qaytish tugmasi uchun kontekst (qidiruv natijasidan — umumiy ro'yxatning boshiga)."""
+    return "a0" if ctx == "q" else ctx
+
+
+def _bn_dur(code: str) -> str:
+    if code not in BN_DURATIONS:
+        raise ValueError("muddat")
+    return code
+
+
+def _bn_mode(code: str) -> str:
+    if code not in BN_MODES:
+        raise ValueError("rejim")
+    return code
+
+
+def _ban_card_lines(user: dict) -> list:
+    """Kartadagi ban qatorlari (ham Ban, ham Premium panelida): rejim, qachon qo'yilgan, qachongacha, sabab. Banda
+    bo'lmasa — bo'sh ro'yxat."""
+    ban = user.get("ban") or {}
+    if not ban.get("banned"):
+        return []
+    silent = ban["mode"] == database.BAN_MODE_SILENT
+    lines = [f"🚫 Ban: <b>{'🤫 Sirli' if silent else '📣 Ochiq'}</b>"]
+    if ban.get("banned_at"):
+        lines.append(f"🕒 Qo'yilgan: <b>{_pm_fmt_dt(ban['banned_at'])}</b> (Toshkent vaqti)")
+    term = f"{_pm_fmt_dt(ban['until'])} gacha" if ban.get("until") else "♾ Muddatsiz"
+    lines.append(f"⏳ Muddat: <b>{term}</b>")
+    if ban.get("reason"):
+        label = "📝 Izoh (faqat admin ko'radi)" if silent else "📝 Sabab"
+        lines.append(f"{label}: {html.escape(ban['reason'])}")
+    return lines
+
+
+def _bn_icon(user: dict) -> str:
+    ban = user.get("ban") or {}
+    if not ban.get("banned"):
+        return "👤"
+    return "🤫" if ban["mode"] == database.BAN_MODE_SILENT else "🚫"
+
+
+def _bn_status(user: dict) -> str:
+    ban = user.get("ban") or {}
+    if not ban.get("banned"):
+        return "Faol"
+    return "Sirli ban" if ban["mode"] == database.BAN_MODE_SILENT else "Ochiq ban"
+
+
+def _bn_user_button(user: dict, ctx: str) -> list:
+    name = _pm_name(user)
+    name = name if len(name) <= 24 else name[:23] + "…"
+    return [_bn_btn(f"{_bn_icon(user)} {name} — {_bn_status(user)}", "u", user["user_id"], ctx)]
+
+
+# ── ko'rinishlar: (matn, tugmalar) ──────────────────────────────────────────
+def _bn_list_view(data: dict, banned_only: bool):
+    page, pages = data["page"], data["pages"]
+    letter = "b" if banned_only else "a"
+    ctx = f"{letter}{page}"
     text = (
-        f"🚫 <b>Ban Boshqaruvi</b>\n\n"
-        f"👥 Jami foydalanuvchilar: <b>{total}</b>\n"
-        f"🚫 Bloklanganlar: <b>{banned_count}</b>\n\n"
-        f"<b>So'nggi {len(users_info)} ta foydalanuvchi:</b>\n"
-        "─────────────────\n"
+        "🚫 <b>Ban Boshqaruvi</b>\n\n"
+        f"👥 Jami foydalanuvchilar: <b>{data['total']}</b>\n"
+        f"🚫 Banlanganlar: <b>{data['banned_count']}</b>\n\n"
     )
-    for row in users_info:
-        user_id, is_banned = row[0], row[1]
-        full_name = row[3] if len(row) > 3 else None
-        username = row[4] if len(row) > 4 else None
-        icon = "🚫" if is_banned else "👤"
-        name_str = html.escape(full_name or "Noma'lum")
-        uname_str = f" (@{html.escape(username)})" if username else ""
-        ban_str = "Bloklangan" if is_banned else "Faol"
-        text += f"{icon} <b>{name_str}</b>{uname_str}\n"
-        text += f"   🆔 <code>{user_id}</code>  |  {ban_str}\n\n"
-    text += "Tugma bosib foydalanuvchini ban qilishingiz yoki bandan chiqarishingiz mumkin 👇"
-    return text
+    if banned_only:
+        text += "📋 Ko'rsatilmoqda: <b>faqat banlanganlar</b>\n"
+    text += f"📄 Sahifa: <b>{page + 1}/{pages}</b>\n"
+    text += ("Banlanganlar yo'q." if banned_only and not data["users"] else "Foydalanuvchini tanlang 👇")
+    rows = [_bn_user_button(user, ctx) for user in data["users"]]
+    nav = []
+    if page > 0:
+        nav.append(_bn_btn("◀️", "l", f"{letter}{page - 1}"))
+    if page < pages - 1:
+        nav.append(_bn_btn("▶️", "l", f"{letter}{page + 1}"))
+    if nav:
+        rows.append(nav)
+    toggle = _bn_btn("👥 Hammasi", "l", "a0") if banned_only else _bn_btn("🚫 Banlanganlar", "l", "b0")
+    rows.append([_bn_btn("🔍 Qidirish", "s"), toggle])
+    return text, _pm_markup(rows)
 
 
-@dp.callback_query(F.data == "ban_refresh")
-async def cb_ban_refresh(callback: types.CallbackQuery):
-    """Ban ro'yxatini yangilash"""
-    if str(callback.from_user.id) != str(ADMIN_ID):
-        await callback.answer("❌ Siz admin emassiz!", show_alert=True)
+def _bn_search_view(users: list, query: str):
+    text = f"🔍 <b>Qidiruv natijasi</b>\n\n«{html.escape(query.strip()[:40])}» bo'yicha {len(users)} ta foydalanuvchi topildi 👇"
+    rows = [_bn_user_button(user, "q") for user in users]
+    rows.append([_bn_btn("🔍 Qayta qidirish", "s"), _bn_btn("⬅️ Ro'yxatga", "l", "a0")])
+    return text, _pm_markup(rows)
+
+
+def _bn_card_view(user: dict, ctx: str):
+    uid = user["user_id"]
+    lines = [_pm_user_line(user), "", f"💎 Premium: <b>{_pm_tier_text(user)}</b>"]
+    if user["active"]:
+        lines.append(f"⏳ Premium tugashi: <b>{_pm_expiry_text(user)}</b>")
+    lines += _ban_card_lines(user) or ["🚫 Ban: <b>Yo'q</b>"]
+    rows = []
+    if (user.get("ban") or {}).get("banned"):
+        rows.append([_bn_btn("✅ Unban", "x", uid, ctx)])
+        rows.append([_bn_btn("✏️ Muddatni o'zgartirish", "e", uid, ctx)])
+    else:
+        rows.append([_bn_btn("🚫 Ban qilish", "g", uid, ctx)])
+    rows.append([_bn_btn("⬅️ Ro'yxatga", "l", _bn_list_ctx(ctx))])
+    return "\n".join(lines), _pm_markup(rows)
+
+
+def _bn_duration_buttons(uid: int, ctx: str, action: str) -> list:
+    first = [_bn_btn(BN_DURATION_LABELS[d], action, uid, ctx, d) for d in ("h", "1", "7")]
+    second = [_bn_btn(BN_DURATION_LABELS[d], action, uid, ctx, d) for d in ("30", "u")]
+    return [first, second]
+
+
+def _bn_duration_view(user: dict, ctx: str):
+    uid = user["user_id"]
+    text = f"🚫 <b>Ban qilish</b>\n\n{_pm_user_line(user)}\n\n<b>1/3.</b> Muddatni tanlang 👇"
+    return text, _pm_markup(_bn_duration_buttons(uid, ctx, "d") + [[_bn_btn("⬅️ Orqaga", "u", uid, ctx)]])
+
+
+def _bn_mode_view(user: dict, ctx: str, dur: str):
+    uid = user["user_id"]
+    text = (f"🚫 <b>Ban qilish</b>\n\n{_pm_user_line(user)}\n"
+            f"⏱ Muddat: <b>{BN_DURATION_LABELS[dur]}</b>\n\n<b>2/3.</b> Rejimni tanlang 👇\n"
+            "📣 Xabar bilan — userga ban haqida xabar boradi, bot har safar muddat va sababni aytadi\n"
+            "🤫 Sirli — userga hech narsa bormaydi, bot butunlay jim turadi")
+    rows = [[_bn_btn(BN_MODES["n"], "m", uid, ctx, dur, "n"), _bn_btn(BN_MODES["s"], "m", uid, ctx, dur, "s")],
+            [_bn_btn("⬅️ Orqaga", "g", uid, ctx)]]
+    return text, _pm_markup(rows)
+
+
+def _bn_reason_view(user: dict, ctx: str, dur: str):
+    uid = user["user_id"]
+    text = (f"🚫 <b>Ban qilish</b>\n\n{_pm_user_line(user)}\n\n"
+            "<b>3/3.</b> Sababni tanlang (userga ko'rsatiladi) 👇")
+    rows = [[_bn_btn(BN_REASONS[0], "r", uid, ctx, dur, 0), _bn_btn(BN_REASONS[1], "r", uid, ctx, dur, 1)],
+            [_bn_btn(BN_REASONS[2], "r", uid, ctx, dur, 2), _bn_btn(BN_REASONS[3], "r", uid, ctx, dur, 3)],
+            [_bn_btn("✍️ Boshqa (yozaman)", "w", uid, ctx, dur, "n")],
+            [_bn_btn("Sababsiz", "r", uid, ctx, dur, BN_REASON_NONE)],
+            [_bn_btn("⬅️ Orqaga", "d", uid, ctx, dur)]]
+    return text, _pm_markup(rows)
+
+
+def _bn_resolve_reason(mode: str, rs: str, text):
+    """Tasdiq tugmasidagi "sabab" belgisidan ban_reason matni. -> (reason | None, xato | None). 📣: "0".."5" (4 — yozilgan matn,
+    5 — sababsiz); 🤫: "-" (izohsiz) yoki "t" (yozilgan izoh)."""
+    if mode == "n":
+        if not rs.isdigit() or not 0 <= int(rs) <= BN_REASON_NONE:
+            raise ValueError("sabab")
+        idx = int(rs)
+        if idx == BN_REASON_NONE:
+            return None, None
+        if idx == BN_REASON_CUSTOM:
+            return (text, None) if text else (None, "matn")
+        return BN_REASONS[idx], None
+    if rs == "-":
+        return None, None
+    if rs == "t":
+        return (text, None) if text else (None, "matn")
+    raise ValueError("sabab")
+
+
+def _bn_confirm_view(user: dict, ctx: str, dur: str, mode: str, rs: str, reason):
+    uid = user["user_id"]
+    phrase = BN_TERM_PHRASES[dur]
+    lines = ["🚫 <b>Ban — tasdiqlang</b>", "", _pm_user_line(user), "",
+             f"⏱ Muddat: <b>{BN_DURATION_LABELS[dur]}</b>", f"Rejim: <b>{BN_MODES[mode]}</b>"]
+    if mode == "n":
+        lines.append(f"📝 Sabab: {html.escape(reason)}" if reason else "📝 Sabab: —")
+        lines += ["", f"ℹ️ User {phrase} ochiq ban qilinadi: unga xabar boradi (muddat va sabab bilan), "
+                      "bot har safar shuni takrorlaydi."]
+    else:
+        if reason:
+            lines.append(f"📝 Izoh (faqat admin ko'radi): {html.escape(reason)}")
+        lines += ["", f"ℹ️ User {phrase} sirli ban qilinadi, unga xabar bormaydi."]
+    rows = [[_bn_btn("✅ Tasdiqlash", "c", uid, ctx, dur, mode, rs), _bn_btn("❌ Bekor", "u", uid, ctx)]]
+    if mode == "s":
+        rows.append([_bn_btn("✍️ Izoh qo'shish" if not reason else "✍️ Izohni o'zgartirish", "w", uid, ctx, dur, "s")])
+        rows.append([_bn_btn("⬅️ Orqaga", "d", uid, ctx, dur)])
+    else:
+        rows.append([_bn_btn("⬅️ Orqaga", "m", uid, ctx, dur, "n")])
+    return "\n".join(lines), _pm_markup(rows)
+
+
+def _bn_text_prompt_view(user: dict, ctx: str, dur: str, mode: str):
+    uid = user["user_id"]
+    if mode == "n":
+        text = (f"✍️ <b>Sababni yozing</b>\n\n{_pm_user_line(user)}\n\nUserga ko'rsatiladigan sababni yuboring "
+                f"(ko'pi bilan {database.BAN_REASON_MAX} belgi).")
+        back = _bn_btn("⬅️ Orqaga", "m", uid, ctx, dur, "n")
+    else:
+        text = (f"✍️ <b>Izoh yozing</b>\n\n{_pm_user_line(user)}\n\nFaqat admin uchun izoh (userga ko'rsatilmaydi), "
+                f"ko'pi bilan {database.BAN_REASON_MAX} belgi.")
+        back = _bn_btn("⬅️ Orqaga", "m", uid, ctx, dur, "s")
+    return text, _pm_markup([[back]])
+
+
+def _bn_edit_duration_view(user: dict, ctx: str):
+    uid = user["user_id"]
+    text = (f"✏️ <b>Ban muddatini o'zgartirish</b>\n\n{_pm_user_line(user)}\n"
+            + "\n".join(_ban_card_lines(user)) + "\n\nYangi muddatni tanlang (rejim saqlanadi) 👇")
+    return text, _pm_markup(_bn_duration_buttons(uid, ctx, "f") + [[_bn_btn("⬅️ Orqaga", "u", uid, ctx)]])
+
+
+def _bn_edit_confirm_view(user: dict, ctx: str, dur: str):
+    uid = user["user_id"]
+    silent = user["ban"]["mode"] == database.BAN_MODE_SILENT
+    lines = ["✏️ <b>Muddatni o'zgartirish — tasdiqlang</b>", "", _pm_user_line(user), "",
+             f"⏱ Yangi muddat: <b>{BN_DURATION_LABELS[dur]}</b> (hozirdan boshlab)",
+             f"Rejim: <b>{BN_MODES['s'] if silent else BN_MODES['n']}</b> (saqlanadi)", "",
+             "ℹ️ User hech narsa sezmaydi." if silent else "ℹ️ Userga yangi muddat haqida ban xabari yuboriladi."]
+    rows = [[_bn_btn("✅ Tasdiqlash", "h", uid, ctx, dur), _bn_btn("❌ Bekor", "u", uid, ctx)],
+            [_bn_btn("⬅️ Orqaga", "e", uid, ctx)]]
+    return "\n".join(lines), _pm_markup(rows)
+
+
+def _bn_unban_mode_view(user: dict, ctx: str):
+    uid = user["user_id"]
+    text = (f"✅ <b>Unban</b>\n\n{_pm_user_line(user)}\n" + "\n".join(_ban_card_lines(user)) +
+            "\n\nRejimni tanlang 👇\n📣 Xabar bilan — userga \"blokdan chiqarildingiz\" xabari boradi\n"
+            "🤫 Xabarsiz — userga hech narsa bormaydi")
+    rows = [[_bn_btn(BN_MODES["n"], "y", uid, ctx, "n"), _bn_btn("🤫 Xabarsiz", "y", uid, ctx, "s")],
+            [_bn_btn("⬅️ Orqaga", "u", uid, ctx)]]
+    return text, _pm_markup(rows)
+
+
+def _bn_unban_confirm_view(user: dict, ctx: str, mode: str):
+    uid = user["user_id"]
+    lines = ["✅ <b>Unban — tasdiqlang</b>", "", _pm_user_line(user), "",
+             f"Rejim: <b>{BN_MODES['n'] if mode == 'n' else '🤫 Xabarsiz'}</b>", "",
+             "ℹ️ User bandan chiqariladi, unga xabar boradi." if mode == "n"
+             else "ℹ️ User bandan chiqariladi, unga xabar bormaydi."]
+    rows = [[_bn_btn("✅ Tasdiqlash", "z", uid, ctx, mode), _bn_btn("❌ Bekor", "u", uid, ctx)],
+            [_bn_btn("⬅️ Orqaga", "x", uid, ctx)]]
+    return "\n".join(lines), _pm_markup(rows)
+
+
+def _bn_result_markup(uid: int, ctx: str):
+    return _pm_markup([[_bn_btn("👤 Karta", "u", uid, ctx), _bn_btn("⬅️ Ro'yxatga", "l", _bn_list_ctx(ctx))]])
+
+
+def _bn_ban_result_text(user: dict, mode: str, dur: str, notified) -> str:
+    lines = ["✅ <b>Ban qo'yildi</b>", "", _pm_user_line(user), "",
+             f"⏱ Muddat: <b>{BN_DURATION_LABELS[dur]}</b>", f"Rejim: <b>{BN_MODES[mode]}</b>"]
+    lines += [line for line in _ban_card_lines(user) if line.startswith("📝")]       # sabab / izoh (bo'lsa)
+    if mode == "n" and notified is False:
+        lines += ["", PM_NOT_DELIVERED_MSG]
+    return "\n".join(lines)
+
+
+def _bn_unban_result_text(user: dict, mode: str, notified) -> str:
+    lines = ["✅ <b>Bandan chiqarildi</b>", "", _pm_user_line(user), "",
+             f"Rejim: <b>{BN_MODES['n'] if mode == 'n' else '🤫 Xabarsiz'}</b>"]
+    if mode == "n" and notified is False:
+        lines += ["", PM_NOT_DELIVERED_MSG]
+    return "\n".join(lines)
+
+
+# ── bajarish ────────────────────────────────────────────────────────────────
+async def _bn_do_ban(callback, uid, ctx, dur, mode, reason):
+    if _is_admin(uid):
+        await callback.answer("❌ O'zingizni ban qila olmaysiz!", show_alert=True)
         return
-    raw_users = await asyncio.to_thread(database.get_all_users_info_ban, limit=15)
-    users_info = await _resolve_users_info(raw_users)
-    total = await asyncio.to_thread(database.get_users_count)
-    banned_count = await asyncio.to_thread(database.get_banned_count)
-    text = _build_ban_list_text(users_info, total, banned_count)
-    markup = _build_ban_list_keyboard(users_info)
+    key = (callback.message.chat.id, callback.message.message_id, callback.data)
+    if not _pm_claim_once(key):
+        await callback.answer("⏳ Bu amal allaqachon bajarilgan.", show_alert=True)
+        return
     try:
-        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+        await asyncio.to_thread(database.ban_user, uid, BN_DURATIONS[dur], BN_DB_MODES[mode], reason)
+        info = await asyncio.to_thread(database.get_ban_info, uid)
     except Exception:
-        pass
-    await callback.answer("🔄 Yangilandi!")
+        _pm_recent.pop(key, None)
+        logging.exception("[ADMIN BAN] ban qo'yishda DB xatosi (admin=%s user=%s)", callback.from_user.id, uid)
+        await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
+        return
+    logging.info("[ADMIN BAN] admin=%s user=%s amal=ban muddat=%s rejim=%s", callback.from_user.id, uid,
+                 BN_DURATION_LABELS[dur], BN_DB_MODES[mode])
+    notified = None
+    if mode == "n":                                            # faqat ochiq ban: userga xabar (🤫 — hech narsa)
+        notified = await _admin_notify(uid, ban_user_notification(info), tag="ADMIN BAN")
+    user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
+    await _pm_edit(callback, _bn_ban_result_text(user, mode, dur, notified), _bn_result_markup(uid, ctx))
 
 
-@dp.callback_query(F.data.startswith("ban_toggle_"))
-async def cb_ban_toggle(callback: types.CallbackQuery):
-    """Foydalanuvchini ban qilish yoki bandan chiqarish"""
-    if str(callback.from_user.id) != str(ADMIN_ID):
-        await callback.answer("❌ Siz admin emassiz!", show_alert=True)
+async def _bn_do_unban(callback, uid, ctx, mode):
+    key = (callback.message.chat.id, callback.message.message_id, callback.data)
+    if not _pm_claim_once(key):
+        await callback.answer("⏳ Bu amal allaqachon bajarilgan.", show_alert=True)
         return
     try:
-        target_id = int(callback.data.replace("ban_toggle_", ""))
-        if str(target_id) == str(ADMIN_ID):
+        await asyncio.to_thread(database.unban_user, uid)
+    except Exception:
+        _pm_recent.pop(key, None)
+        logging.exception("[ADMIN BAN] unban'da DB xatosi (admin=%s user=%s)", callback.from_user.id, uid)
+        await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
+        return
+    logging.info("[ADMIN BAN] admin=%s user=%s amal=unban rejim=%s", callback.from_user.id, uid, mode)
+    notified = await _admin_notify(uid, BAN_LIFTED_TEXT, tag="ADMIN BAN") if mode == "n" else None
+    user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
+    await _pm_edit(callback, _bn_unban_result_text(user, mode, notified), _bn_result_markup(uid, ctx))
+
+
+async def _bn_do_change(callback, uid, ctx, dur):
+    key = (callback.message.chat.id, callback.message.message_id, callback.data)
+    if not _pm_claim_once(key):
+        await callback.answer("⏳ Bu amal allaqachon bajarilgan.", show_alert=True)
+        return
+    try:
+        changed = await asyncio.to_thread(database.change_ban_duration, uid, BN_DURATIONS[dur])
+        info = await asyncio.to_thread(database.get_ban_info, uid)
+    except Exception:
+        _pm_recent.pop(key, None)
+        logging.exception("[ADMIN BAN] muddatni o'zgartirishda DB xatosi (admin=%s user=%s)", callback.from_user.id, uid)
+        await callback.answer("⚠️ Bazada xatolik. Qayta urinib ko'ring.", show_alert=True)
+        return
+    if not changed:
+        _pm_recent.pop(key, None)
+        await callback.answer("ℹ️ User hozir banda emas (muddati tugagan bo'lishi mumkin).", show_alert=True)
+        return
+    logging.info("[ADMIN BAN] admin=%s user=%s amal=muddat muddat=%s", callback.from_user.id, uid, BN_DURATION_LABELS[dur])
+    notified = None
+    if info["mode"] != database.BAN_MODE_SILENT:               # ochiq ban: userga yangi muddat bilan ban xabari
+        notified = await _admin_notify(uid, ban_user_notification(info), tag="ADMIN BAN")
+    user = await _pm_load_user(uid) or {"user_id": uid, "full_name": None, "username": None}
+    lines = ["✅ <b>Ban muddati o'zgartirildi</b>", "", _pm_user_line(user), ""] + _ban_card_lines(user)
+    if notified is False:
+        lines += ["", PM_NOT_DELIVERED_MSG]
+    await _pm_edit(callback, "\n".join(lines), _bn_result_markup(uid, ctx))
+
+
+async def _bn_dispatch(callback: types.CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":")
+    action, args = parts[1], parts[2:]
+    if action not in ("s", "w", "c"):
+        await state.clear()                                    # qidiruv / matn kutish holatidan chiqish
+
+    if action == "l":                                          # ro'yxat sahifasi
+        banned_only, page = _bn_ctx(args[0])
+        text, markup = _bn_list_view(await _pm_load_list(page, banned_only), banned_only)
+        await _pm_edit(callback, text, markup)
+        return
+    if action == "s":                                          # qidiruv
+        await state.set_state(AdminBanStates.waiting_search)
+        await _pm_edit(callback, "🔍 <b>Qidirish</b>\n\nFoydalanuvchi ID raqamini, @username yoki ismini yozib yuboring.",
+                       _pm_markup([[_bn_btn("⬅️ Ro'yxatga", "l", "a0")]]))
+        return
+
+    if action not in BN_ACTION_ARGS or len(args) != BN_ACTION_ARGS[action]:
+        raise ValueError("amal")
+    uid, ctx = int(args[0]), args[1]
+    _bn_ctx(ctx)
+    user = await _pm_load_user(uid)
+    if not user:
+        await callback.answer("❌ Foydalanuvchi bazada topilmadi.", show_alert=True)
+        return
+    banned = bool((user.get("ban") or {}).get("banned"))
+
+    if action == "u":
+        text, markup = _bn_card_view(user, ctx)
+    elif action == "g":
+        if _is_admin(uid):
             await callback.answer("❌ O'zingizni ban qila olmaysiz!", show_alert=True)
             return
-            
-        # Get current status
-        raw_all = await asyncio.to_thread(database.get_all_users_info_ban, limit=100)
-        current_status = 0
-        for row in raw_all:
-            uid = row[0]
-            is_banned = row[1]
-            if uid == target_id:
-                current_status = is_banned
-                break
-                
-        if current_status:
-            await asyncio.to_thread(database.unban_user, target_id)
-            action_text = "✅ Bandan chiqarildi!"
+        if banned:
+            await callback.answer("ℹ️ User allaqachon banda. Muddatni kartadagi tugma bilan o'zgartiring.", show_alert=True)
+            return
+        text, markup = _bn_duration_view(user, ctx)
+    elif action == "d":
+        text, markup = _bn_mode_view(user, ctx, _bn_dur(args[2]))
+    elif action == "m":
+        dur, mode = _bn_dur(args[2]), _bn_mode(args[3])
+        if mode == "n":
+            text, markup = _bn_reason_view(user, ctx, dur)
         else:
-            await asyncio.to_thread(database.ban_user, target_id)
-            action_text = "🚫 Doimiy ban qilindi!"
-            
-        await callback.answer(f"{action_text} (ID: {target_id})", show_alert=True)
-        
-        # Refresh ro'yxat
-        raw_users = await asyncio.to_thread(database.get_all_users_info_ban, limit=15)
-        users_info = await _resolve_users_info(raw_users)
-        total = await asyncio.to_thread(database.get_users_count)
-        banned_count = await asyncio.to_thread(database.get_banned_count)
-        text = _build_ban_list_text(users_info, total, banned_count)
-        markup = _build_ban_list_keyboard(users_info)
-        try:
-            await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
-        except Exception:
-            pass
+            text, markup = _bn_confirm_view(user, ctx, dur, "s", "-", None)
+    elif action == "r":
+        dur = _bn_dur(args[2])
+        reason, _err = _bn_resolve_reason("n", args[3], None)
+        if args[3] == str(BN_REASON_CUSTOM):
+            raise ValueError("sabab")                          # yozilgan matn "w" orqali keladi
+        text, markup = _bn_confirm_view(user, ctx, dur, "n", args[3], reason)
+    elif action == "w":
+        dur, mode = _bn_dur(args[2]), _bn_mode(args[3])
+        await state.set_state(AdminBanStates.waiting_text)
+        await state.update_data(uid=uid, ctx=ctx, dur=dur, mode=mode)
+        text, markup = _bn_text_prompt_view(user, ctx, dur, mode)
+    elif action == "c":
+        dur, mode, rs = _bn_dur(args[2]), _bn_mode(args[3]), args[4]
+        data = await state.get_data()
+        typed = data.get("text") if (data.get("uid") == uid and data.get("dur") == dur and data.get("mode") == mode) else None
+        reason, err = _bn_resolve_reason(mode, rs, typed)
+        if err:
+            await callback.answer("❌ Yozilgan matn topilmadi. Qaytadan boshlang.", show_alert=True)
+            return
+        await _bn_do_ban(callback, uid, ctx, dur, mode, reason)
+        await state.clear()
+        return
+    elif action == "x":
+        if not banned:
+            await callback.answer("ℹ️ User banda emas.", show_alert=True)
+            return
+        text, markup = _bn_unban_mode_view(user, ctx)
+    elif action == "y":
+        text, markup = _bn_unban_confirm_view(user, ctx, _bn_mode(args[2]))
+    elif action == "z":
+        mode = _bn_mode(args[2])
+        if not banned:
+            await callback.answer("ℹ️ User banda emas.", show_alert=True)
+            return
+        await _bn_do_unban(callback, uid, ctx, mode)
+        return
+    elif action == "e":
+        if not banned:
+            await callback.answer("ℹ️ User banda emas.", show_alert=True)
+            return
+        text, markup = _bn_edit_duration_view(user, ctx)
+    elif action == "f":
+        dur = _bn_dur(args[2])
+        if not banned:
+            await callback.answer("ℹ️ User banda emas.", show_alert=True)
+            return
+        text, markup = _bn_edit_confirm_view(user, ctx, dur)
+    else:                                                      # "h"
+        await _bn_do_change(callback, uid, ctx, _bn_dur(args[2]))
+        return
+    await _pm_edit(callback, text, markup)
+
+
+@dp.callback_query(F.data.startswith("bn:"))
+async def cb_ban_panel(callback: types.CallbackQuery, state: FSMContext):
+    """Ban paneli tugmalari. HAR BIR bosishda ADMIN_ID tekshiriladi."""
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("❌ Siz admin emassiz!", show_alert=True)
+        return
+    try:
+        await _bn_dispatch(callback, state)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Noto'g'ri so'rov. /ban ni qayta oching.", show_alert=True)
+    except Exception:
+        logging.exception("[ADMIN BAN] panelda kutilmagan xato")
+        await callback.answer("⚠️ Xatolik yuz berdi. Qayta urinib ko'ring.", show_alert=True)
+
+
+@dp.message(AdminBanStates.waiting_search, F.text)
+async def bn_search_input(message: types.Message, state: FSMContext):
+    """Qidiruv: ID, @username yoki ism -> user kartasi (bittasi topilsa) yoki natijalar ro'yxati."""
+    if not _is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ Siz admin emassiz!")
+        return
+    await state.clear()
+    users = await asyncio.to_thread(database.admin_search_users, message.text)
+    if not users:
+        await message.answer(
+            "❌ Topilmadi. Faqat botga /start bosgan foydalanuvchilar qidiriladi.",
+            reply_markup=_pm_markup([[_bn_btn("🔍 Qayta qidirish", "s"), _bn_btn("⬅️ Ro'yxatga", "l", "a0")]]))
+        return
+    await _pm_fill_names(users)
+    text, markup = _bn_card_view(users[0], "q") if len(users) == 1 else _bn_search_view(users, message.text)
+    await message.answer(text, reply_markup=markup, parse_mode="HTML")
+
+
+@dp.message(AdminBanStates.waiting_text, F.text)
+async def bn_text_input(message: types.Message, state: FSMContext):
+    """Erkin matn: 📣 da sabab ("✍️ Boshqa"), 🤫 da admin izohi. Matn FSM da saqlanadi, tasdiq oynasi ko'rsatiladi."""
+    if not _is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ Siz admin emassiz!")
+        return
+    data = await state.get_data()
+    text = " ".join((message.text or "").split())
+    if not text:
+        await message.answer("⚠️ Matn bo'sh. Qaytadan yozing.")
+        return
+    if len(text) > database.BAN_REASON_MAX:
+        await message.answer(f"⚠️ Matn juda uzun (ko'pi bilan {database.BAN_REASON_MAX} belgi). Qisqaroq yozing.")
+        return
+    try:
+        uid, ctx, dur, mode = int(data["uid"]), data["ctx"], _bn_dur(data["dur"]), _bn_mode(data["mode"])
+        _bn_ctx(ctx)
+    except (KeyError, ValueError, TypeError):
+        await state.clear()
+        await message.answer("❌ Jarayon topilmadi. /ban ni qayta oching.")
+        return
+    user = await _pm_load_user(uid)
+    if not user:
+        await state.clear()
+        await message.answer("❌ Foydalanuvchi bazada topilmadi.")
+        return
+    await state.update_data(text=text)
+    await state.set_state(None)                                # matn saqlanadi; tasdiqlash tugmasi bosilguncha
+    rs = str(BN_REASON_CUSTOM) if mode == "n" else "t"
+    view_text, markup = _bn_confirm_view(user, ctx, dur, mode, rs, text)
+    await message.answer(view_text, reply_markup=markup, parse_mode="HTML")
+
+
+@dp.message(Command("ban"))
+async def cmd_ban(message: types.Message, state: FSMContext):
+    """Admin: /ban — interaktiv panel; /ban <user_id> [daqiqa] — 📣 OCHIQ ban (sababsiz; muddat bo'lmasa muddatsiz)."""
+    if not _is_admin(message.from_user.id):
+        return await message.answer("❌ Sizda bu buyruqdan foydalanish huquqi yo'q.")
+    parts = message.text.split()
+    if len(parts) < 2:
+        await state.clear()
+        text, markup = _bn_list_view(await _pm_load_list(0, False), False)
+        await message.answer(text, reply_markup=markup, parse_mode="HTML")
+        return
+    try:
+        user_id = int(parts[1])
+        minutes = int(parts[2]) if len(parts) >= 3 else None
+        if minutes is not None and minutes < 1:
+            await message.answer("❌ Xatolik: daqiqalar soni musbat butun son bo'lishi kerak!")
+            return
+        if _is_admin(user_id):
+            await message.answer("❌ O'zingizni ban qila olmaysiz!")
+            return
+        await asyncio.to_thread(database.ban_user, user_id, minutes, database.BAN_MODE_OPEN, None)
+        info = await asyncio.to_thread(database.get_ban_info, user_id)
+        notified = await _admin_notify(user_id, ban_user_notification(info), tag="ADMIN BAN")
+        term = f"{minutes} daqiqaga vaqtinchalik" if minutes else "muddatsiz"
+        await message.answer(
+            f"✅ Foydalanuvchi {user_id} {term} 📣 ochiq ban qilindi.\n"
+            + ("📨 Userga xabar yuborildi." if notified else PM_NOT_DELIVERED_MSG))
+    except ValueError:
+        await message.answer("❌ Xatolik: user_id va daqiqalar soni butun son bo'lishi kerak!")
     except Exception as e:
-        await callback.answer(f"Xatolik: {e}", show_alert=True)
+        logging.exception("[ADMIN BAN] /ban xatosi")
+        await message.answer(f"❌ Xatolik: {html.escape(str(e))}", parse_mode="HTML")
+
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: types.Message):
+    """Admin: /unban <user_id> — 📣 bandan chiqarish (userga "blokdan chiqarildingiz" xabari boradi)."""
+    if not _is_admin(message.from_user.id):
+        return await message.answer("❌ Sizda bu buyruqdan foydalanish huquqi yo'q.")
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer(
+            "Foydalanish: /unban <code>&lt;user_id&gt;</code>\n\n"
+            "Masalan: <code>/unban 12345678</code>",
+            parse_mode="HTML"
+        )
+        return
+    try:
+        user_id = int(parts[1])
+        info = await asyncio.to_thread(database.get_ban_info, user_id)
+        if not info["banned"]:
+            await message.answer(f"ℹ️ Foydalanuvchi {user_id} banda emas.")
+            return
+        await asyncio.to_thread(database.unban_user, user_id)
+        notified = await _admin_notify(user_id, BAN_LIFTED_TEXT, tag="ADMIN BAN")
+        await message.answer(
+            f"✅ Foydalanuvchi {user_id} bandan chiqarildi (📣 xabar bilan).\n"
+            + ("📨 Userga xabar yuborildi." if notified else PM_NOT_DELIVERED_MSG))
+    except ValueError:
+        await message.answer("❌ Xatolik: user_id butun son bo'lishi kerak!")
+    except Exception as e:
+        logging.exception("[ADMIN BAN] /unban xatosi")
+        await message.answer(f"❌ Xatolik: {html.escape(str(e))}", parse_mode="HTML")
 
 
 @dp.message(Command("stats"))
@@ -5166,7 +5825,9 @@ async def process_broadcast_confirmation(callback: types.CallbackQuery, state: F
     
     await state.clear()  # Adminga boshqa ishlarni qilishga ruxsat beramiz
     
-    users = await asyncio.to_thread(database.get_all_users)
+    targets = await asyncio.to_thread(database.get_broadcast_targets)      # banlanganlar chiqarib tashlanadi
+    users = targets["users"]
+    skipped_banned = targets["banned"]
     total = len(users)
     
     progress_msg = await callback.message.edit_text(f"📤 Xabar yuborilmoqda...\n\n👥 Jami: {total}")
@@ -5211,66 +5872,10 @@ async def process_broadcast_confirmation(callback: types.CallbackQuery, state: F
         f"📢 <b>Broadcast tugadi!</b>\n\n"
         f"👥 Jami: {total}\n"
         f"✅ Muvaffaqiyatli: {sent}\n"
-        f"❌ Xatolik (Bloklaganlar/O'chirilganlar): {failed}",
+        f"❌ Xatolik (Bloklaganlar/O'chirilganlar): {failed}\n"
+        f"🚫 Banlangan (o'tkazib yuborildi): {skipped_banned}",
         parse_mode="HTML"
     )
-
-@dp.message(Command("ban"))
-async def cmd_ban(message: types.Message):
-    """Adminga foydalanuvchini ban qilish: /ban yoki /ban <user_id> [minutes]"""
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return await message.answer("❌ Sizda bu buyruqdan foydalanish huquqi yo'q.")
-    parts = message.text.split()
-    if len(parts) < 2:
-        # Interactive Mode
-        raw_users = await asyncio.to_thread(database.get_all_users_info_ban, limit=15)
-        users_info = await _resolve_users_info(raw_users)
-        total = await asyncio.to_thread(database.get_users_count)
-        banned_count = await asyncio.to_thread(database.get_banned_count)
-        text = _build_ban_list_text(users_info, total, banned_count)
-        markup = _build_ban_list_keyboard(users_info)
-        await message.answer(text, reply_markup=markup, parse_mode="HTML")
-        return
-        
-    try:
-        user_id = int(parts[1])
-        minutes = int(parts[2]) if len(parts) >= 3 else None
-        
-        if str(user_id) == str(ADMIN_ID):
-            await message.answer("❌ O'zingizni ban qila olmaysiz!")
-            return
-            
-        await asyncio.to_thread(database.ban_user, user_id, minutes)
-        if minutes:
-            await message.answer(f"✅ Foydalanuvchi {user_id} {minutes} daqiqaga vaqtinchalik ban qilindi.")
-        else:
-            await message.answer(f"✅ Foydalanuvchi {user_id} doimiy ban qilindi.")
-    except ValueError:
-        await message.answer("❌ Xatolik: user_id va daqiqalar soni butun son bo'lishi kerak!")
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
-
-@dp.message(Command("unban"))
-async def cmd_unban(message: types.Message):
-    """Adminga foydalanuvchini bandan chiqarish: /unban <user_id>"""
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return await message.answer("❌ Sizda bu buyruqdan foydalanish huquqi yo'q.")
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer(
-            "Foydalanish: /unban <code>&lt;user_id&gt;</code>\n\n"
-            "Masalan: <code>/unban 12345678</code>",
-            parse_mode="HTML"
-        )
-        return
-    try:
-        user_id = int(parts[1])
-        await asyncio.to_thread(database.unban_user, user_id)
-        await message.answer(f"✅ Foydalanuvchi {user_id} bandan chiqarildi.")
-    except ValueError:
-        await message.answer("❌ Xatolik: user_id butun son bo'lishi kerak!")
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
 
 # ═══════════════════════════════════════════════════════════════════
 # AI CHAT (matnli savol)
@@ -5882,6 +6487,21 @@ async def _api_authenticate(request: web.Request, max_body: int = API_MAX_BODY):
     return user_id, None
 
 
+def _api_ban_response(info: dict, *, ai_chat: bool = False) -> web.Response:
+    """Banlangan user uchun API javobi — /api/* va /api/ai/chat BIR XIL yordamchidan foydalanadi.
+    📣 ochiq ban -> 403 {"error": "banned", "until": ISO | null, "reason": ..., "contact": "@admin" | null}.
+    🤫 sirli ban -> oddiy server xatosi (shu endpointning haqiqiy server xatosi bilan AYNAN bir xil: status, tana, sarlavhalar);
+    javobda ban haqida hech narsa yo'q."""
+    if info.get("mode") == database.BAN_MODE_SILENT:
+        return _ai_chat_error("server") if ai_chat else _api_error(500, "server_error")
+    return _api_json({
+        "ok": False, "error": "banned",
+        "until": info["until"].isoformat() if info.get("until") else None,
+        "reason": info.get("reason"),
+        "contact": ban_contact_handle(),
+    }, 403)
+
+
 async def _api_handle(request: web.Request, name: str, action, *, with_body: bool = False) -> web.Response:
     """with_body=True bo'lsa action(user_id, tana) chaqiriladi (tana — tekshiruvdan o'tgan JSON dict).
     action dict qaytarsa 200 JSON, web.Response qaytarsa (masalan 400) o'sha javob beriladi."""
@@ -5889,9 +6509,9 @@ async def _api_handle(request: web.Request, name: str, action, *, with_body: boo
     if error is not None:
         return error
     try:
-        banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
-        if banned:
-            return _api_error(403, "banned")
+        ban = await asyncio.to_thread(database.get_ban_info, user_id)
+        if ban["banned"]:
+            return _api_ban_response(ban)
         result = await (action(user_id, request["api_payload"]) if with_body else action(user_id))
         return result if isinstance(result, web.Response) else _api_json(result)
     except Exception:
@@ -6167,10 +6787,10 @@ async def api_ai_chat(request: web.Request) -> web.Response:
     consumed_free = consumed_daily = consumed_bonus = False
     active = False
     try:
-        banned, *_ = await asyncio.to_thread(database.is_user_banned, user_id)
-        if banned:
-            result = "forbidden"
-            return _ai_chat_error("forbidden")
+        ban = await asyncio.to_thread(database.get_ban_info, user_id)
+        if ban["banned"]:
+            result = "banned"                                   # logda; javob — _api_ban_response (ochiq: 403, sirli: server xatosi)
+            return _api_ban_response(ban, ai_chat=True)
         wait = ai_chat_throttle.check(user_id)          # soniyalik / daqiqalik cheklov, uzluksiz bosishda blok
         if wait:
             result = "rate"
@@ -6383,13 +7003,7 @@ async def main():
             print(f"❌ Modellarni yuklashda xatolik: {e}")
             
     # Middleware-larni ro'yxatdan o'tkazish
-    dp.message.outer_middleware(ThrottlingMiddleware())
-    dp.callback_query.outer_middleware(ThrottlingMiddleware())
-    dp.message.outer_middleware(BanMiddleware())
-    dp.callback_query.outer_middleware(BanMiddleware())
-    dp.callback_query.outer_middleware(AnswerCallbackMiddleware())
-    dp.message.outer_middleware(FsmResetMiddleware())
-    # dp.message.outer_middleware(DailyBonusMiddleware())
+    setup_middlewares(dp)           # Ban -> Throttling -> AnswerCallback -> FsmReset (tartib muhim: ban birinchi)
     
     await set_bot_commands(bot)
     print("✅ Bot ishga tushdi!")
@@ -6414,6 +7028,10 @@ async def main():
     task_expiry = asyncio.create_task(premium_expiry_loop())  # Premium tugash eslatmasi (polling va webhook rejimida ham)
     background_tasks.add(task_expiry)
     task_expiry.add_done_callback(background_tasks.discard)
+
+    task_ban_expiry = asyncio.create_task(ban_expiry_loop())  # muddati tugagan banlarni tozalash va xabar (polling / webhook)
+    background_tasks.add(task_ban_expiry)
+    task_ban_expiry.add_done_callback(background_tasks.discard)
     
     # Yangi Daily Engagement tizimi
     from services import engagement_scheduler
