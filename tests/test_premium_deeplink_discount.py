@@ -17,6 +17,7 @@ os.environ.setdefault("BOT_TOKEN", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz12345678
 os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot  # noqa: E402
+from tests.discount_helpers import discount_info  # noqa: E402
 
 USER_ID = 900000601
 FREE_VIEW = bot.database.admin_premium_view(0, None, None)      # /start Premium holatini o'qiydi
@@ -43,6 +44,7 @@ class DeepLinkBase(unittest.TestCase):
         with mock.patch.dict(os.environ, env or {"PRO_MONTHLY_STARS": "150"}), \
              mock.patch.object(bot.database, "register_user"), \
              mock.patch.object(bot.database, "get_premium_view", return_value=view), \
+             mock.patch.object(bot.database, "get_discount_info", return_value=discount_info(has_discount)), \
              mock.patch.object(bot.database, "has_discount", has_discount_mock):
             asyncio.run(bot.cmd_start(message, state))
         return message, has_discount_mock
@@ -60,7 +62,28 @@ class DeepLinkDiscountTest(DeepLinkBase):
         self.assertEqual(kw["prices"][0].amount, 75)
         self.assertEqual(kw["currency"], "XTR")
         self.assertIn("50% chegirma", kw["title"])
-        # Foydalanuvchiga ko'rsatiladigan narx ham chegirmali
+        # Foydalanuvchiga ko'rsatiladigan narx ham chegirmali: chizilgan eski narx, yangi narx va qolgan vaqt
+        text = message.answer.await_args_list[0].args[0]
+        self.assertIn("75 Telegram Stars", text)
+        self.assertIn("<s>150⭐</s>", text)
+        self.assertIn("5 soat qoldi", text)
+
+    def test_deep_link_still_sends_invoice_when_expiry_cannot_be_read(self):
+        # Muddat faqat ko'rsatish uchun: o'qib bo'lmasa ham invoice yuboriladi (narx has_discount bilan hal bo'lgan)
+        message = mock.MagicMock()
+        message.text = "/start buy_plus_30"
+        message.from_user = SimpleNamespace(id=USER_ID, first_name="Ali", last_name=None, username="ali")
+        message.answer = mock.AsyncMock()
+        message.answer_invoice = mock.AsyncMock()
+        state = mock.MagicMock()
+        state.clear = mock.AsyncMock()
+        with mock.patch.dict(os.environ, {"PRO_MONTHLY_STARS": "150"}), \
+             mock.patch.object(bot.database, "register_user"), \
+             mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW), \
+             mock.patch.object(bot.database, "get_discount_info", side_effect=RuntimeError("db")), \
+             mock.patch.object(bot.database, "has_discount", return_value=True):
+            asyncio.run(bot.cmd_start(message, state))
+        self.assertEqual(self.invoice(message)["prices"][0].amount, 75)
         self.assertIn("75 Telegram Stars", message.answer.await_args_list[0].args[0])
 
     def test_user_without_discount_gets_full_price(self):

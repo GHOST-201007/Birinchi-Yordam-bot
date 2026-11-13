@@ -231,7 +231,7 @@ class InvoiceEndpointTest(InvoiceBase):
         old_state = {"cooldown_seconds", "daily_claimed", "ok", "prize", "score", "streak"}
         self.assertEqual(set(data), old_state | {"ai_limit", "ai_remaining", "ai_bonus", "is_premium", "premium_type",
                                                  "prize_type", "premium_expires_at", "premium_unlimited",
-                                                 "premium_days_left"})
+                                                 "premium_days_left", "discount"})
         resp, data = await self.post("/api/spin/claim")
         # Eski maydonlar (is_super, message, ok, score) saqlangan; yangi: prize, prize_type, points, tip
         self.assertEqual(sorted(data), ["is_super", "message", "ok", "points", "prize", "prize_type", "score", "tip"])

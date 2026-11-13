@@ -21,6 +21,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot  # noqa: E402
 import database  # noqa: E402
+from tests.discount_helpers import discount_info  # noqa: E402
 
 UZ = dt.timezone(dt.timedelta(hours=5))
 NOW = dt.datetime(2026, 11, 12, 12, 0, tzinfo=UZ)
@@ -351,6 +352,7 @@ class ExtendButtonListTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch.dict(os.environ, {**ENV, "MINI_APP_URL": "https://app.example/index.html"}), \
                 mock.patch.object(database, "get_score", return_value=score), \
                 mock.patch.object(database, "has_discount", return_value=discount), \
+                mock.patch.object(database, "get_discount_info", return_value=discount_info(discount)), \
                 mock.patch.object(bot, "get_web_app_url", mock.AsyncMock(return_value="https://x/app")):
             await bot._show_premium_sales(target, view)
         args, kwargs = target.answer.await_args
@@ -382,7 +384,7 @@ class ExtendButtonListTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_discount_button_for_active_plus_is_an_extension(self):
         _text, buttons = await self.pages(active("plus", NOW + dt.timedelta(days=5)), discount=True)
-        self.assertEqual(buttons[0], ("🎁 Premium Pro — yana 30 kun (75 ⭐, -50%)", "buy_plus_30_discount"))
+        self.assertEqual(buttons[0], ("🔄 Pro — yana 30 kun — 75⭐ (−50%)", "buy_plus_30_discount"))
         _text, buttons = await self.pages(active("ultra", NOW + dt.timedelta(days=5)), discount=True)
         self.assertNotIn("buy_plus_30_discount", [b[1] for b in buttons])
 

@@ -25,6 +25,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot as bot_mod  # noqa: E402
 import database  # noqa: E402
+from tests.discount_helpers import discount_info  # noqa: E402
 from tests.sqlite_db import SqliteDB  # noqa: E402
 
 UZ = dt.timezone(dt.timedelta(hours=5))
@@ -500,6 +501,7 @@ class MyPremiumPageTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(database, "get_premium_view", return_value=v), \
                 mock.patch.object(database, "get_ai_quota_detail", return_value=quota), \
                 mock.patch.object(database, "has_discount", return_value=discount), \
+                mock.patch.object(database, "get_discount_info", return_value=discount_info(discount)), \
                 mock.patch.object(database, "get_score", return_value=7), \
                 mock.patch.object(bot_mod, "get_web_app_url", mock.AsyncMock(return_value="https://x/app")):
             await bot_mod._show_premium_page(target)
@@ -559,10 +561,12 @@ class MyPremiumPageTest(unittest.IsolatedAsyncioTestCase):
         _, markup = self.sent(await self.page(view("pro", days=5), discount=True))
         self.assertEqual(self.buttons(markup)[0][1], "buy_plus_30_discount")        # chegirma tugmasi birinchi
         text, _ = self.sent(await self.page(view("pro", days=5), discount=True))
-        self.assertIn("SUPER PRIZ chegirmasi bor", text)
+        self.assertIn("SUPER PRIZ chegirmasi:", text)
+        self.assertIn("<s>150⭐</s> <b>75⭐</b>", text)
+        self.assertIn("5 soat qoldi", text)
         # Faol ichki plus (ko'rinadigan Pro): chegirma UZAYTIRISH sifatida ishlaydi; ultra (pastroq tarif) — yo'q
         text, markup = self.sent(await self.page(view("plus", days=5), discount=True))
-        self.assertEqual(self.buttons(markup)[0][:2], ("🎁 Premium Pro — yana 30 kun (75 ⭐, -50%)", "buy_plus_30_discount"))
+        self.assertEqual(self.buttons(markup)[0][:2], ("🔄 Pro — yana 30 kun — 75⭐ (−50%)", "buy_plus_30_discount"))
         _, markup = self.sent(await self.page(view("ultra", days=5), discount=True))
         self.assertNotIn("buy_plus_30_discount", [b[1] for b in self.buttons(markup)])
         _, markup = self.sent(await self.page(view("pro", days=5), discount=False))

@@ -604,11 +604,61 @@ def get_stars_tariffs() -> dict:
 DISCOUNT_PAYLOAD = "PLUS_30_DAYS_DISCOUNT"
 
 
-def plus_discount_price(plus_price: int | None = None) -> int:
-    """Ichki plus (ko'rinadigan Pro) 30 kun narxining 50% i (yuqoriga yaxlitlanadi, kamida 1 Stars)."""
-    if plus_price is None:
-        plus_price = int(os.getenv("PRO_MONTHLY_STARS", "150"))
-    return max(1, (plus_price + 1) // 2)
+plus_discount_price = database.plus_discount_price      # YAGONA formula: database.py (ikkinchi formula yo'q)
+
+
+def format_discount_left(expires_at, now=None) -> str:
+    """Chegirmaning qolgan vaqti — YAGONA format: "23 soat 40 daqiqa", "5 soat", 1 soatdan kam bo'lsa "40 daqiqa".
+    Daqiqaga yuqoriga yaxlitlanadi (yangi 24 soatlik chegirma "24 soat" deb ko'rinadi)."""
+    now = now or database.get_uz_now()
+    total = max(0, math.ceil((expires_at - now).total_seconds() / 60))
+    hours, minutes = divmod(total, 60)
+    if hours:
+        return f"{hours} soat" + (f" {minutes} daqiqa" if minutes else "")
+    return f"{minutes} daqiqa"
+
+
+def _pro_label() -> str:
+    """"💎 Pro" — ichki plus ning ko'rinadigan nomi (TIER_DISPLAY / TIER_ICON)."""
+    return f"{TIER_ICON['plus']} {TIER_DISPLAY['plus']}"
+
+
+def super_prize_offer_text(info: dict) -> str:
+    """Yutgan ZAHOTI ko'rsatiladigan SUPER PRIZ taklifi (HTML): narx, 24 soatlik muddat. info — get_discount_info."""
+    until = info["expires_at"].astimezone(timezone(timedelta(hours=5)))
+    return (
+        f"🏆 <b>SUPER PRIZ!</b> {_pro_label()} (30 kun) — <b>50% chegirma</b>\n"
+        f"<s>{info['old_price']}⭐</s> → <b>{info['price']}⭐</b>\n"
+        f"⏳ Taklif {database.DISCOUNT_HOURS} soat amal qiladi: {until:%d.%m.%Y %H:%M} gacha"
+    )
+
+
+def discount_status_block(info: dict, now=None) -> str:
+    """24 soat davomida Pro sotiladigan HAR BIR joyda (tarif sahifasi, "Mening obunam", AI limit taklifi...) ko'rinadigan
+    blok (HTML): chizilgan eski narx, yangi narx va qolgan vaqt."""
+    return (
+        f"🏆 <b>SUPER PRIZ chegirmasi:</b> {_pro_label()} (30 kun) — <s>{info['old_price']}⭐</s> "
+        f"<b>{info['price']}⭐</b> (−50%)\n"
+        f"⏳ {format_discount_left(info['expires_at'], now)} qoldi"
+    )
+
+
+async def pro_discount_for(user_id: int, view=None):
+    """Foydalanuvchiga HOZIR ko'rsatilishi kerak bo'lgan SUPER PRIZ chegirmasi (get_discount_info) yoki None.
+    None: chegirma yo'q / muddati o'tgan YOKI Pro olish mumkin emas (premium_purchase_decision: Ultra yoki muddatsiz Premium) —
+    shunda chegirmali taklif ko'rsatilmaydi. view berilmasa o'qiladi."""
+    try:
+        if not await asyncio.to_thread(database.has_discount, user_id):
+            return None
+        if view is None:
+            view = await _load_premium_view(user_id)
+        if not premium_purchase_decision(view, "plus").allowed:
+            return None
+        info = await asyncio.to_thread(database.get_discount_info, user_id)
+    except Exception:
+        logging.warning("Chegirma holatini o'qib bo'lmadi (user=%s)", user_id, exc_info=True)
+        return None
+    return info if info["active"] else None
 
 
 def discount_plus_offer() -> tuple:
@@ -620,6 +670,9 @@ def discount_plus_offer() -> tuple:
         DISCOUNT_PAYLOAD,
         plus_discount_price(),
     )
+
+
+DISCOUNT_EXPIRED_TEXT = "⏳ Chegirma muddati tugagan. Pro tarifini oddiy narxda olishingiz mumkin."
 
 
 class OfferUnavailable(Exception):
@@ -1362,9 +1415,13 @@ def get_diseases_keyboard(page: int = 1):
     builder.adjust(*layout)
     return builder.as_markup()
 
-def get_premium_keyboard():
+def get_premium_keyboard(discount: dict | None = None):
+    """"💎 Premium" tugmasi. discount (faol SUPER PRIZ) bo'lsa — undan OLDIN chegirmali Pro tugmasi."""
     builder = InlineKeyboardBuilder()
+    if discount:
+        builder.button(text=premium_discount_button_text(False, discount), callback_data="buy_plus_30_discount")
     builder.button(text="💎 Premium", callback_data="buy_premium")
+    builder.adjust(1)
     return builder.as_markup()
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1381,8 +1438,18 @@ def ai_tier_limits() -> dict:
             "ultra": int(os.environ.get("ULTRA_AI_DAILY_LIMIT", "100"))}
 
 
-def premium_upsell_text(is_premium: bool, premium_type: str | None) -> tuple[str, bool]:
-    """(matn, Premium tugmasi kerakmi). Bepul — bir martalik savol ishlatilgan; Premium — bugungi limit tugagan."""
+def premium_upsell_text(is_premium: bool, premium_type: str | None, discount: dict | None = None) -> tuple[str, bool]:
+    """(matn, Premium tugmasi kerakmi). Bepul — bir martalik savol ishlatilgan; Premium — bugungi limit tugagan.
+    discount — faol SUPER PRIZ chegirmasi: matn oxiridagi "Quyidagi tugmani bosing" dan oldin chegirma bloki."""
+    text, with_button = _premium_upsell_base(is_premium, premium_type)
+    if discount and with_button:
+        head, sep, tail = text.rpartition("Quyidagi tugmani bosing:")
+        if sep:
+            text = head + discount_status_block(discount) + "\n\n" + sep + tail
+    return text, with_button
+
+
+def _premium_upsell_base(is_premium: bool, premium_type: str | None) -> tuple[str, bool]:
     limits = ai_tier_limits()
     if is_premium:
         # Muddatsiz premium (premium_type yo'q / 'free') — database'dagidek Ultra hisoblanadi
@@ -1417,15 +1484,23 @@ def premium_upsell_text(is_premium: bool, premium_type: str | None) -> tuple[str
 
 async def premium_upsell(event):
     """AI limiti tugaganda: bepul foydalanuvchiga Premium taklifi, Premium'ga — limit vaqti (va yuqoriroq tarif)."""
-    is_prem, prem_type = False, None
+    is_prem, _exp, prem_type = False, None, None
     user = getattr(event, "from_user", None)
     if user is not None:
         try:
             is_prem, _exp, prem_type = await asyncio.to_thread(database.get_premium_info, user.id)
         except Exception:
             logging.exception("premium_upsell: premium holatini o'qib bo'lmadi (user=%s)", user.id)
-    text, with_button = premium_upsell_text(bool(is_prem), prem_type)
-    markup = get_premium_keyboard() if with_button else None
+    discount = None
+    if user is not None:
+        try:
+            # Pro olish mumkinmi: Premium holatidan (qo'shimcha DB so'rovisiz): Ultra / muddatsiz bo'lsa chegirma ko'rsatilmaydi
+            view = database.admin_premium_view(bool(is_prem), prem_type, _exp)
+            discount = await pro_discount_for(user.id, view)
+        except Exception:
+            logging.warning("premium_upsell: chegirmani o'qib bo'lmadi (user=%s)", user.id, exc_info=True)
+    text, with_button = premium_upsell_text(bool(is_prem), prem_type, discount)
+    markup = get_premium_keyboard(discount) if with_button else None
     if isinstance(event, types.Message):
         await event.answer(text, reply_markup=markup, parse_mode="HTML")
     else:
@@ -1503,10 +1578,23 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 return
             # SUPER PRIZ chegirmasi (buy_plus_30) ham shu yagona funksiyada hisobga olinadi
             title, desc, payload, stars = await build_premium_offer(user.id, action)
+            price_line = f"💰 Narxi: <b>{stars} Telegram Stars</b>"
+            if payload == DISCOUNT_PAYLOAD:
+                # SUPER PRIZ: chizilgan eski narx va qolgan vaqt
+                try:
+                    discount_info = await asyncio.to_thread(database.get_discount_info, user.id)
+                except Exception:
+                    # Faqat ko'rsatish uchun: o'qib bo'lmasa ham invoice yuboriladi (narx yuqorida allaqachon hal bo'lgan)
+                    logging.warning("Deep link: chegirma muddatini o'qib bo'lmadi (user=%s)", user.id, exc_info=True)
+                    discount_info = None
+                if discount_info:
+                    price_line = f"💰 Narxi: <s>{discount_info['old_price']}⭐</s> <b>{stars} Telegram Stars</b> (−50%)"
+                    if discount_info["active"]:
+                        price_line += f"\n⏳ {format_discount_left(discount_info['expires_at'])} qoldi"
 
             await message.answer(
                 f"💎 <b>{title}</b>\n\n{desc}\n\n"
-                f"💰 Narxi: <b>{stars} Telegram Stars</b>\n\n"
+                f"{price_line}\n\n"
                 f"To'lov uchun quyidagi invoice ga bosing:",
                 parse_mode="HTML",
                 reply_markup=get_start_keyboard(premium_view)
@@ -1556,7 +1644,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
             reply_markup = get_start_keyboard(premium_view)
             if result["ok"] and result["prize_type"] == "super":
                 builder = InlineKeyboardBuilder()
-                builder.button(text="💎 Premium xarid qilish", callback_data="buy_premium")
+                discount = result.get("discount")
+                decision = premium_purchase_decision(premium_view, "plus")
+                if discount and discount["active"] and decision.allowed:
+                    # Yutgan ZAHOTI: narx + 24 soatlik muddat + to'g'ridan-to'g'ri invoice tugmasi (bitta bosish)
+                    msg = super_prize_offer_text(discount)
+                    builder.button(text=premium_discount_button_text(decision.extension, discount),
+                                   callback_data="buy_plus_30_discount")
+                else:                                       # Pro olish mumkin emas: mavjud mantiqdagi matn va tugma
+                    builder.button(text="💎 Premium xarid qilish", callback_data="buy_premium")
                 builder.adjust(1)
                 reply_markup = builder.as_markup()
 
@@ -3119,12 +3215,13 @@ def premium_buy_button_text(tier: str, extension: bool) -> str:
     return f"{TIER_ICON[tier]} {stars} Stars → {days} kun Premium {TIER_DISPLAY[tier]}"
 
 
-def premium_discount_button_text(extension: bool) -> str:
-    """SUPER PRIZ chegirmali tugma (ichki plus, 30 kun, -50%)."""
-    stars = plus_discount_price()
+def premium_discount_button_text(extension: bool, info: dict | None = None) -> str:
+    """SUPER PRIZ chegirmali Pro tugmasi: "💎 Pro — 75⭐ (−50%)"; joriy Pro uzaytirilsa: "🔄 Pro — yana 30 kun — 75⭐ (−50%)".
+    Chegirma paytida BU tugma oddiy 150⭐ Pro tugmasining O'RNIGA turadi (ikkita Pro tugmasi chalkashtirardi)."""
+    stars = info["price"] if info else plus_discount_price()
     if extension:
-        return f"🎁 Premium {TIER_DISPLAY['plus']} — yana 30 kun ({stars} ⭐, -50%)"
-    return f"🎁 {stars} Stars → 30 kun Premium {TIER_DISPLAY['plus']} (-50%)"
+        return f"🔄 {TIER_DISPLAY['plus']} — yana 30 kun — {stars}⭐ (−50%)"
+    return f"{TIER_ICON['plus']} {TIER_DISPLAY['plus']} — {stars}⭐ (−50%)"
 
 
 def purchasable_premium_plans(view) -> list:
@@ -3145,16 +3242,21 @@ _SALES_TIER_FEATURES = {
 }
 
 
-def _sales_tier_block(tier: str) -> str:
+def _sales_tier_block(tier: str, discount: dict | None = None) -> str:
     name = TIER_DISPLAY[tier]
+    if discount and tier == "plus":                       # SUPER PRIZ: Pro narxi chizilgan eski va yangi narx bilan
+        price = f"<s>{discount['old_price']}⭐</s> {discount['price']}⭐"
+    else:
+        price = f"{_plan_stars(tier)} ⭐"
     lines = [f"{TIER_ICON[tier]} <b>PREMIUM {name.upper()}</b>",
-             f"• <b>{_plan_stars(tier)} ⭐ → {PREMIUM_TIER_DAYS[tier]} kun Premium {name}</b>"]
+             f"• <b>{price} → {PREMIUM_TIER_DAYS[tier]} kun Premium {name}</b>"]
     lines += [f"  • {feature}" for feature in _SALES_TIER_FEATURES[tier]]
     return "\n".join(lines) + "\n\n"
 
 
-def _premium_sales_text(view, plans: list, score: int) -> str:
-    """Sotuv / uzaytirish sahifasi matni. Faqat SOTIB OLISH MUMKIN bo'lgan tariflar tasvirlanadi."""
+def _premium_sales_text(view, plans: list, score: int, discount: dict | None = None) -> str:
+    """Sotuv / uzaytirish sahifasi matni. Faqat SOTIB OLISH MUMKIN bo'lgan tariflar tasvirlanadi. discount — faol SUPER PRIZ
+    chegirmasi (Pro olish mumkin bo'lsa): matn boshida blok, Pro qatorida chizilgan eski narx."""
     active = bool(view and view.get("active"))
     if active and not plans:                              # muddatsiz Premium
         return f"ℹ️ <b>{PREMIUM_UNLIMITED_BLOCK_TEXT}</b>"
@@ -3171,12 +3273,14 @@ def _premium_sales_text(view, plans: list, score: int) -> str:
             "💎 <b>PREMIUM OBS TARIFLARI</b>\n\n"
             "O'zingizga mos tarifni tanlang va barcha tibbiy imkoniyatlarga ega bo'ling:\n\n"
         )
+    if discount:
+        head = discount_status_block(discount) + "\n\n" + head
     return (
         head
         + "🎁 <b>BEPUL REWARD</b>\n"
         + f"• <b>{redeem_offer_text()}</b>\n"
         + "  <i>Botda to'plagan ballaringiz evaziga!</i>\n\n"
-        + "".join(_sales_tier_block(tier) for tier, _ in plans)
+        + "".join(_sales_tier_block(tier, discount) for tier, _ in plans)
         + f"🏆 <b>Sizning ballaringiz:</b> <b>{score}</b> ball\n\n"
         + "👇 Sotib olish yoki almashtirish uchun tugmani bosing:"
     )
@@ -3189,10 +3293,11 @@ async def _show_my_premium_page(message_or_cb, user_id: int, view: dict) -> None
     builder = InlineKeyboardBuilder()
     # SUPER PRIZ chegirmasi bor va ichki plus (ko'rinadigan Pro) sotib olish mumkin bo'lsa (uzaytirish ham) — tugma
     plus_decision = premium_purchase_decision(view, "plus")
-    if plus_decision.allowed and await asyncio.to_thread(database.has_discount, user_id):
-        text += (f"\n\n🎁 <b>Sizda SUPER PRIZ chegirmasi bor:</b> 30 kun Premium {TIER_DISPLAY['plus']} — "
-                 f"{plus_discount_price()} Stars")
-        builder.button(text=premium_discount_button_text(plus_decision.extension), callback_data="buy_plus_30_discount")
+    discount = await pro_discount_for(user_id, view)
+    if discount:
+        text += "\n\n" + discount_status_block(discount)
+        builder.button(text=premium_discount_button_text(plus_decision.extension, discount),
+                       callback_data="buy_plus_30_discount")
     if purchasable_premium_plans(view):                   # muddatsiz Premiumda "Uzaytirish" yo'q
         builder.button(text="🔄 Uzaytirish", callback_data="premium_extend")
     app_url = os.getenv("MINI_APP_URL", MINI_APP_URL)
@@ -3226,17 +3331,10 @@ async def _show_premium_sales(message_or_cb, view=None):
     active = bool(view and view.get("active"))
     score = await asyncio.to_thread(database.get_score, user_id)
 
-    text = _premium_sales_text(view, plans, score)
+    discount = await pro_discount_for(user_id, view)       # faol chegirma (va Pro olish mumkin) yoki None
+    text = _premium_sales_text(view, plans, score, discount)
     web_app_url = await get_web_app_url(user_id, page="wheel")
     builder = InlineKeyboardBuilder()
-
-    plan_map = dict(plans)
-    if "plus" in plan_map and await asyncio.to_thread(database.has_discount, user_id):
-        text = (
-            f"🎁 <b>Sizda SUPER PRIZ chegirmasi bor!</b> 30 kun Premium {TIER_DISPLAY['plus']} — "
-            f"<s>{_plan_stars('plus')}</s> <b>{plus_discount_price()} Stars</b> (bir martalik)\n\n" + text
-        )
-        builder.button(text=premium_discount_button_text(plan_map["plus"]), callback_data="buy_plus_30_discount")
 
     if not (active and not plans):                         # muddatsiz Premiumga ball almashtirish ham kerak emas
         if score >= 100:
@@ -3246,7 +3344,11 @@ async def _show_premium_sales(message_or_cb, view=None):
                            callback_data="redeem_points_info")
 
     for tier, extension in plans:
-        builder.button(text=premium_buy_button_text(tier, extension), callback_data=PREMIUM_TIER_ACTIONS[tier])
+        if tier == "plus" and discount:
+            # SUPER PRIZ: Pro tugmasi faqat chegirmali (oddiy 150⭐ Pro tugmasi 24 soat davomida ko'rsatilmaydi)
+            builder.button(text=premium_discount_button_text(extension, discount), callback_data="buy_plus_30_discount")
+        else:
+            builder.button(text=premium_buy_button_text(tier, extension), callback_data=PREMIUM_TIER_ACTIONS[tier])
 
     if web_app_url:
         builder.button(text="🎡 Omad barabani", web_app=types.WebAppInfo(url=web_app_url))
@@ -3387,7 +3489,7 @@ async def process_pay_stars_tariff(callback: types.CallbackQuery):
             title, desc, payload, stars = await build_premium_offer(user_id, action)
         except OfferUnavailable as exc:
             if exc.code == "no_discount":
-                await callback.answer("ℹ️ Sizda faol chegirma yo'q.", show_alert=True)
+                await callback.answer(DISCOUNT_EXPIRED_TEXT, show_alert=True)
             else:
                 await callback.answer("⚠️ Noto'g'ri tarif tanlandi.", show_alert=True)
             return
@@ -3443,10 +3545,7 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
         if pre_checkout_query.invoice_payload == DISCOUNT_PAYLOAD:
             if not await asyncio.to_thread(database.has_discount, user_id):
                 logging.warning(f"Pre-checkout rad etildi (chegirma yo'q yoki ishlatilgan): user={user_id}")
-                await pre_checkout_query.answer(
-                    ok=False,
-                    error_message="Chegirma allaqachon ishlatilgan. /premium orqali oddiy tarifni tanlang."
-                )
+                await pre_checkout_query.answer(ok=False, error_message=DISCOUNT_EXPIRED_TEXT)
                 return
 
         # Xuddi shu xarid qoidasi (tugma va /api/invoice bilan YAGONA funksiya): to'lov qilingandan KEYIN emas, OLDIN rad etiladi
@@ -6520,6 +6619,30 @@ async def _api_handle(request: web.Request, name: str, action, *, with_body: boo
         return _api_error(500, "server_error")
 
 
+def _discount_payload(info: dict) -> dict:
+    """Mini App uchun SUPER PRIZ chegirmasi: {"active", "price", "old_price", "expires_at" (ISO, Toshkent vaqti | null),
+    "seconds_left"}. seconds_left — mijoz soatiga bog'liq bo'lmasligi uchun (server yagona manba, mijoz vaqti faqat ko'rsatish)."""
+    active = bool(info["active"])
+    return {
+        "active": active,
+        "price": info["price"],
+        "old_price": info["old_price"],
+        "expires_at": info["expires_at"].isoformat() if active and info.get("expires_at") else None,
+        "seconds_left": int(info.get("seconds_left", 0)) if active else 0,
+    }
+
+
+async def _discount_fields(user_id: int, info: dict | None = None) -> dict:
+    """{"discount": {...}} — /api/state, _premium_quota_fields va spin claim (super) uchun. O'qib bo'lmasa — faol emas."""
+    if info is None:
+        try:
+            info = await asyncio.to_thread(database.get_discount_info, user_id)
+        except Exception:
+            logging.warning("API: chegirma holatini o'qib bo'lmadi (user=%s)", user_id, exc_info=True)
+            info = database._discount_view(0, None)
+    return {"discount": _discount_payload(info)}
+
+
 async def _premium_quota_fields(user_id: int) -> dict:
     """Header'dagi Premium ko'rsatkichi, "Mening Premiumim" kartasi va AI tabi hisoblagichi uchun (faqat o'qish).
     ai_remaining barabandan yutilgan bonusni ham o'z ichiga oladi, ai_bonus esa alohida; ai_limit — faqat tarif limiti."""
@@ -6536,6 +6659,7 @@ async def _premium_quota_fields(user_id: int) -> dict:
         "ai_remaining": ai_remaining,
         "ai_limit": ai_limit,
         "ai_bonus": ai_bonus,
+        **(await _discount_fields(user_id)),               # SUPER PRIZ chegirmasi (faol emas bo'lsa ham maydon bor)
     }
 
 
@@ -6594,6 +6718,9 @@ async def _api_spin_claim_action(user_id: int) -> dict:
         "points": result["points"] if ok else 0,      # berilgan ball (ball bo'lmagan turlarda 0)
         "tip": result["tip"] if ok else None,         # kun maslahati (oddiy matn; mijoz textContent bilan qo'yadi)
     }
+    if ok and prize_type == "super":
+        # Yangi chegirma (narx, muddat) — mijoz taklif kartasini qo'shimcha /api/state so'rovisiz chizadi
+        response.update(await _discount_fields(user_id, result.get("discount")))
     if ok and prize_type in ("ai", "pro_day"):
         # Yangi AI hisoblagich / Premium holati — qo'shimcha /api/state so'rovisiz yangilanishi uchun
         response.update(await _premium_quota_fields(user_id))
