@@ -930,6 +930,28 @@
         </div>
     </div>
 
+    <!-- Bloklangan foydalanuvchi (📣 ochiq ban) — to'liq ekran (app.js showBanScreen) -->
+    <section class="block-screen" id="ban-screen" role="alertdialog" aria-modal="true" aria-labelledby="ban-title" hidden>
+        <div class="block-card">
+            <span class="block-icon"><svg class="icon" aria-hidden="true"><use href="#i-ban"/></svg></span>
+            <h1 class="block-title" id="ban-title">Siz bloklangansiz</h1>
+            <p class="block-line" id="ban-until"></p>
+            <p class="block-line" id="ban-reason" hidden></p>
+            <p class="block-line block-contact" id="ban-contact" hidden></p>
+        </div>
+    </section>
+
+    <!-- Server xatosi — to'liq ekran. Ban uchun alohida emas: hamma server xatolari shu ekranni ko'rsatadi (app.js showErrorScreen) -->
+    <section class="block-screen" id="error-screen" role="alertdialog" aria-modal="true" aria-labelledby="error-title" hidden>
+        <div class="block-card">
+            <span class="block-icon block-icon--warning"><svg class="icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg></span>
+            <h1 class="block-title" id="error-title">Xatolik yuz berdi</h1>
+            <p class="block-line">Keyinroq urinib ko'ring.</p>
+            <button type="button" class="btn-primary block-btn" id="error-retry">Qayta urinish</button>
+            <p class="block-line block-hint">Shoshilinch holatda — 103</p>
+        </div>
+    </section>
+
     <!-- Script ulanishi -->
     <script src="app.js?v=__JS_VERSION__"></script>
 </body>

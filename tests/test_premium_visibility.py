@@ -617,6 +617,8 @@ class ExpiryReminderTest(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(bot_mod, "bot", self.fake_bot),
             mock.patch.object(bot_mod, "PREMIUM_EXPIRY_SEND_PAUSE", 0),
             mock.patch.object(database, "is_user_banned", side_effect=lambda uid: (uid in self.banned, "")),
+            mock.patch.object(database, "get_ban_info", side_effect=lambda uid: {
+                "banned": uid in self.banned, "mode": "open" if uid in self.banned else None, "until": None, "reason": None}),
             mock.patch.dict(os.environ, {"MINI_APP_URL": APP_URL}),
         ]
         for p in patches:

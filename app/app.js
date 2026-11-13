@@ -122,6 +122,81 @@ function reportError(where, err) {
 
 const BOT_USERNAME = "Birinchiyordam1Bot";
 
+// ═══════════════════════════════════════════════════════════════════
+// BLOKLANGAN FOYDALANUVCHI VA SERVER XATOSI — to'liq ekranli sahifalar (index.html: #ban-screen, #error-screen).
+//  * 📣 OCHIQ ban: server 403 {"error":"banned","until","reason","contact"} qaytaradi -> "Siz bloklangansiz" (muddat, sabab,
+//    murojaat). Boshqa tablar va tugmalar ishlamaydi (qolgan hamma narsa inert, Telegram tugmalari yopiladi).
+//  * 🤫 SIRLI ban serverda oddiy server xatosi ({"error":"server_error"}) bo'lib ko'rinadi: ilova ochilishida (/api/state)
+//    shunday javob kelsa — "Xatolik yuz berdi" ekrani. Ekran ban uchun alohida EMAS: har qanday server xatosi uchun
+//    (ban haqida hech narsa bildirmaydi). Tarmoq uzilishi / 502 (JSON'siz) esa oldingi zaxira rejimida qoladi.
+// ═══════════════════════════════════════════════════════════════════
+let appLocked = false;
+
+// "2026-11-20T14:00:00+05:00" -> "20.11.2026 14:00" (server Toshkent vaqtida beradi; qurilma mintaqasiga bog'liq emas)
+function formatBanUntil(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || '');
+    return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : '';
+}
+
+function lockApp(screenId) {
+    appLocked = true;
+    Array.from(document.body.children).forEach((el) => {
+        if (el.tagName !== 'SCRIPT' && el.id !== 'ban-screen' && el.id !== 'error-screen') el.inert = true;
+    });
+    try { MainButtonCtl.clear(); } catch (e) { /* hali tayyor emas */ }
+    try { if (tg && tg.BackButton) tg.BackButton.hide(); } catch (e) { /* eski klient */ }
+    document.body.style.overflow = 'hidden';
+    const screen = document.getElementById(screenId);
+    if (screen) {
+        screen.hidden = false;
+        const title = screen.querySelector('.block-title');
+        if (title) { title.tabIndex = -1; title.focus(); }
+    }
+}
+
+function showBanScreen(info) {
+    const until = document.getElementById('ban-until');
+    const reason = document.getElementById('ban-reason');
+    const contact = document.getElementById('ban-contact');
+    if (!until || !reason || !contact) return;
+    const when = info && info.until ? formatBanUntil(info.until) : '';
+    until.textContent = when ? `Muddat: ${when} gacha` : 'Muddat: ♾ muddatsiz';
+    const why = info && typeof info.reason === 'string' ? info.reason.trim() : '';
+    reason.textContent = why ? `Sabab: ${why}` : '';
+    reason.hidden = !why;
+    const handle = info && typeof info.contact === 'string' && info.contact ? info.contact : '';
+    contact.textContent = handle ? `Murojaat uchun: ${handle}` : "Murojaat uchun administratorga yozing.";
+    contact.hidden = false;
+    lockApp('ban-screen');
+}
+
+function showErrorScreen() {
+    if (appLocked) return;
+    lockApp('error-screen');
+}
+
+// api() javoblarini tekshiradi: ochiq ban (403 banned) -> blok ekrani; ilova ochilishida server xatosi -> xato ekrani
+function inspectApiBlock(path, status, data) {
+    if (!data || typeof data !== 'object') return;
+    if (status === 403 && data.error === 'banned') {
+        showBanScreen(data);
+    } else if (path === 'state' && status >= 500 && data.error === 'server_error') {
+        showErrorScreen();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const retry = document.getElementById('error-retry');
+    if (retry) retry.addEventListener('click', () => { window.location.reload(); });
+    // Bloklangan ilovadan botga o'tkazuvchi zaxira havolalari (deep link) ochilmasin
+    try {
+        if (tg && typeof tg.openTelegramLink === 'function') {
+            const original = tg.openTelegramLink.bind(tg);
+            tg.openTelegramLink = (url) => { if (!appLocked) original(url); };
+        }
+    } catch (e) { /* o'zgartirib bo'lmaydi */ }
+});
+
 // ── Ikonkalar: index.html dagi inline SVG sprite (#i-<nom>). FontAwesome yo'q, tashqi so'rov yo'q. ──
 // Ma'lumotlardagi eski icon nomlari (masalan "fa-fire-burner") o'zgarmaydi — bu yerda sprite nomiga o'giriladi.
 const FA_ICON_MAP = {
@@ -193,9 +268,15 @@ async function api(path, extra, opts) {
             let data = null;
             try { data = await r.json(); } catch (e) { data = null; }      // JSON emas (masalan nginx 502)
             const ra = parseInt(r.headers.get('Retry-After') || '', 10);
+            inspectApiBlock(path, r.status, data);
             return { status: r.status, data: data, retryAfter: Number.isFinite(ra) ? ra : null };
         }
-        if (!r.ok) throw new Error('http-' + r.status);
+        if (!r.ok) {
+            let data = null;
+            try { data = await r.json(); } catch (e) { data = null; }
+            inspectApiBlock(path, r.status, data);
+            throw new Error('http-' + r.status);
+        }
         return await r.json();
     } finally {
         if (timer) clearTimeout(timer);
@@ -628,6 +709,7 @@ const AppNavigation = (function () {
     }
 
     function updateBtn() {
+        if (appLocked) return;                                // bloklangan / xato ekrani: orqaga tugmasi yo'q
         const btn = getBackBtn();
         const tgBtn = tgBackButton();
         if (tgBtn) {
@@ -1416,6 +1498,7 @@ const MainButtonCtl = {
         };
     },
     set(opts, fallbackEl) {
+        if (appLocked) return false;                          // bloklangan / xato ekrani: MainButton ko'rsatilmaydi
         this.clear();
         this.opts = opts;
         this.owner = opts.owner || null;

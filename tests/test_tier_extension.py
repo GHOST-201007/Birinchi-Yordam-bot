@@ -21,6 +21,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot  # noqa: E402
 import database  # noqa: E402
+from tests.ban_shim import not_banned_patch  # noqa: E402
 from tests.sqlite_db import SqliteDB  # noqa: E402
 
 UZ = dt.timezone(dt.timedelta(hours=5))
@@ -145,7 +146,8 @@ class EntryPointsAgreeTest(unittest.IsolatedAsyncioTestCase):
     def patches(self):
         return (mock.patch.object(database, "get_premium_view", side_effect=lambda uid: self.view),
                 mock.patch.object(database, "has_discount", side_effect=lambda uid: self.discount),
-                mock.patch.object(database, "is_user_banned", return_value=(False, None)))
+                mock.patch.object(database, "is_user_banned", return_value=(False, None)),
+                not_banned_patch())
 
     async def via_button(self, action):
         cb = mock.MagicMock()
@@ -153,8 +155,8 @@ class EntryPointsAgreeTest(unittest.IsolatedAsyncioTestCase):
         cb.from_user = SimpleNamespace(id=USER_ID)
         cb.answer = mock.AsyncMock()
         cb.message.answer_invoice = mock.AsyncMock()
-        p1, p2, p3 = self.patches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self.patches()
+        with p1, p2, p3, p4:
             await bot.process_pay_stars_tariff(cb)
         if cb.message.answer_invoice.await_count:
             return True, None, cb.message.answer_invoice.await_args.kwargs
@@ -162,8 +164,8 @@ class EntryPointsAgreeTest(unittest.IsolatedAsyncioTestCase):
 
     async def via_api(self, plan):
         create = mock.AsyncMock(return_value=LINK)
-        p1, p2, p3 = self.patches()
-        with p1, p2, p3, mock.patch.object(bot, "bot", SimpleNamespace(create_invoice_link=create)):
+        p1, p2, p3, p4 = self.patches()
+        with p1, p2, p3, p4, mock.patch.object(bot, "bot", SimpleNamespace(create_invoice_link=create)):
             result = await bot._api_invoice_action(USER_ID, {"plan": plan})
         if result["ok"]:
             return True, None, create.await_args.kwargs
@@ -177,8 +179,8 @@ class EntryPointsAgreeTest(unittest.IsolatedAsyncioTestCase):
         q.currency = "XTR"
         q.total_amount = stars
         q.answer = mock.AsyncMock()
-        p1, p2, p3 = self.patches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self.patches()
+        with p1, p2, p3, p4:
             await bot.process_pre_checkout(q)
         kwargs = q.answer.await_args.kwargs
         return kwargs["ok"], kwargs.get("error_message")

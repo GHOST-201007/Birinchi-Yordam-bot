@@ -2272,6 +2272,40 @@ body.dark-mode .fig-views button[aria-pressed="true"] { background: var(--surfac
 .today-card--wide .today-title, .today-card--wide .today-sub { grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
 .today-card--wide .today-btn { flex: none; min-width: 112px; min-height: 44px; padding: 0 var(--s-4); }
 
+/* Bloklangan foydalanuvchi / server xatosi: to'liq ekranli sahifalar (app.js lockApp). Boshqa hamma narsa inert. */
+.block-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--s-5) var(--s-4);
+    overflow-y: auto;
+    background: var(--bg);
+    color: var(--text);
+}
+.block-screen[hidden] { display: none; }
+.block-card { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); width: 100%; max-width: 360px; text-align: center; }
+.block-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+.block-icon--warning { background: var(--warning-soft); color: var(--warning); }
+.block-icon .icon { width: 38px; height: 38px; }
+.block-title { margin: 0; font: 800 var(--fs-h2) var(--font); color: var(--text); }
+.block-title:focus { outline: none; }
+.block-line { margin: 0; font: 600 16px/1.45 var(--font); color: var(--text); overflow-wrap: anywhere; }
+.block-line[hidden] { display: none; }
+.block-contact, .block-hint { color: var(--text-2); font-size: 15px; }
+.block-btn { width: 100%; min-height: 48px; margin-top: var(--s-2); }
+
 /* Test qatori */
 .home-test-row { border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-card); margin-bottom: var(--s-4); }
 

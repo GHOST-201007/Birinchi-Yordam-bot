@@ -53,7 +53,7 @@ bash /root/Birinchi-Yordam-bot/deploy.sh
 ### Mini App API (`/api/...`)
 Bot jarayonidagi aiohttp serveri (`PORT`, default 10000) **faqat `127.0.0.1`** da tinglaydi: internetdan to'g'ridan-to'g'ri ochiq emas.
 Nginx `location /api/` ni `http://127.0.0.1:10000` ga **URI o'zgartirmasdan** uzatadi (`proxy_pass` oxirida `/` yo'q), shuning uchun
-endpointlar aynan shu yo'llarda: `POST /api/state`, `POST /api/spin/claim`, `POST /api/bonus/claim`, `POST /api/points/redeem`, `POST /api/invoice` (`/health` — ichki tekshiruv).
+endpointlar aynan shu yo'llarda: `POST /api/state`, `POST /api/spin/claim`, `POST /api/bonus/claim`, `POST /api/points/redeem`, `POST /api/invoice`, `POST /api/ai/chat` (`/health` — ichki tekshiruv).
 `/api/invoice` tanasi `{"init_data": ..., "plan": "buy_pro_7"|"buy_plus_30"|"buy_ultra_30"}`: narx va payload faqat serverdan (`build_premium_offer`), javob `{"ok": true, "url": <Stars invoice link>}`; yangi env o'zgaruvchi kerak emas.
 Har so'rovda `init_data` (Telegram WebApp imzosi) tekshiriladi; foydalanuvchi uchun daqiqasiga 20 so'rov; tana ≤ 4 KB.
 Tekshirish (serverda): `curl -s -X POST https://birinchiyordam.duckdns.org/api/state -H 'Content-Type: application/json' -d '{"init_data":"buzuq"}'` → `403`.
@@ -108,6 +108,28 @@ Premiumi bor foydalanuvchi buni mini appda ham, botda ham doim ko'radi; bepul fo
 - **Takliflarda muddat yozilmaydi** (bot va Mini App: "100 ball → Premium Plus"); muddat faqat olingandan KEYIN: `100 ball yechildi! Premium Plus faollashdi — tugash: 15.11.2026`. Mantiq o'zgarmagan: ichki `pro`, 3 kun. `tests/test_points_redeem.py` takliflarda "kun" so'zi yo'qligini tekshiradi.
 - **`POST /api/points/redeem`** (`init_data` HMAC, boshqa endpointlar kabi): tanada faqat `init_data`; javob `{"ok", "reason" (null | not_enough | unlimited | busy | banned), "message", "score", "cost": 100}` + `_premium_quota_fields` (yangi Premium holati va AI hisoblagichi). Mantiq botdagi tugma bilan BITTA: `bot.redeem_points_for_premium` (ban, muddatsiz Premium, yetarli ball; ballni yechish va Premium berish `database.check_and_grant_premium` ichida bir tranzaksiyada; bir foydalanuvchining parallel so'rovlari bitta ishlaydi). Muvaffaqiyatdan keyin menyu keshi va shaxsiy "👑 Ilova" tugmasi yangilanadi.
 - `database.check_and_grant_premium` endi **muddatsiz Premiumni ham himoyalaydi** (ball yechilmaydi, Premium o'zgarmaydi) — kunlik bonus, referal va baraban avto-berishi ham shu funksiyadan o'tadi. Yangi env o'zgaruvchi va migratsiya yo'q.
+
+### Ban tizimi: 📣 ochiq va 🤫 sirli ban (`/ban`, faqat `ADMIN_ID`)
+Ban faqat adminda; ikki xil:
+
+| | 📣 Ochiq ban | 🤫 Sirli ban |
+|---|---|---|
+| Ban qo'yilganda userga xabar | ✅ muddat + sabab + murojaat | ❌ hech narsa |
+| Userning xabari / tugmasi | har safar `🚫 Siz bloklangansiz. 20.11.2026 14:00 gacha. Sabab: ...` (callback — alert) | **bot butunlay jim** (`message.answer` ham, `callback.answer()` ham yo'q) |
+| Mini app | 403 `{"error":"banned","until","reason","contact"}` → "Siz bloklangansiz" ekrani | oddiy `500 {"error":"server_error"}` → "Xatolik yuz berdi" ekrani (ban haqida hech narsa yo'q) |
+| To'lov (`pre_checkout`) | rad: sabab bilan | rad: umumiy "Xatolik yuz berdi" |
+| Avtomatik / ommaviy xabarlar | ❌ | ❌ |
+| Muddat tugaganda | `✅ Blok muddati tugadi` xabari | xabarsiz |
+| Unban | admin tanlaydi: 📣 xabar bilan / 🤫 xabarsiz | admin tanlaydi |
+
+- **Baza:** `users` ga `ban_mode` (`'open'` / `'silent'`), `ban_reason`, `banned_at` — `init_db()` o'zi qo'shadi (`ADD COLUMN IF NOT EXISTS`), qo'lda hech narsa kerak emas. Eski banlar (`is_banned = 1`, `ban_mode IS NULL`) **ochiq** ban hisoblanadi. Sirli banda `ban_reason` — faqat admin izohi (userga ko'rsatilmaydi). Yangi env o'zgaruvchi yo'q.
+- **Yagona o'qish joyi:** `database.get_ban_info(user_id)` → `{"banned", "mode", "until", "reason"}` (keshlanadi, `ban_user` / `unban_user` keshni bekor qiladi). `is_user_banned` unga tayanadi. Muddati o'tgan ban o'qishda "ban yo'q" hisoblanadi, lekin bazaga **yozilmaydi**: tozalash va "Blok muddati tugadi" xabari faqat fon vazifasida.
+- **Yagona SQL sharti:** `database.NOT_BANNED_SQL` / `BANNED_SQL` (+ `not_banned_params()`): "hozir banda emas" = `is_banned = 0 OR banned_until <= hozir`. Hamma ommaviy yuborishlar shuni ishlatadi (`get_active_user_ids`, `get_broadcast_targets`, `get_daily_tips_subscribers`, `get_premium_checkin_targets`, `get_all_active_reminders`): muddati o'tgan, lekin hali tozalanmagan user ham qo'shiladi. `get_all_users()` — BARCHA userlar (faqat ma'muriy skriptlar uchun, xabar yuborishga ishlatmang).
+- **Middleware tartibi** (`bot.setup_middlewares`): **Ban → Throttling → AnswerCallback → FsmReset**. Ban birinchi, shuning uchun banlangan user "sekinroq" ogohlantirishi yoki AnswerCallback orqali bot tirikligini sezmaydi. Istisno: Telegram allaqachon yechgan `successful_payment` xabari ban middleware'dan o'tkaziladi (pul yo'qolmasin; ban to'lovdan keyin qo'yilgan bo'lishi mumkin).
+- **Admin paneli `/ban`** (Premium paneli uslubida, `bn:` callbacklari): ro'yxat (🚫 ochiq, 🤫 sirli, 👤 oddiy; `🚫 Banlanganlar` filtri) yoki qidiruv (ID, @username, ism) → user kartasi → `🚫 Ban qilish` → muddat (1 soat / 1 kun / 7 kun / 30 kun / ♾) → rejim (📣 / 🤫) → sabab (faqat 📣: Spam, Haqorat, Qoidabuzarlik, Reklama, ✍️ Boshqa (yozaman), Sababsiz; 🤫 da ixtiyoriy admin izohi) → tasdiq ("User 7 kunga sirli ban qilinadi, unga xabar bormaydi"). Bandagi userda `✅ Unban` (📣 / 🤫) va `✏️ Muddatni o'zgartirish` (rejim va sabab saqlanadi; ochiq banda userga yangi muddat bilan ban xabari yuboriladi). Admin o'zini ban qila olmaydi. Matnli `/ban <id> [daqiqa]` va `/unban <id>` ishlaydi: ular 📣 ochiq, sababsiz (unban ham 📣). Eski `ban_toggle_` (bitta bosishda doimiy ban) olib tashlandi. Premium paneli kartasida ban holati ko'rinadi; banlangan userga Premium berilsa/olinsa userga xabar yuborilmaydi va admin `ℹ️ User banlangan — xabar yuborilmadi` ogohlantirishini oladi.
+- **Fon vazifasi** (`ban_expiry_loop`, har 2 daqiqada, polling va webhook rejimida ham): muddati o'tgan banlarni **atomar** tozalaydi (`UPDATE ... RETURNING user_id, ban_mode`: parallel chaqiruvda ham xabar bir marta ketadi); ochiq edi → `✅ Blok muddati tugadi`, sirli → xabarsiz. Premium muddati va ballar o'zgarmaydi (banlangan userning Premiumi to'xtamaydi).
+- **Avtomatik xabarlar:** 08:00 / 10:10 / 20:30 (Premium check-in), kunlik maslahatlar, dori eslatmalari, Premium tugash eslatmasi, `/broadcast` (hisobotda `🚫 Banlangan (o'tkazib yuborildi): N`), referal xabari va admin tasdiqlagandan keyingi xabarlar (karta cheki / reconcile) banlangan userga yuborilmaydi.
+- **Mini app:** `app.js` `api()` javobini tekshiradi: `403 banned` → to'liq ekranli `#ban-screen` (qolgan hamma narsa `inert`, MainButton / BackButton / botga zaxira havolalari o'chadi); ilova ochilishida `/api/state` `server_error` (5xx) qaytarsa → `#error-screen` ("Xatolik yuz berdi. Keyinroq urinib ko'ring." + "Qayta urinish" + 103). Ekran ban uchun alohida emas, hamma server xatolari uchun. JSON'siz 502 / tarmoq uzilishi esa oldingi zaxira rejimida qoladi.
 
 ### Omad baraboni (8 sovrin)
 Sovrinlar **bitta joyda**: `database.SPIN_PRIZES` (kod, ehtimol). Mini App `segments` (app.js) shu kodlar bilan mos bo'lishi shart — `tests/test_spin_prizes.py` tekshiradi.

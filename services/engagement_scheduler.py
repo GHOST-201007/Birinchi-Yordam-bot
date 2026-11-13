@@ -14,11 +14,9 @@ def start_scheduler(bot, get_gemini_response):
         conn = None
         c = None
         try:
-            conn = database.get_connection()
-            c = conn.cursor()
-            # Barcha obuna bo'lgan yoki oddiy userlarni olish (masalan, ban bo'lmaganlar)
-            c.execute("SELECT user_id FROM users WHERE is_banned = 0")
-            users = c.fetchall()
+            # Banda bo'lmagan barcha userlar. YAGONA shart: database.NOT_BANNED_SQL (ikkala ban rejimi chiqarib tashlanadi;
+            # muddati o'tgan, lekin hali tozalanmagan ban esa hisobga olinmaydi)
+            users = [(uid,) for uid in await asyncio.to_thread(database.get_active_user_ids)]
             logging.info(f"[ENGAGEMENT] 08:00 target users: {len(users)}")
             
             event_date = database.get_uz_now().strftime("%Y-%m-%d")
@@ -59,10 +57,7 @@ def start_scheduler(bot, get_gemini_response):
         conn = None
         c = None
         try:
-            conn = database.get_connection()
-            c = conn.cursor()
-            c.execute("SELECT user_id FROM users WHERE is_banned = 0")
-            users = c.fetchall()
+            users = [(uid,) for uid in await asyncio.to_thread(database.get_active_user_ids)]   # banda bo'lmaganlar
             event_date = database.get_uz_now().strftime("%Y-%m-%d")
             
             for row in users:
@@ -120,12 +115,7 @@ def start_scheduler(bot, get_gemini_response):
             conn = None
             c = None
             try:
-                conn = database.get_connection()
-                c = conn.cursor()
-                c.execute(
-                    "SELECT user_id, premium_expires_at, premium_type FROM users WHERE is_banned = 0 AND is_premium = 1"
-                )
-                users = c.fetchall()
+                users = await asyncio.to_thread(database.get_premium_checkin_targets)      # banda bo'lmagan Premiumlar
                 now = database.get_uz_now()
                 event_date = now.strftime("%Y-%m-%d")
                 logging.info(

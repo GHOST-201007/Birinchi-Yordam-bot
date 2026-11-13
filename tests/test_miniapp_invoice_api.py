@@ -190,7 +190,7 @@ class InvoiceEndpointTest(InvoiceBase):
     async def test_banned_user_403(self):
         self.m["banned"].return_value = (True, "ban")
         resp, data = await self.invoice("buy_pro_7")
-        self.assertEqual((resp.status, data), (403, {"ok": False, "error": "banned"}))
+        self.assertEqual((resp.status, data["ok"], data["error"]), (403, False, "banned"))
         self.create_link.assert_not_awaited()
 
     async def test_rate_limit_shared_with_other_endpoints(self):

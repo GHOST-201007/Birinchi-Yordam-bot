@@ -18,6 +18,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import bot  # noqa: E402
 import database  # noqa: E402
+from tests.ban_shim import not_banned_patch  # noqa: E402
 
 USER_ID = 900000501
 FREE_VIEW = database.admin_premium_view(0, None, None)
@@ -110,6 +111,7 @@ class DiscountPreCheckoutTest(unittest.TestCase):
         q.answer = mock.AsyncMock()
         with mock.patch.dict(os.environ, {"PRO_MONTHLY_STARS": "150"}), \
              mock.patch.object(bot.database, "is_user_banned", return_value=(False, None)), \
+             not_banned_patch(), \
              mock.patch.object(bot.database, "get_premium_view", return_value=FREE_VIEW), \
              mock.patch.object(bot.database, "has_discount", return_value=has_discount):
             asyncio.run(bot.process_pre_checkout(q))
